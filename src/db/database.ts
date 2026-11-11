@@ -45,10 +45,12 @@ export function initDatabase(): void {
       name                 TEXT    NOT NULL,
       email                TEXT    NOT NULL UNIQUE COLLATE NOCASE,
       password_hash        TEXT    NOT NULL,
-      salt                 TEXT    NOT NULL,
+      salt                 TEXT    NOT NULL DEFAULT '',
       role                 TEXT    NOT NULL DEFAULT 'user', -- 'admin' ou 'user'
       is_active            INTEGER NOT NULL DEFAULT 1,      -- 1 = actif, 0 = suspendu
       must_change_password INTEGER NOT NULL DEFAULT 0,      -- 1 = changement forcé
+      budget_mensuel       REAL    NOT NULL DEFAULT 0,
+      langue               TEXT    NOT NULL DEFAULT 'fr',
       created_at           TEXT    NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -180,6 +182,11 @@ export function initDatabase(): void {
       threshold_expert    INTEGER NOT NULL DEFAULT 300
     );
   `);
+
+  // Colonnes ajoutées de façon sécurisée (idempotente) si la base existait déjà
+  try { db.execSync(`ALTER TABLE user ADD COLUMN budget_mensuel REAL NOT NULL DEFAULT 0;`); } catch {}
+  try { db.execSync(`ALTER TABLE user ADD COLUMN langue TEXT NOT NULL DEFAULT 'fr';`); } catch {}
+  try { db.execSync(`ALTER TABLE user ADD COLUMN salt TEXT NOT NULL DEFAULT '';`); } catch {}
 
   // --------------------------------------------------------
   // MIGRATION AUTOMATIQUE DEPUIS L'ANCIENNE BASE (S'IL Y EN A UNE)
@@ -505,13 +512,27 @@ function initialiserComptesDepart(): void {
 }
 
 // ------------------------------------------------------------
-// COMPATIBILITÉ : Vues SQLite pour les écrans existants
+// COMPATIBILITÉ : Vues SQLite et déclencheurs (triggers)
+// RÔLE : Assure une rétro-compatibilité totale avec l'ancien code.
+//        Permet aux écrans existants de lire et d'écrire (INSERT/UPDATE/DELETE)
+//        sur les anciens noms (utilisateurs, categories, produits, achats, etc.)
+//        sans jamais provoquer d'erreur SQLite "cannot modify view" ou "no such table".
 // ------------------------------------------------------------
 function creerVuesDeRetroCompatibilite(): void {
   try {
-    // Si des tables de même nom n'existent pas sous forme de vraies tables,
-    // on crée des vues pour que les fonctions qui interrogent encore les anciens
-    // noms ne provoquent aucun crash !
+    // 1. Table magasins pour éviter toute absence de table
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS magasins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nom TEXT NOT NULL UNIQUE
+      );
+      INSERT OR IGNORE INTO magasins (id, nom) VALUES (1, 'Carrefour');
+      INSERT OR IGNORE INTO magasins (id, nom) VALUES (2, 'Monoprix');
+      INSERT OR IGNORE INTO magasins (id, nom) VALUES (3, 'Mg');
+      INSERT OR IGNORE INTO magasins (id, nom) VALUES (4, 'Épicerie du coin');
+    `);
+
+    // 2. Vue utilisateurs + triggers
     db.execSync(`
       CREATE VIEW IF NOT EXISTS utilisateurs AS
       SELECT
@@ -523,11 +544,52 @@ function creerVuesDeRetroCompatibilite(): void {
         role,
         is_active,
         must_change_password,
-        0 as budget_mensuel,
-        'fr' as langue,
+        budget_mensuel,
+        langue,
         created_at
       FROM user;
 
+      CREATE TRIGGER IF NOT EXISTS trg_utilisateurs_insert
+      INSTEAD OF INSERT ON utilisateurs
+      BEGIN
+        INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, budget_mensuel, langue)
+        VALUES (
+          NEW.nom,
+          NEW.email,
+          NEW.password_hash,
+          '',
+          COALESCE(NEW.role, 'user'),
+          COALESCE(NEW.is_active, 1),
+          COALESCE(NEW.must_change_password, 0),
+          COALESCE(NEW.budget_mensuel, 0),
+          COALESCE(NEW.langue, 'fr')
+        );
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_utilisateurs_update
+      INSTEAD OF UPDATE ON utilisateurs
+      BEGIN
+        UPDATE user SET
+          name = COALESCE(NEW.nom, name),
+          email = COALESCE(NEW.email, email),
+          password_hash = COALESCE(NEW.password_hash, password_hash),
+          role = COALESCE(NEW.role, role),
+          is_active = COALESCE(NEW.is_active, is_active),
+          must_change_password = COALESCE(NEW.must_change_password, must_change_password),
+          budget_mensuel = COALESCE(NEW.budget_mensuel, budget_mensuel),
+          langue = COALESCE(NEW.langue, langue)
+        WHERE id = OLD.id;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_utilisateurs_delete
+      INSTEAD OF DELETE ON utilisateurs
+      BEGIN
+        DELETE FROM user WHERE id = OLD.id;
+      END;
+    `);
+
+    // 3. Vue categories + triggers
+    db.execSync(`
       CREATE VIEW IF NOT EXISTS categories AS
       SELECT
         id,
@@ -539,6 +601,249 @@ function creerVuesDeRetroCompatibilite(): void {
         is_system as est_systeme,
         theme
       FROM category;
+
+      CREATE TRIGGER IF NOT EXISTS trg_categories_insert
+      INSTEAD OF INSERT ON categories
+      BEGIN
+        INSERT INTO category (name_key, type, icon, default_percent, is_default, is_active, is_system, theme)
+        VALUES (
+          NEW.nom,
+          'product',
+          COALESCE(NEW.icone, '📦'),
+          COALESCE(NEW.pourcentage_defaut, 0),
+          COALESCE(NEW.est_defaut, 0),
+          COALESCE(NEW.est_visible, 1),
+          COALESCE(NEW.est_systeme, 0),
+          COALESCE(NEW.theme, 'Divers')
+        );
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_categories_update
+      INSTEAD OF UPDATE ON categories
+      BEGIN
+        UPDATE category SET
+          name_key = COALESCE(NEW.nom, name_key),
+          icon = COALESCE(NEW.icone, icon),
+          default_percent = COALESCE(NEW.pourcentage_defaut, default_percent),
+          is_active = COALESCE(NEW.est_visible, is_active)
+        WHERE id = OLD.id;
+      END;
+    `);
+
+    // 4. Vue produits + triggers
+    db.execSync(`
+      CREATE VIEW IF NOT EXISTS produits AS
+      SELECT
+        id,
+        name as nom,
+        brand as marque,
+        unit as unite,
+        category_id as categorie_id,
+        user_id as created_by,
+        photo_path as photo_uri,
+        created_at
+      FROM product;
+
+      CREATE TRIGGER IF NOT EXISTS trg_produits_insert
+      INSTEAD OF INSERT ON produits
+      BEGIN
+        INSERT INTO product (name, brand, unit, category_id, user_id, photo_path)
+        VALUES (
+          NEW.nom,
+          COALESCE(NEW.marque, ''),
+          COALESCE(NEW.unite, 'pièce'),
+          NEW.categorie_id,
+          NEW.created_by,
+          COALESCE(NEW.photo_uri, '')
+        );
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_produits_update
+      INSTEAD OF UPDATE ON produits
+      BEGIN
+        UPDATE product SET
+          name = COALESCE(NEW.nom, name),
+          brand = COALESCE(NEW.marque, brand),
+          unit = COALESCE(NEW.unite, unit),
+          category_id = COALESCE(NEW.categorie_id, category_id),
+          photo_path = COALESCE(NEW.photo_uri, photo_path)
+        WHERE id = OLD.id;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_produits_delete
+      INSTEAD OF DELETE ON produits
+      BEGIN
+        DELETE FROM product WHERE id = OLD.id;
+      END;
+    `);
+
+    // 5. Vue achats + trigger
+    db.execSync(`
+      CREATE VIEW IF NOT EXISTS achats AS
+      SELECT
+        p.id,
+        p.product_id as produit_id,
+        p.user_id as utilisateur_id,
+        NULL as magasin_id,
+        p.category_id as categorie_id,
+        p.notes as titre,
+        p.price as prix_unitaire,
+        p.quantity as quantite,
+        (p.price * p.quantity) as prix_total,
+        p.date as date_achat,
+        p.month as mois,
+        p.notes
+      FROM purchase p
+      UNION ALL
+      SELECT
+        e.id + 1000000 as id,
+        NULL as produit_id,
+        e.user_id as utilisateur_id,
+        NULL as magasin_id,
+        e.category_id as categorie_id,
+        e.label as titre,
+        e.amount as prix_unitaire,
+        1 as quantite,
+        e.amount as prix_total,
+        e.date as date_achat,
+        e.month as mois,
+        e.notes
+      FROM expense e;
+
+      CREATE TRIGGER IF NOT EXISTS trg_achats_insert
+      INSTEAD OF INSERT ON achats
+      BEGIN
+        INSERT INTO purchase (user_id, product_id, category_id, price, quantity, unit, store, date, month, notes)
+        SELECT
+          NEW.utilisateur_id,
+          NEW.produit_id,
+          COALESCE(NEW.categorie_id, (SELECT category_id FROM product WHERE id = NEW.produit_id), 1),
+          NEW.prix_unitaire,
+          COALESCE(NEW.quantite, 1),
+          COALESCE((SELECT unit FROM product WHERE id = NEW.produit_id), 'pièce'),
+          'Non précisé',
+          COALESCE(NEW.date_achat, date('now')),
+          NEW.mois,
+          COALESCE(NEW.notes, '')
+        WHERE NEW.produit_id IS NOT NULL;
+
+        INSERT INTO expense (user_id, category_id, amount, label, date, month, notes)
+        SELECT
+          NEW.utilisateur_id,
+          COALESCE(NEW.categorie_id, 9),
+          NEW.prix_total,
+          COALESCE(NULLIF(NEW.titre, ''), 'Dépense'),
+          COALESCE(NEW.date_achat, date('now')),
+          NEW.mois,
+          COALESCE(NEW.notes, '')
+        WHERE NEW.produit_id IS NULL;
+      END;
+    `);
+
+    // 6. Vues monthly_budgets, category_budgets, reglages_points, alertes_log
+    db.execSync(`
+      CREATE VIEW IF NOT EXISTS monthly_budgets AS
+      SELECT
+        id,
+        user_id as utilisateur_id,
+        month as mois,
+        total as montant_total,
+        is_evaluated as est_evalue,
+        created_at as date_creation
+      FROM month_budget;
+
+      CREATE TRIGGER IF NOT EXISTS trg_monthly_budgets_insert
+      INSTEAD OF INSERT ON monthly_budgets
+      BEGIN
+        INSERT INTO month_budget (user_id, month, total, is_evaluated)
+        VALUES (NEW.utilisateur_id, NEW.mois, NEW.montant_total, COALESCE(NEW.est_evalue, 0))
+        ON CONFLICT(user_id, month) DO UPDATE SET total = excluded.total;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_monthly_budgets_update
+      INSTEAD OF UPDATE ON monthly_budgets
+      BEGIN
+        UPDATE month_budget SET
+          total = COALESCE(NEW.montant_total, total),
+          is_evaluated = COALESCE(NEW.est_evalue, is_evaluated)
+        WHERE id = OLD.id;
+      END;
+
+      CREATE VIEW IF NOT EXISTS category_budgets AS
+      SELECT
+        cb.id,
+        mb.id as monthly_budget_id,
+        cb.category_id as categorie_id,
+        cb.amount as montant,
+        cb.percent as pourcentage,
+        cb.created_at
+      FROM category_budget cb
+      LEFT JOIN month_budget mb ON cb.user_id = mb.user_id AND cb.month = mb.month;
+
+      CREATE TRIGGER IF NOT EXISTS trg_category_budgets_insert
+      INSTEAD OF INSERT ON category_budgets
+      BEGIN
+        INSERT INTO category_budget (user_id, month, category_id, amount, percent)
+        SELECT
+          mb.user_id,
+          mb.month,
+          NEW.categorie_id,
+          NEW.montant,
+          NEW.pourcentage
+        FROM month_budget mb
+        WHERE mb.id = NEW.monthly_budget_id
+        ON CONFLICT(user_id, month, category_id) DO UPDATE SET
+          amount = excluded.amount,
+          percent = excluded.percent;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_category_budgets_delete
+      INSTEAD OF DELETE ON category_budgets
+      BEGIN
+        DELETE FROM category_budget
+        WHERE (user_id, month) IN (SELECT user_id, month FROM month_budget WHERE id = OLD.monthly_budget_id);
+      END;
+
+      CREATE VIEW IF NOT EXISTS reglages_points AS
+      SELECT
+        id,
+        points_per_category as points_categorie_respectee,
+        points_monthly_bonus as points_bonus_mensuel,
+        points_streak_bonus as points_bonus_serie,
+        threshold_beginner as seuil_debutant,
+        threshold_saver as seuil_econome,
+        threshold_expert as seuil_expert
+      FROM settings;
+
+      CREATE TRIGGER IF NOT EXISTS trg_reglages_points_update
+      INSTEAD OF UPDATE ON reglages_points
+      BEGIN
+        UPDATE settings SET
+          points_per_category = NEW.points_categorie_respectee,
+          points_monthly_bonus = NEW.points_bonus_mensuel,
+          points_streak_bonus = NEW.points_bonus_serie,
+          threshold_beginner = NEW.seuil_debutant,
+          threshold_saver = NEW.seuil_econome,
+          threshold_expert = NEW.seuil_expert
+        WHERE id = OLD.id;
+      END;
+
+      CREATE VIEW IF NOT EXISTS alertes_log AS
+      SELECT
+        id,
+        user_id as utilisateur_id,
+        month as mois,
+        category_id as categorie_id,
+        level as seuil,
+        created_at as date_creation
+      FROM alert_log;
+
+      CREATE TRIGGER IF NOT EXISTS trg_alertes_log_insert
+      INSTEAD OF INSERT ON alertes_log
+      BEGIN
+        INSERT INTO alert_log (user_id, month, category_id, level)
+        VALUES (NEW.utilisateur_id, NEW.mois, NEW.categorie_id, NEW.seuil);
+      END;
     `);
   } catch (err) {
     // Ignore si des tables physiques portent déjà ces noms

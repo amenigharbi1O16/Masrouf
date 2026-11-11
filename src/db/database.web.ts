@@ -26,6 +26,8 @@ export type UserRow = {
   role: 'admin' | 'user';
   is_active: number;
   must_change_password: number;
+  budget_mensuel: number;
+  langue: string;
   created_at: string;
 };
 
@@ -119,6 +121,8 @@ class WebDatabaseStore {
       role: 'admin',
       is_active: 1,
       must_change_password: 1,
+      budget_mensuel: 0,
+      langue: 'fr',
       created_at: '2026-11-01 10:00:00',
     },
     {
@@ -130,6 +134,8 @@ class WebDatabaseStore {
       role: 'user',
       is_active: 1,
       must_change_password: 0,
+      budget_mensuel: 1200,
+      langue: 'fr',
       created_at: '2026-11-02 14:30:00',
     },
   ];
@@ -239,8 +245,8 @@ export const db = {
     const s = sql.toUpperCase();
 
     // INSERT INTO USER
-    if (s.includes('INSERT INTO USER')) {
-      const [name, email, hash, salt, role, isActive, mustChange] = params;
+    if (s.includes('INSERT INTO USER') || s.includes('INSERT INTO UTILISATEURS')) {
+      const [name, email, hash, salt, role, isActive, mustChange, budget, langue] = params;
       const id = (store.user.length > 0 ? Math.max(...store.user.map((u) => u.id)) : 0) + 1;
       store.user.push({
         id,
@@ -251,6 +257,8 @@ export const db = {
         role: role ?? 'user',
         is_active: isActive ?? 1,
         must_change_password: mustChange ?? 0,
+        budget_mensuel: budget ?? 0,
+        langue: langue ?? 'fr',
         created_at: new Date().toISOString(),
       });
       store.sauvegarder();
@@ -258,13 +266,13 @@ export const db = {
     }
 
     // UPDATE USER
-    if (s.includes('UPDATE USER')) {
+    if (s.includes('UPDATE USER') || s.includes('UPDATE UTILISATEURS')) {
       if (s.includes('PASSWORD_HASH = ?')) {
         const [hash, id] = params;
         const u = store.user.find((x) => x.id === id);
         if (u) {
           u.password_hash = hash;
-          u.must_change_password = 0;
+          u.must_change_password = s.includes('MUST_CHANGE_PASSWORD = 1') ? 1 : 0;
           store.sauvegarder();
         }
       } else if (s.includes('IS_ACTIVE = ?')) {
@@ -272,6 +280,20 @@ export const db = {
         const u = store.user.find((x) => x.id === id);
         if (u) {
           u.is_active = active;
+          store.sauvegarder();
+        }
+      } else if (s.includes('BUDGET_MENSUEL = ?')) {
+        const [budget, id] = params;
+        const u = store.user.find((x) => x.id === id);
+        if (u) {
+          u.budget_mensuel = budget;
+          store.sauvegarder();
+        }
+      } else if (s.includes('LANGUE = ?')) {
+        const [langue, id] = params;
+        const u = store.user.find((x) => x.id === id);
+        if (u) {
+          u.langue = langue;
           store.sauvegarder();
         }
       }

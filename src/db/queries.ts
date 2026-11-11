@@ -121,24 +121,50 @@ export type DepenseParCategorie = {
 // getUserByEmail : Recherche un compte par e-mail (insensible à la casse)
 // ------------------------------------------------------------
 export function getUserByEmail(email: string): Utilisateur | null {
-  return (
-    db.getFirstSync<Utilisateur>(
-      `SELECT * FROM utilisateurs WHERE email = ? COLLATE NOCASE`,
-      [email.trim()]
-    ) ?? null
+  const row = db.getFirstSync<any>(
+    `SELECT id, name as nom, email, password_hash, role, is_active, must_change_password, budget_mensuel, langue, created_at
+     FROM user
+     WHERE email = ? COLLATE NOCASE`,
+    [email.trim().toLowerCase()]
   );
+  if (!row) return null;
+  return {
+    id: row.id,
+    nom: row.nom,
+    email: row.email,
+    password_hash: row.password_hash,
+    role: row.role,
+    is_active: row.is_active,
+    must_change_password: row.must_change_password,
+    budget_mensuel: row.budget_mensuel ?? 0,
+    langue: row.langue ?? 'fr',
+    created_at: row.created_at,
+  };
 }
 
 // ------------------------------------------------------------
 // getUserById : Recherche un utilisateur par son identifiant unique
 // ------------------------------------------------------------
 export function getUserById(id: number): Utilisateur | null {
-  return (
-    db.getFirstSync<Utilisateur>(
-      `SELECT * FROM utilisateurs WHERE id = ?`,
-      [id]
-    ) ?? null
+  const row = db.getFirstSync<any>(
+    `SELECT id, name as nom, email, password_hash, role, is_active, must_change_password, budget_mensuel, langue, created_at
+     FROM user
+     WHERE id = ?`,
+    [id]
   );
+  if (!row) return null;
+  return {
+    id: row.id,
+    nom: row.nom,
+    email: row.email,
+    password_hash: row.password_hash,
+    role: row.role,
+    is_active: row.is_active,
+    must_change_password: row.must_change_password,
+    budget_mensuel: row.budget_mensuel ?? 0,
+    langue: row.langue ?? 'fr',
+    created_at: row.created_at,
+  };
 }
 
 // ------------------------------------------------------------
@@ -150,8 +176,8 @@ export function registerUser(
   passwordHash: string
 ): number {
   const result = db.runSync(
-    `INSERT INTO utilisateurs (nom, email, password_hash, role, is_active, must_change_password, budget_mensuel)
-     VALUES (?, ?, ?, 'user', 1, 0, 0)`,
+    `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, budget_mensuel, langue)
+     VALUES (?, ?, ?, '', 'user', 1, 0, 0, 'fr')`,
     [nom.trim(), email.trim().toLowerCase(), passwordHash]
   );
   return result.lastInsertRowId;
@@ -165,7 +191,7 @@ export function updateUserPassword(
   newPasswordHash: string
 ): void {
   db.runSync(
-    `UPDATE utilisateurs
+    `UPDATE user
      SET password_hash = ?,
          must_change_password = 0
      WHERE id = ?`,
@@ -181,7 +207,7 @@ export function updateUserActiveStatus(
   isActive: boolean
 ): void {
   db.runSync(
-    `UPDATE utilisateurs SET is_active = ? WHERE id = ?`,
+    `UPDATE user SET is_active = ? WHERE id = ?`,
     [isActive ? 1 : 0, userId]
   );
 }
@@ -194,7 +220,7 @@ export function resetUserPassword(
   tempPasswordHash: string
 ): void {
   db.runSync(
-    `UPDATE utilisateurs
+    `UPDATE user
      SET password_hash = ?,
          must_change_password = 1
      WHERE id = ?`,
@@ -208,7 +234,7 @@ export function resetUserPassword(
 export function deleteUserAndData(userId: number): void {
   // Les contraintes ON DELETE CASCADE suppriment automatiquement
   // produits, achats, budgets et logs rattachés à cet utilisateur
-  db.runSync(`DELETE FROM utilisateurs WHERE id = ?`, [userId]);
+  db.runSync(`DELETE FROM user WHERE id = ?`, [userId]);
 }
 
 // ------------------------------------------------------------
@@ -216,7 +242,7 @@ export function deleteUserAndData(userId: number): void {
 // ------------------------------------------------------------
 export function countActiveAdmins(): number {
   const result = db.getFirstSync<{ cnt: number }>(
-    `SELECT COUNT(*) as cnt FROM utilisateurs WHERE role = 'admin' AND is_active = 1`
+    `SELECT COUNT(*) as cnt FROM user WHERE role = 'admin' AND is_active = 1`
   );
   return result?.cnt ?? 0;
 }
@@ -488,9 +514,9 @@ export function saveMonthlyBudget(
   total: number,
   enveloppes: { categorie_id: number; montant: number; pourcentage: number }[]
 ): void {
-  // 1. Met à jour la table utilisateur
+  // 1. Met à jour la table user
   db.runSync(
-    `UPDATE utilisateurs SET budget_mensuel = ? WHERE id = ?`,
+    `UPDATE user SET budget_mensuel = ? WHERE id = ?`,
     [total, userId]
   );
 
@@ -801,7 +827,7 @@ export function getAdminGlobalStats(): AdminGlobalStats {
     SELECT
       COUNT(*) as total,
       COALESCE(SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END), 0) as actifs
-    FROM utilisateurs
+    FROM user
     WHERE role = 'user'
   `);
 
@@ -831,11 +857,23 @@ export function getAdminGlobalStats(): AdminGlobalStats {
 }
 
 export function getAllUsersAdmin(): Utilisateur[] {
-  return db.getAllSync<Utilisateur>(
-    `SELECT id, nom, email, password_hash, role, is_active, must_change_password, budget_mensuel, langue, created_at
-     FROM utilisateurs
-     ORDER BY role DESC, nom ASC`
+  const rows = db.getAllSync<any>(
+    `SELECT id, name as nom, email, password_hash, role, is_active, must_change_password, budget_mensuel, langue, created_at
+     FROM user
+     ORDER BY role DESC, name ASC`
   );
+  return rows.map((row) => ({
+    id: row.id,
+    nom: row.nom,
+    email: row.email,
+    password_hash: row.password_hash,
+    role: row.role,
+    is_active: row.is_active,
+    must_change_password: row.must_change_password,
+    budget_mensuel: row.budget_mensuel ?? 0,
+    langue: row.langue ?? 'fr',
+    created_at: row.created_at,
+  }));
 }
 
 export function addCategoryAdmin(nom: string, icone: string, pct: number, theme: string): number {
@@ -864,14 +902,14 @@ export function updateCategoryAdmin(
 
 export function updateBudget(utilisateurId: number, budget: number): void {
   db.runSync(
-    `UPDATE utilisateurs SET budget_mensuel = ? WHERE id = ?`,
+    `UPDATE user SET budget_mensuel = ? WHERE id = ?`,
     [budget, utilisateurId]
   );
 }
 
 export function updateLangue(utilisateurId: number, langue: string): void {
   db.runSync(
-    `UPDATE utilisateurs SET langue = ? WHERE id = ?`,
+    `UPDATE user SET langue = ? WHERE id = ?`,
     [langue, utilisateurId]
   );
 }
