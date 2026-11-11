@@ -67,11 +67,15 @@ export default function HomeScreen() {
 
   // ----------------------------------------------------------
   // CHARGEMENT ET RECHARGEMENT DES DONNÉES
+  // NOTE ANTI-BOUCLE : refreshUser est stable (useCallback([], []))
+  //   et utilise setUser(prev => …) pour ne mettre à jour le state
+  //   QUE si le compte a changé. On l'exclut donc des dépendances
+  //   pour ne pas recréer rechargerDonnees à chaque render.
   // ----------------------------------------------------------
   const rechargerDonnees = useCallback(() => {
     if (!user) return;
 
-    // Vérifie que le compte est toujours actif
+    // Vérifie que le compte est toujours actif (anti-boucle : comparaison interne)
     refreshUser();
 
     // 1. Évaluation du mois précédent (s'exécute 1 fois au premier lancement)
@@ -126,7 +130,8 @@ export default function HomeScreen() {
         }
       }
     }
-  }, [user, moisCourant, t, refreshUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, moisCourant, t]);
 
   useFocusEffect(rechargerDonnees);
 
