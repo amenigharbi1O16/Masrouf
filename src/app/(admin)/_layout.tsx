@@ -1,46 +1,95 @@
 // ============================================================
 // FICHIER : src/app/(admin)/_layout.tsx
-// RÔLE    : Agencement sécurisé de l'espace Administrateur.
-//           Protège l'accès : seul un utilisateur avec le rôle
-//           'admin' est autorisé à naviguer dans ce dossier.
-//
-// CONCEPTS REACT NATIVE & SÉCURITÉ :
-//   - Contrôle d'accès basé sur les rôles (RBAC).
-//   - Redirection automatique si un utilisateur non-admin tente d'y accéder.
+// RÔLE    : Agencement des onglets de l'espace Administrateur (Bottom Tabs).
+//           Protège l'accès : seul le rôle 'admin' peut accéder à cet espace.
 // ============================================================
 
 import React, { useEffect } from 'react';
-import { Stack, router } from 'expo-router';
+import { Tabs, router } from 'expo-router';
+import { Text, StyleSheet } from 'react-native';
+
+// Contexte et internationalisation
 import { useAuth } from '../../utils/auth';
+import { useTranslation } from '../../utils/i18n';
 
-export default function AdminLayout() {
+export default function AdminTabLayout() {
   const { user } = useAuth();
+  const { t } = useTranslation();
 
-  // CONTRÔLE D'ACCÈS BASÉ SUR LE RÔLE :
-  // Si l'utilisateur n'est pas connecté OU n'est pas admin,
-  // on le refoule immédiatement vers l'espace utilisateur normal.
+  // Contrôle d'accès strict : refoulement immédiat si non-admin
   useEffect(() => {
     if (!user || user.role !== 'admin') {
       router.replace('/(tabs)' as any);
     }
   }, [user]);
 
-  // Si non-admin, on ne rend rien pendant que la redirection s'opère
   if (!user || user.role !== 'admin') {
     return null;
   }
 
   return (
-    <Stack>
-      <Stack.Screen
-        name="utilisateurs"
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: '#7E22CE', // Violet distinctif pour l'Admin
+        tabBarInactiveTintColor: '#64748B',
+        tabBarStyle: {
+          height: 62,
+          paddingBottom: 8,
+          paddingTop: 6,
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: '#E9D5FF',
+        },
+        headerStyle: { backgroundColor: '#FAF5FF' },
+        headerTitleStyle: { fontWeight: 'bold', color: '#581C87' },
+      }}
+    >
+      {/* 1. Tableau de bord */}
+      <Tabs.Screen
+        name="dashboard"
         options={{
-          title: '👑 Administration — Utilisateurs',
-          headerShown: true,
-          headerStyle: { backgroundColor: '#FAF5FF' },
-          headerTitleStyle: { color: '#7E22CE', fontWeight: 'bold' },
+          title: t('tableau_de_bord'),
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>📊</Text>,
         }}
       />
-    </Stack>
+
+      {/* 2. Gestion des utilisateurs */}
+      <Tabs.Screen
+        name="utilisateurs"
+        options={{
+          title: t('utilisateurs_admin'),
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>👥</Text>,
+        }}
+      />
+
+      {/* 3. Gestion des catégories */}
+      <Tabs.Screen
+        name="categories"
+        options={{
+          title: t('categories_admin'),
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>🏷️</Text>,
+        }}
+      />
+
+      {/* 4. Règles des points */}
+      <Tabs.Screen
+        name="points-regles"
+        options={{
+          title: t('regles_points_admin'),
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>⭐</Text>,
+        }}
+      />
+
+      {/* 5. Réglages Admin */}
+      <Tabs.Screen
+        name="reglages"
+        options={{
+          title: t('reglages_admin'),
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>⚙️</Text>,
+        }}
+      />
+    </Tabs>
   );
 }
+
+const styles = StyleSheet.create({});

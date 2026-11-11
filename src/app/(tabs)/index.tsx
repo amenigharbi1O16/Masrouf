@@ -1,24 +1,22 @@
 // ============================================================
 // FICHIER : src/app/(tabs)/index.tsx
-// RÔLE    : Écran d'accueil principal (Dashboard) de l'utilisateur.
+// RÔLE    : Écran d'accueil principal (Dashboard Personnel) de l'utilisateur.
 //
 // VISUEL SUR L'ÉCRAN :
-//   1. En haut : Message de bienvenue personnalisé avec le nom de l'utilisateur.
-//   2. Carte Budget :
-//      - Montant dépensé en grand (calculé dynamiquement depuis SQLite).
-//      - Objectif budgétaire mensuel configuré par l'utilisateur.
-//      - Barre de progression animée (Bleu si normal, Orange si >= 80%, Rouge si dépassé).
-//      - Alerte visuelle en cas de dépassement ou d'approche du seuil.
-//   3. Actions rapides : 2 boutons côte à côte (+ Achat et + Produit).
-//   4. Dépenses récentes : Liste interactive des 5 derniers achats réels
-//      avec icône de catégorie, date, magasin et montant en TND.
-//
-// CONCEPTS REACT NATIVE & PROGRAMMATION ÉVÉNEMENTIELLE :
-//   - useFocusEffect : rafraîchit automatiquement les données SQLite
-//     dès que l'utilisateur revient sur cet écran (par exemple après avoir
-//     enregistré un nouvel achat dans la modale).
-//   - useAuth : lit l'ID et les réglages de l'utilisateur connecté.
-//   - useTranslation : bascule les libellés en Français ou Arabe.
+//   1. En-tête Gamification : Points totaux & Badge de Niveau
+//      (Débutant, Économe, Expert configuré par l'admin).
+//   2. Carte Budget Global & Enveloppes :
+//      - Total dépensé vs Budget alloué.
+//      - Bouton d'accès rapide vers la gestion des enveloppes.
+//   3. Enveloppes par Catégorie (« Masrouf [Catégorie] ») :
+//      - Barres de progression individuelles aux couleurs normées :
+//        * Vert (< 70 %)
+//        * Orange (70 à 99 %)
+//        * Rouge (≥ 100 %)
+//   4. Alertes budgétaires dans l'application (80 % et 100 %) :
+//      - Affichées une seule fois par mois et par catégorie (table alertes_log).
+//   5. Section "Non budgétisé" si des achats ont été faits hors enveloppes.
+//   6. Actions rapides (+ Dépense, + Produit) et liste des dépenses récentes.
 // ============================================================
 
 import React, { useState, useCallback } from 'react';
@@ -28,129 +26,258 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  FlatList,
+  Alert,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 
-// Fonctions d'interrogation de la base SQLite
-import { getTotalMois, getRecentAchats, Achat } from '../../db/queries';
+// Fonctions SQLite
+import {
+  getTotalMois,
+  getRecentAchats,
+  getEnveloppesBudget,
+  getNonBudgetedDepenses,
+  getTotalPoints,
+  getPointsSettings,
+  evaluerMoisPrecedent,
+  hasAlerteBeenShown,
+  logAlerte,
+  Achat,
+  EnveloppeBudget,
+} from '../../db/queries';
 
-// Contexte d'authentification et internationalisation
+// Contexte et internationalisation
 import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
 
 export default function HomeScreen() {
-  // Récupération de l'utilisateur connecté
-  const { user } = useAuth();
-
-  // Système de traduction
+  const { user, refreshUser } = useAuth();
   const { t } = useTranslation();
 
-  // Calcul du mois en cours au format "AAAA-MM" (ex: "2026-11")
   const maintenant = new Date();
   const moisCourant = `${maintenant.getFullYear()}-${String(
     maintenant.getMonth() + 1
   ).padStart(2, '0')}`;
 
-  // ÉTATS LOCAUX :
-  // totalDepense : somme des achats du mois en cours
   const [totalDepense, setTotalDepense] = useState<number>(0);
-
-  // achatsRecents : liste des 5 derniers achats
   const [achatsRecents, setAchatsRecents] = useState<Achat[]>([]);
+  const [enveloppes, setEnveloppes] = useState<EnveloppeBudget[]>([]);
+  const [nonBudgetise, setNonBudgetise] = useState<number>(0);
+  const [totalPoints, setTotalPoints] = useState<number>(0);
+  const [niveauLabel, setNiveauLabel] = useState<string>('Débutant');
 
   // ----------------------------------------------------------
-  // CHARGEMENT DES DONNÉES DEPUIS SQLITE
-  // useFocusEffect est déclenché chaque fois que l'onglet Accueil devient actif
+  // CHARGEMENT ET RECHARGEMENT DES DONNÉES
   // ----------------------------------------------------------
-  useFocusEffect(
-    useCallback(() => {
-      if (user) {
-        // 1. Récupère le total dépensé pour le mois en cours
-        const total = getTotalMois(user.id, moisCourant);
-        setTotalDepense(total);
+  const rechargerDonnees = useCallback(() => {
+    if (!user) return;
 
-        // 2. Récupère les 5 achats les plus récents
-        const recents = getRecentAchats(user.id, moisCourant);
-        setAchatsRecents(recents);
+    // Vérifie que le compte est toujours actif
+    refreshUser();
+
+    // 1. Évaluation du mois précédent (s'exécute 1 fois au premier lancement)
+    const evalRes = evaluerMoisPrecedent(user.id, moisCourant);
+    if (evalRes.evalue && evalRes.pointsGagnes > 0) {
+      Alert.alert(t('felicitations_mois'), `${evalRes.message}\n+${evalRes.pointsGagnes} ${t('points')} ! 🎉`);
+    }
+
+    // 2. Total du mois et achats récents
+    const total = getTotalMois(user.id, moisCourant);
+    setTotalDepense(total);
+    setAchatsRecents(getRecentAchats(user.id, moisCourant));
+
+    // 3. Enveloppes du mois
+    const envs = getEnveloppesBudget(user.id, moisCourant);
+    setEnveloppes(envs);
+
+    // 4. Dépenses non budgétisées
+    const nonBudg = getNonBudgetedDepenses(user.id, moisCourant);
+    setNonBudgetise(nonBudg);
+
+    // 5. Points et Niveau
+    const pts = getTotalPoints(user.id);
+    setTotalPoints(pts);
+
+    const s = getPointsSettings();
+    if (pts >= s.seuil_expert) {
+      setNiveauLabel(t('niveau_expert'));
+    } else if (pts >= s.seuil_econome) {
+      setNiveauLabel(t('niveau_econome'));
+    } else {
+      setNiveauLabel(t('niveau_debutant'));
+    }
+
+    // 6. Vérification des alertes 80 % et 100 % (non répétées)
+    for (const env of envs) {
+      if (env.pourcentage_consomme >= 100) {
+        if (!hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 100)) {
+          logAlerte(user.id, moisCourant, env.categorie_id, 100);
+          Alert.alert(
+            t('alerte_100_titre'),
+            `${t('alerte_100_msg')} ${env.categorie_nom} (${env.montant_depense.toFixed(2)} / ${env.montant_alloue.toFixed(2)} TND).`
+          );
+        }
+      } else if (env.pourcentage_consomme >= 80) {
+        if (!hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 80)) {
+          logAlerte(user.id, moisCourant, env.categorie_id, 80);
+          Alert.alert(
+            t('alerte_80_titre'),
+            `${t('alerte_80_msg')} ${env.categorie_nom} (${env.montant_depense.toFixed(2)} / ${env.montant_alloue.toFixed(2)} TND).`
+          );
+        }
       }
-    }, [user, moisCourant])
-  );
+    }
+  }, [user, moisCourant, t, refreshUser]);
 
-  // ----------------------------------------------------------
-  // CALCULS DU BUDGET
-  // ----------------------------------------------------------
-  const budget = user?.budget_mensuel ?? 0;
-  // Calcul du pourcentage consommé (plafonné à 100% pour la barre)
-  const ratio = budget > 0 ? (totalDepense / budget) * 100 : 0;
-  const largeurBarre = Math.min(ratio, 100);
+  useFocusEffect(rechargerDonnees);
 
-  // Couleur dynamique de la barre de progression
-  let couleurProgression = '#2563EB'; // Bleu standard
-  if (ratio >= 100) {
-    couleurProgression = '#EF4444'; // Rouge = Dépassement
-  } else if (ratio >= 80) {
-    couleurProgression = '#F59E0B'; // Orange = Alerte 80%
+  const budgetTotal = user?.budget_mensuel ?? 0;
+  const ratioGlobal = budgetTotal > 0 ? (totalDepense / budgetTotal) * 100 : 0;
+  const largeurBarreGlobale = Math.min(ratioGlobal, 100);
+
+  let couleurBarreGlobale = '#10B981'; // Vert < 70%
+  if (ratioGlobal >= 100) {
+    couleurBarreGlobale = '#EF4444'; // Rouge >= 100%
+  } else if (ratioGlobal >= 70) {
+    couleurBarreGlobale = '#F59E0B'; // Orange 70 - 99%
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       {/* ==================================================== */}
-      {/* SECTION 1 : BIENVENUE & PROFIL                       */}
+      {/* SECTION 1 : BIENVENUE & BANDEAU GAMIFICATION        */}
       {/* ==================================================== */}
-      <View style={styles.welcomeBox}>
-        <Text style={styles.welcomeText}>
-          {t('bienvenue')} <Text style={styles.userName}>{user?.nom ?? 'Utilisateur'} 👋</Text>
-        </Text>
-        <Text style={styles.roleTag}>
-          {user?.role === 'admin' ? '👑 Administrateur' : '👤 Compte Personnel'}
-        </Text>
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.welcomeText}>
+            {t('bienvenue')} <Text style={styles.userName}>{user?.nom} 👋</Text>
+          </Text>
+          <Text style={styles.subGreeting}>Mois de gestion : {moisCourant}</Text>
+        </View>
+
+        {/* Badge Points & Niveau */}
+        <View style={styles.levelBadge}>
+          <Text style={styles.levelIcon}>⭐</Text>
+          <View>
+            <Text style={styles.levelName}>{niveauLabel}</Text>
+            <Text style={styles.pointsText}>{totalPoints} {t('points')}</Text>
+          </View>
+        </View>
       </View>
 
       {/* ==================================================== */}
-      {/* SECTION 2 : CARTE BUDGET MENSUEL                     */}
+      {/* SECTION 2 : CARTE BUDGET GLOBAL                     */}
       {/* ==================================================== */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t('budget_du_mois')}</Text>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.cardTitle}>{t('budget_du_mois')}</Text>
+          <TouchableOpacity
+            style={styles.manageEnvelopesBtn}
+            onPress={() => router.push('/budget-mois')}
+          >
+            <Text style={styles.manageEnvelopesText}>⚙️ {t('gerer_enveloppes')}</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Montant total dépensé en grand */}
         <Text style={styles.cardAmount}>
           {totalDepense.toFixed(3)} <Text style={styles.currencyText}>TND</Text>
         </Text>
 
-        {/* Comparaison avec le budget configuré */}
         <Text style={styles.cardSub}>
-          {t('depense_sur')} {budget.toFixed(3)} TND ({ratio.toFixed(0)}%)
+          {t('depense_sur')} {budgetTotal.toFixed(3)} TND ({ratioGlobal.toFixed(0)}%)
         </Text>
 
-        {/* BARRE DE PROGRESSION VISUELLE */}
+        {/* Barre de progression globale */}
         <View style={styles.progressBarTrack}>
           <View
             style={[
               styles.progressBarFill,
-              { width: `${largeurBarre}%`, backgroundColor: couleurProgression },
+              { width: `${largeurBarreGlobale}%`, backgroundColor: couleurBarreGlobale },
             ]}
           />
         </View>
-
-        {/* ALERTES BUDGÉTAIRES ÉVÉNEMENTIELLES */}
-        {ratio >= 100 ? (
-          <View style={[styles.alertBadge, styles.alertDanger]}>
-            <Text style={styles.alertDangerText}>{t('budget_depasse')}</Text>
-          </View>
-        ) : ratio >= 80 ? (
-          <View style={[styles.alertBadge, styles.alertWarning]}>
-            <Text style={styles.alertWarningText}>{t('budget_alerte_80')}</Text>
-          </View>
-        ) : null}
       </View>
 
       {/* ==================================================== */}
-      {/* SECTION 3 : ACTIONS RAPIDES                          */}
+      {/* SECTION 3 : ENVELOPPES PAR CATEGORIE                */}
+      {/* ==================================================== */}
+      <Text style={styles.sectionTitle}>{t('budget_enveloppes')}</Text>
+
+      {enveloppes.length === 0 ? (
+        <TouchableOpacity
+          style={styles.noBudgetPrompt}
+          onPress={() => router.push('/budget-mois')}
+        >
+          <Text style={{ fontSize: 28, marginBottom: 6 }}>📬</Text>
+          <Text style={styles.noBudgetTitle}>Aucune enveloppe configurée pour ce mois</Text>
+          <Text style={styles.noBudgetSub}>Cliquez ici pour répartir votre budget en enveloppes intelligentes !</Text>
+        </TouchableOpacity>
+      ) : (
+        enveloppes.map((env) => {
+          const pct = env.pourcentage_consomme;
+          const barreWidth = Math.min(pct, 100);
+
+          // Couleurs réglementaires
+          let col = '#10B981'; // Vert < 70%
+          if (pct >= 100) {
+            col = '#EF4444'; // Rouge >= 100%
+          } else if (pct >= 70) {
+            col = '#F59E0B'; // Orange 70 à 99%
+          }
+
+          return (
+            <View key={env.categorie_id} style={styles.envelopeCard}>
+              <View style={styles.envelopeHeader}>
+                <View style={styles.envelopeTitleBox}>
+                  <Text style={styles.envelopeIcon}>{env.categorie_icone}</Text>
+                  <Text style={styles.envelopeTitle}>
+                    {t('masrouf_prefix')} {env.categorie_nom}
+                  </Text>
+                </View>
+
+                <Text style={styles.envelopeAmounts}>
+                  {env.montant_depense.toFixed(2)} / {env.montant_alloue.toFixed(2)} TND
+                </Text>
+              </View>
+
+              {/* Barre de l'enveloppe */}
+              <View style={styles.miniTrack}>
+                <View
+                  style={[
+                    styles.miniFill,
+                    { width: `${barreWidth}%`, backgroundColor: col },
+                  ]}
+                />
+              </View>
+
+              <View style={styles.envelopeFooter}>
+                <Text style={[styles.envelopePct, { color: col }]}>
+                  {pct.toFixed(0)} % consommé
+                </Text>
+                <Text style={styles.envelopeRestant}>
+                  Reste : {env.montant_restant.toFixed(2)} TND
+                </Text>
+              </View>
+            </View>
+          );
+        })
+      )}
+
+      {/* SECTION 4 : DEPENSES HORS BUDGET */}
+      {nonBudgetise > 0 ? (
+        <View style={styles.nonBudgetCard}>
+          <Text style={styles.nonBudgetTitle}>⚠️ {t('non_budgetise')}</Text>
+          <Text style={styles.nonBudgetSub}>
+            {t('avertissement_non_budgetise')} :{' '}
+            <Text style={{ fontWeight: '800' }}>{nonBudgetise.toFixed(2)} TND</Text>
+          </Text>
+        </View>
+      ) : null}
+
+      {/* ==================================================== */}
+      {/* SECTION 5 : ACTIONS RAPIDES                         */}
       {/* ==================================================== */}
       <Text style={styles.sectionTitle}>{t('actions_rapides')}</Text>
       <View style={styles.actionRow}>
-        {/* BOUTON 1 : Ouvre la modale pour enregistrer un achat */}
         <TouchableOpacity
           style={[styles.button, styles.primaryButton]}
           onPress={() => router.push('/nouvel-achat')}
@@ -159,7 +286,6 @@ export default function HomeScreen() {
           <Text style={styles.buttonText}>{t('ajouter_achat')}</Text>
         </TouchableOpacity>
 
-        {/* BOUTON 2 : Ouvre la modale pour ajouter un nouveau produit au catalogue */}
         <TouchableOpacity
           style={[styles.button, styles.secondaryButton]}
           onPress={() => router.push('/nouveau-produit')}
@@ -172,26 +298,22 @@ export default function HomeScreen() {
       </View>
 
       {/* ==================================================== */}
-      {/* SECTION 4 : LISTE DES DÉPENSES RÉCENTES              */}
+      {/* SECTION 6 : DEPENSES RECENTES                       */}
       {/* ==================================================== */}
       <Text style={styles.sectionTitle}>{t('depenses_recentes')}</Text>
 
       {achatsRecents.length === 0 ? (
-        // Message si aucun achat n'a été enregistré ce mois-ci
         <View style={styles.emptyState}>
           <Text style={styles.emptyIcon}>🛍️</Text>
           <Text style={styles.emptyText}>{t('aucun_achat')}</Text>
         </View>
       ) : (
-        // Affichage des achats sous forme de cartes élégantes
         achatsRecents.map((achat) => (
           <View key={achat.id} style={styles.expenseItem}>
-            {/* Icône de la catégorie */}
             <View style={styles.expenseIconBox}>
               <Text style={{ fontSize: 22 }}>{achat.produit_icone}</Text>
             </View>
 
-            {/* Détails du produit et magasin */}
             <View style={styles.expenseInfo}>
               <Text style={styles.expenseTitle}>{achat.produit_nom}</Text>
               <Text style={styles.expenseMeta}>
@@ -199,7 +321,6 @@ export default function HomeScreen() {
               </Text>
             </View>
 
-            {/* Montant total de l'achat */}
             <View style={styles.expensePriceBox}>
               <Text style={styles.expensePrice}>
                 {achat.prix_total.toFixed(3)}
@@ -213,9 +334,6 @@ export default function HomeScreen() {
   );
 }
 
-// ------------------------------------------------------------
-// STYLES GRAPHIQUES
-// ------------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -223,9 +341,12 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 40,
   },
-  welcomeBox: {
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
   welcomeText: {
@@ -233,117 +354,226 @@ const styles = StyleSheet.create({
     color: '#64748B',
   },
   userName: {
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#1E293B',
   },
-  roleTag: {
+  subGreeting: {
     fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  levelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 6,
+  },
+  levelIcon: {
+    fontSize: 18,
+  },
+  levelName: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  pointsText: {
+    fontSize: 10,
     color: '#2563EB',
     fontWeight: '600',
-    marginTop: 2,
   },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 6,
     elevation: 2,
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   cardTitle: {
     fontSize: 14,
+    fontWeight: '700',
     color: '#64748B',
-    fontWeight: '600',
+  },
+  manageEnvelopesBtn: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  manageEnvelopesText: {
+    fontSize: 11,
+    color: '#2563EB',
+    fontWeight: '700',
   },
   cardAmount: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
     color: '#1E293B',
-    marginVertical: 6,
+    marginTop: 8,
   },
   currencyText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#64748B',
   },
   cardSub: {
     fontSize: 13,
     color: '#64748B',
-    marginBottom: 12,
+    marginTop: 2,
   },
   progressBarTrack: {
-    height: 8,
-    backgroundColor: '#E2E8F0',
-    borderRadius: 4,
+    height: 10,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 5,
+    marginTop: 12,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 4,
-  },
-  alertBadge: {
-    marginTop: 12,
-    padding: 10,
-    borderRadius: 8,
-  },
-  alertWarning: {
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  alertWarningText: {
-    color: '#92400E',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  alertDanger: {
-    backgroundColor: '#FEE2E2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  alertDangerText: {
-    color: '#B91C1C',
-    fontSize: 12,
-    fontWeight: '700',
+    borderRadius: 5,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#1E293B',
-    marginBottom: 12,
+    marginBottom: 10,
+    marginTop: 6,
+  },
+  noBudgetPrompt: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  noBudgetTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  noBudgetSub: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  envelopeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 8,
+  },
+  envelopeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  envelopeTitleBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  envelopeIcon: {
+    fontSize: 20,
+  },
+  envelopeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  envelopeAmounts: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  miniTrack: {
+    height: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  miniFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  envelopeFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 5,
+  },
+  envelopePct: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  envelopeRestant: {
+    fontSize: 10,
+    color: '#64748B',
+  },
+  nonBudgetCard: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  nonBudgetTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  nonBudgetSub: {
+    fontSize: 11,
+    color: '#92400E',
+    marginTop: 2,
   },
   actionRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   button: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   primaryButton: {
     backgroundColor: '#2563EB',
   },
   secondaryButton: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#CBD5E1',
   },
   buttonText: {
-    fontSize: 15,
-    fontWeight: '700',
     color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   secondaryButtonText: {
-    color: '#2563EB',
+    color: '#334155',
   },
   emptyState: {
     backgroundColor: '#FFFFFF',
@@ -354,28 +584,28 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   emptyIcon: {
-    fontSize: 36,
-    marginBottom: 8,
+    fontSize: 32,
+    marginBottom: 6,
   },
   emptyText: {
-    color: '#94A3B8',
-    fontSize: 14,
+    fontSize: 13,
+    color: '#64748B',
   },
   expenseItem: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   expenseIconBox: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: 10,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -384,12 +614,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   expenseTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#1E293B',
   },
   expenseMeta: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
     marginTop: 2,
   },
@@ -398,12 +628,11 @@ const styles = StyleSheet.create({
   },
   expensePrice: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontWeight: '800',
+    color: '#1E293B',
   },
   expenseCurrency: {
     fontSize: 10,
     color: '#64748B',
-    fontWeight: '600',
   },
 });

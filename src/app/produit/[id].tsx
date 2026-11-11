@@ -34,9 +34,11 @@ import {
 } from '../../db/queries';
 
 // Contexte et internationalisation
+import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
 
 export default function FicheProduitScreen() {
+  const { user } = useAuth();
   const { t } = useTranslation();
 
   // useLocalSearchParams : extrait le paramètre [id] présent dans l'URL
@@ -59,10 +61,10 @@ export default function FicheProduitScreen() {
         setProduit(p);
 
         // Récupère tous les achats passés de ce produit
-        const achats = getAchatsByProduit(pId);
+        const achats = getAchatsByProduit(pId, user?.id);
         setHistorique(achats);
       }
-    }, [id])
+    }, [id, user?.id])
   );
 
   // ----------------------------------------------------------

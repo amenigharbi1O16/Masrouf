@@ -1,51 +1,75 @@
 // ============================================================
 // FICHIER : src/db/queries.ts
-// RÔLE    : Contient TOUTES les fonctions qui interagissent avec
-//           la base de données SQLite (lecture et écriture).
-//           Les écrans n'écrivent jamais de SQL directement.
-//           Ils appellent ces fonctions et reçoivent les données.
+// RÔLE    : Fonctions d'accès aux données SQLite pour Masrouf.
+//           Toutes les requêtes sont paramétrées (anti-injection SQL).
 //
 // ORGANISATION :
-//   Section A — Authentification (login)
-//   Section B — Achats (lecture et écriture)
-//   Section C — Produits (lecture et écriture)
-//   Section D — Catégories et Magasins (lecture)
-//   Section E — Analyses (statistiques)
-//   Section F — Administration (gestion des utilisateurs)
-//   Section G — Réglages (mise à jour profil)
+//   Section A — Authentification, Sécurité & Utilisateurs
+//   Section B — Dépenses & Achats personnels (WHERE utilisateur_id = ?)
+//   Section C — Produits personnels (WHERE created_by = ?)
+//   Section D — Catégories & Magasins (Référentiel)
+//   Section E — Budgets par enveloppes & Analyses mensuelles
+//   Section F — Gamification & Historique des points
+//   Section G — Supervision Administrateur (Statistiques globales 100% anonymes)
 // ============================================================
 
-// Importe la connexion à la base de données depuis database.ts
-// 'db' est l'objet SQLite déjà ouvert — on le réutilise ici
 import { db } from './database';
 
 // ============================================================
-// TYPES TypeScript
-// Définition de la forme des objets retournés par les requêtes.
-// Cela aide TypeScript à vérifier les erreurs de frappe.
+// TYPES TYPESCRIPT
 // ============================================================
 
-// Un utilisateur tel qu'il est stocké en base
 export type Utilisateur = {
   id: number;
   nom: string;
   email: string;
-  mot_de_passe: string;
-  role: 'admin' | 'utilisateur';
+  password_hash: string;
+  role: 'admin' | 'user';
+  is_active: number;
+  must_change_password: number;
   budget_mensuel: number;
   langue: string;
   created_at: string;
 };
 
-// Un achat tel qu'il est retourné par les requêtes (avec nom du produit joint)
+export type Categorie = {
+  id: number;
+  nom: string;
+  icone: string;
+  pourcentage_defaut: number;
+  est_defaut: number;
+  est_visible: number;
+  est_systeme: number;
+  theme: string;
+};
+
+export type Produit = {
+  id: number;
+  nom: string;
+  marque: string;
+  unite: string;
+  categorie_id: number;
+  categorie_nom: string;
+  categorie_icone: string;
+  created_by: number;
+  photo_uri: string;
+};
+
+export type Magasin = {
+  id: number;
+  nom: string;
+};
+
 export type Achat = {
   id: number;
-  produit_id: number;
-  produit_nom: string;       // vient du JOIN avec la table produits
-  produit_icone: string;     // vient du JOIN avec categories via produits
+  produit_id: number | null;
+  produit_nom: string;
+  produit_icone: string;
   utilisateur_id: number;
-  magasin_id: number;
-  magasin_nom: string;       // vient du JOIN avec la table magasins
+  magasin_id: number | null;
+  magasin_nom: string;
+  categorie_id: number | null;
+  titre: string;
   prix_unitaire: number;
   quantite: number;
   prix_total: number;
@@ -54,32 +78,35 @@ export type Achat = {
   notes: string;
 };
 
-// Un produit tel qu'il est retourné (avec nom de catégorie joint)
-export type Produit = {
-  id: number;
-  nom: string;
-  marque: string;
-  unite: string;
+export type EnveloppeBudget = {
   categorie_id: number;
-  categorie_nom: string;     // vient du JOIN avec categories
-  categorie_icone: string;   // l'emoji de la catégorie
-  created_by: number;
+  categorie_nom: string;
+  categorie_icone: string;
+  montant_alloue: number;
+  montant_depense: number;
+  montant_restant: number;
+  pourcentage_alloue: number;
+  pourcentage_consomme: number;
 };
 
-// Une catégorie
-export type Categorie = {
-  id: number;
-  nom: string;
-  icone: string;
+export type PointsSettings = {
+  points_categorie_respectee: number;
+  points_bonus_mensuel: number;
+  points_bonus_serie: number;
+  seuil_debutant: number;
+  seuil_econome: number;
+  seuil_expert: number;
 };
 
-// Un magasin
-export type Magasin = {
-  id: number;
-  nom: string;
+export type AdminGlobalStats = {
+  nbUtilisateurs: number;
+  nbUtilisateursActifs: number;
+  nbProduits: number;
+  nbAchats: number;
+  volumeTotalTND: number;
+  topCategorieNom: string;
 };
 
-// Résultat d'analyse par catégorie (pour l'écran Analyses)
 export type DepenseParCategorie = {
   categorie_nom: string;
   categorie_icone: string;
@@ -87,204 +114,204 @@ export type DepenseParCategorie = {
 };
 
 // ============================================================
-// SECTION A — AUTHENTIFICATION
+// SECTION A — AUTHENTIFICATION & UTILISATEURS
 // ============================================================
 
-// ----------------------------------------------------------------
-// getUserByEmailPassword()
-// RÔLE : Vérifie les identifiants de connexion.
-//        Cherche dans la table 'utilisateurs' un compte avec
-//        cet email ET ce mot de passe exact.
-//
-// Paramètres :
-//   email      = adresse email saisie dans le formulaire
-//   password   = mot de passe saisi dans le formulaire
-//
-// Retourne :
-//   L'objet Utilisateur si trouvé, ou null si identifiants incorrects
-// ----------------------------------------------------------------
-export function getUserByEmailPassword(
+// ------------------------------------------------------------
+// getUserByEmail : Recherche un compte par e-mail (insensible à la casse)
+// ------------------------------------------------------------
+export function getUserByEmail(email: string): Utilisateur | null {
+  return (
+    db.getFirstSync<Utilisateur>(
+      `SELECT * FROM utilisateurs WHERE email = ? COLLATE NOCASE`,
+      [email.trim()]
+    ) ?? null
+  );
+}
+
+// ------------------------------------------------------------
+// getUserById : Recherche un utilisateur par son identifiant unique
+// ------------------------------------------------------------
+export function getUserById(id: number): Utilisateur | null {
+  return (
+    db.getFirstSync<Utilisateur>(
+      `SELECT * FROM utilisateurs WHERE id = ?`,
+      [id]
+    ) ?? null
+  );
+}
+
+// ------------------------------------------------------------
+// registerUser : Crée un compte utilisateur normal (rôle 'user' UNIQUEMENT)
+// ------------------------------------------------------------
+export function registerUser(
+  nom: string,
   email: string,
-  password: string
-): Utilisateur | null {
-  // getFirstSync = exécute le SELECT et retourne la PREMIÈRE ligne trouvée
-  // Les ? sont remplacés par les valeurs du tableau (sécurité anti-injection SQL)
-  return db.getFirstSync<Utilisateur>(
-    `SELECT * FROM utilisateurs WHERE email = ? AND mot_de_passe = ?`,
-    [email, password]
-  ) ?? null;
-  //  ^^ si getFirstSync retourne undefined (aucun résultat), on retourne null
+  passwordHash: string
+): number {
+  const result = db.runSync(
+    `INSERT INTO utilisateurs (nom, email, password_hash, role, is_active, must_change_password, budget_mensuel)
+     VALUES (?, ?, ?, 'user', 1, 0, 0)`,
+    [nom.trim(), email.trim().toLowerCase(), passwordHash]
+  );
+  return result.lastInsertRowId;
+}
+
+// ------------------------------------------------------------
+// updateUserPassword : Met à jour le mot de passe et réinitialise must_change_password
+// ------------------------------------------------------------
+export function updateUserPassword(
+  userId: number,
+  newPasswordHash: string
+): void {
+  db.runSync(
+    `UPDATE utilisateurs
+     SET password_hash = ?,
+         must_change_password = 0
+     WHERE id = ?`,
+    [newPasswordHash, userId]
+  );
+}
+
+// ------------------------------------------------------------
+// updateUserActiveStatus : Active ou suspend l'accès d'un compte
+// ------------------------------------------------------------
+export function updateUserActiveStatus(
+  userId: number,
+  isActive: boolean
+): void {
+  db.runSync(
+    `UPDATE utilisateurs SET is_active = ? WHERE id = ?`,
+    [isActive ? 1 : 0, userId]
+  );
+}
+
+// ------------------------------------------------------------
+// resetUserPassword : Génère un mot de passe temporaire et force son changement
+// ------------------------------------------------------------
+export function resetUserPassword(
+  userId: number,
+  tempPasswordHash: string
+): void {
+  db.runSync(
+    `UPDATE utilisateurs
+     SET password_hash = ?,
+         must_change_password = 1
+     WHERE id = ?`,
+    [tempPasswordHash, userId]
+  );
+}
+
+// ------------------------------------------------------------
+// deleteUserAndData : Supprime un utilisateur et l'ensemble de ses données
+// ------------------------------------------------------------
+export function deleteUserAndData(userId: number): void {
+  // Les contraintes ON DELETE CASCADE suppriment automatiquement
+  // produits, achats, budgets et logs rattachés à cet utilisateur
+  db.runSync(`DELETE FROM utilisateurs WHERE id = ?`, [userId]);
+}
+
+// ------------------------------------------------------------
+// countActiveAdmins : Compte le nombre d'administrateurs actifs
+// ------------------------------------------------------------
+export function countActiveAdmins(): number {
+  const result = db.getFirstSync<{ cnt: number }>(
+    `SELECT COUNT(*) as cnt FROM utilisateurs WHERE role = 'admin' AND is_active = 1`
+  );
+  return result?.cnt ?? 0;
 }
 
 // ============================================================
-// SECTION B — ACHATS
+// SECTION B — DEPENSES ET ACHATS PERSONNELS (WHERE utilisateur_id = ?)
 // ============================================================
 
-// ----------------------------------------------------------------
-// getTotalMois()
-// RÔLE : Calcule le total dépensé par un utilisateur pendant un mois.
-//        Utilisé sur l'écran Accueil pour afficher le solde.
-//
-// Paramètres :
-//   utilisateurId = l'ID de l'utilisateur connecté
-//   mois          = format "AAAA-MM" ex: "2026-11" pour novembre 2026
-//
-// Retourne :
-//   Le total en TND (nombre décimal) ou 0 si aucun achat
-// ----------------------------------------------------------------
 export function getTotalMois(utilisateurId: number, mois: string): number {
-  // SUM(prix_total) = SQL qui additionne tous les prix_total filtrés
-  // COALESCE(SUM(...), 0) = si SUM retourne NULL (aucun achat), retourne 0
   const result = db.getFirstSync<{ total: number }>(
     `SELECT COALESCE(SUM(prix_total), 0) as total
      FROM achats
      WHERE utilisateur_id = ? AND mois = ?`,
     [utilisateurId, mois]
   );
-  // On retourne le champ 'total' ou 0 par sécurité
   return result?.total ?? 0;
 }
 
-// ----------------------------------------------------------------
-// getTotalMoisPrecedent()
-// RÔLE : Calcule le total du mois PRÉCÉDENT pour comparaison.
-//        Utilisé sur l'écran Analyses.
-//
-// Paramètres :
-//   utilisateurId = ID de l'utilisateur
-//   moisActuel    = ex: "2026-11"
-//
-// Logique :
-//   "2026-11" → on calcule "2026-10"
-//   "2026-01" → on calcule "2025-12" (changement d'année)
-// ----------------------------------------------------------------
 export function getTotalMoisPrecedent(
   utilisateurId: number,
   moisActuel: string
 ): number {
-  // Découpe le mois actuel en année et numéro de mois
   const [annee, mois] = moisActuel.split('-').map(Number);
-  //                                              ^^ .map(Number) convertit strings → numbers
-
-  // Calcule l'année et le mois précédent
-  let moisPrec: number;
-  let anneePrec: number;
-
-  if (mois === 1) {
-    // Si on est en janvier → le mois précédent est décembre de l'année d'avant
-    moisPrec = 12;
-    anneePrec = annee - 1;
-  } else {
-    // Sinon, simplement le mois - 1
-    moisPrec = mois - 1;
-    anneePrec = annee;
-  }
-
-  // Reconstruit la chaîne "AAAA-MM" avec padding (ex: 9 → "09")
+  let moisPrec = mois === 1 ? 12 : mois - 1;
+  let anneePrec = mois === 1 ? annee - 1 : annee;
   const moisPrecedent = `${anneePrec}-${String(moisPrec).padStart(2, '0')}`;
-  //                                                      ^^ padStart = ajoute un 0 devant si < 10
-
-  // Réutilise la même fonction de calcul avec le mois précédent
   return getTotalMois(utilisateurId, moisPrecedent);
 }
 
-// ----------------------------------------------------------------
-// getRecentAchats()
-// RÔLE : Retourne les 5 derniers achats d'un utilisateur.
-//        Affichés sur l'écran Accueil dans "Dépenses récentes".
-//
-// Paramètres :
-//   utilisateurId = ID de l'utilisateur
-//   mois          = mois en cours (ex: "2026-11")
-//
-// Retourne :
-//   Tableau de 5 achats maximum, avec nom du produit et du magasin
-// ----------------------------------------------------------------
-export function getRecentAchats(
-  utilisateurId: number,
-  mois: string
-): Achat[] {
-  // JOIN = réunit plusieurs tables en une seule requête
-  //   JOIN produits p ON a.produit_id = p.id
-  //     → pour chaque achat, récupère le nom du produit lié
-  //   JOIN categories c ON p.categorie_id = c.id
-  //     → pour chaque produit, récupère l'icône de sa catégorie
-  //   LEFT JOIN magasins m ON a.magasin_id = m.id
-  //     → "LEFT" = inclut les achats même si magasin_id est NULL
-  //
-  // ORDER BY date_achat DESC = trie du plus récent au plus ancien
-  // LIMIT 5 = retourne au maximum 5 résultats
+export function getRecentAchats(utilisateurId: number, mois: string): Achat[] {
   return db.getAllSync<Achat>(
     `SELECT
-       a.id, a.produit_id, a.utilisateur_id, a.magasin_id,
+       a.id, a.produit_id, a.utilisateur_id, a.magasin_id, a.categorie_id,
+       COALESCE(a.titre, '') as titre,
        a.prix_unitaire, a.quantite, a.prix_total,
        a.date_achat, a.mois, a.notes,
-       p.nom         as produit_nom,
-       c.icone       as produit_icone,
-       COALESCE(m.nom, 'Non précisé') as magasin_nom
+       COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
+       COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+       COALESCE(m.nom, 'Non précisé')      as magasin_nom
      FROM achats a
-     JOIN produits p    ON a.produit_id    = p.id
-     JOIN categories c  ON p.categorie_id  = c.id
-     LEFT JOIN magasins m ON a.magasin_id  = m.id
+     LEFT JOIN produits p   ON a.produit_id   = p.id
+     LEFT JOIN categories cp ON p.categorie_id = cp.id
+     LEFT JOIN categories cd ON a.categorie_id = cd.id
+     LEFT JOIN magasins m   ON a.magasin_id   = m.id
      WHERE a.utilisateur_id = ? AND a.mois = ?
-     ORDER BY a.date_achat DESC
+     ORDER BY a.date_achat DESC, a.id DESC
      LIMIT 5`,
     [utilisateurId, mois]
   );
 }
 
-// ----------------------------------------------------------------
-// getAllAchats()
-// RÔLE : Retourne TOUS les achats d'un utilisateur pour un mois.
-//        Utilisé sur l'écran Admin pour voir les dépenses globales.
-// ----------------------------------------------------------------
 export function getAllAchats(utilisateurId: number, mois: string): Achat[] {
   return db.getAllSync<Achat>(
     `SELECT
-       a.id, a.produit_id, a.utilisateur_id, a.magasin_id,
+       a.id, a.produit_id, a.utilisateur_id, a.magasin_id, a.categorie_id,
+       COALESCE(a.titre, '') as titre,
        a.prix_unitaire, a.quantite, a.prix_total,
        a.date_achat, a.mois, a.notes,
-       p.nom         as produit_nom,
-       c.icone       as produit_icone,
-       COALESCE(m.nom, 'Non précisé') as magasin_nom
+       COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
+       COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+       COALESCE(m.nom, 'Non précisé')      as magasin_nom
      FROM achats a
-     JOIN produits p    ON a.produit_id    = p.id
-     JOIN categories c  ON p.categorie_id  = c.id
-     LEFT JOIN magasins m ON a.magasin_id  = m.id
+     LEFT JOIN produits p   ON a.produit_id   = p.id
+     LEFT JOIN categories cp ON p.categorie_id = cp.id
+     LEFT JOIN categories cd ON a.categorie_id = cd.id
+     LEFT JOIN magasins m   ON a.magasin_id   = m.id
      WHERE a.utilisateur_id = ? AND a.mois = ?
-     ORDER BY a.date_achat DESC`,
+     ORDER BY a.date_achat DESC, a.id DESC`,
     [utilisateurId, mois]
   );
 }
 
-// ----------------------------------------------------------------
-// insertAchat()
-// RÔLE : Enregistre un nouvel achat dans la base de données.
-//        Appelé quand l'utilisateur soumet le formulaire "Nouvel Achat".
-//
-// Paramètre : objet contenant toutes les données de l'achat
-// ----------------------------------------------------------------
 export function insertAchat(data: {
-  produit_id: number;
+  produit_id: number | null;
   utilisateur_id: number;
   magasin_id: number | null;
+  categorie_id: number | null;
+  titre?: string;
   prix_unitaire: number;
   quantite: number;
   prix_total: number;
   mois: string;
   notes: string;
 }): void {
-  // runSync = exécute un INSERT/UPDATE/DELETE (modification de données)
-  // Les ? sont remplacés dans l'ordre par les valeurs du tableau
   db.runSync(
     `INSERT INTO achats
-       (produit_id, utilisateur_id, magasin_id, prix_unitaire,
+       (produit_id, utilisateur_id, magasin_id, categorie_id, titre, prix_unitaire,
         quantite, prix_total, mois, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.produit_id,
       data.utilisateur_id,
       data.magasin_id,
+      data.categorie_id,
+      data.titre ?? '',
       data.prix_unitaire,
       data.quantite,
       data.prix_total,
@@ -295,197 +322,553 @@ export function insertAchat(data: {
 }
 
 // ============================================================
-// SECTION C — PRODUITS
+// SECTION C — PRODUITS (WHERE created_by = ? OU Globaux)
 // ============================================================
 
-// ----------------------------------------------------------------
-// getAllProduits()
-// RÔLE : Retourne tous les produits du catalogue avec leur catégorie.
-//        Affiché sur l'écran Produits.
-// ----------------------------------------------------------------
-export function getAllProduits(): Produit[] {
+export function getAllProduits(userId?: number): Produit[] {
+  if (userId) {
+    return db.getAllSync<Produit>(
+      `SELECT
+         p.id, p.nom, p.marque, p.unite,
+         p.categorie_id, p.created_by,
+         COALESCE(p.photo_uri, '') as photo_uri,
+         COALESCE(c.nom, 'Autres') as categorie_nom,
+         COALESCE(c.icone, '📦')   as categorie_icone
+       FROM produits p
+       LEFT JOIN categories c ON p.categorie_id = c.id
+       WHERE p.created_by = ?
+       ORDER BY p.nom ASC`,
+      [userId]
+    );
+  }
+
   return db.getAllSync<Produit>(
     `SELECT
        p.id, p.nom, p.marque, p.unite,
        p.categorie_id, p.created_by,
-       c.nom   as categorie_nom,
-       c.icone as categorie_icone
+       COALESCE(p.photo_uri, '') as photo_uri,
+       COALESCE(c.nom, 'Autres') as categorie_nom,
+       COALESCE(c.icone, '📦')   as categorie_icone
      FROM produits p
-     JOIN categories c ON p.categorie_id = c.id
+     LEFT JOIN categories c ON p.categorie_id = c.id
      ORDER BY p.nom ASC`
-    // ORDER BY p.nom ASC = trie par nom alphabétique (A → Z)
   );
 }
 
-// ----------------------------------------------------------------
-// getProduitById()
-// RÔLE : Retourne un seul produit par son ID.
-//        Utilisé sur l'écran de Fiche Produit (/produit/[id]).
-// ----------------------------------------------------------------
 export function getProduitById(id: number): Produit | null {
-  return db.getFirstSync<Produit>(
-    `SELECT
-       p.id, p.nom, p.marque, p.unite,
-       p.categorie_id, p.created_by,
-       c.nom   as categorie_nom,
-       c.icone as categorie_icone
-     FROM produits p
-     JOIN categories c ON p.categorie_id = c.id
-     WHERE p.id = ?`,
-    [id]
-  ) ?? null;
+  return (
+    db.getFirstSync<Produit>(
+      `SELECT
+         p.id, p.nom, p.marque, p.unite,
+         p.categorie_id, p.created_by,
+         COALESCE(p.photo_uri, '') as photo_uri,
+         COALESCE(c.nom, 'Autres') as categorie_nom,
+         COALESCE(c.icone, '📦')   as categorie_icone
+       FROM produits p
+       LEFT JOIN categories c ON p.categorie_id = c.id
+       WHERE p.id = ?`,
+      [id]
+    ) ?? null
+  );
 }
 
-// ----------------------------------------------------------------
-// getAchatsByProduit()
-// RÔLE : Retourne tous les achats d'un produit spécifique.
-//        Utilisé sur la Fiche Produit pour l'historique des prix.
-//
-// Retourne les achats triés du plus récent au plus ancien.
-// ----------------------------------------------------------------
-export function getAchatsByProduit(produitId: number): Achat[] {
+export function getAchatsByProduit(produitId: number, userId?: number): Achat[] {
+  if (userId) {
+    return db.getAllSync<Achat>(
+      `SELECT
+         a.id, a.produit_id, a.utilisateur_id, a.magasin_id, a.categorie_id,
+         COALESCE(a.titre, '') as titre,
+         a.prix_unitaire, a.quantite, a.prix_total,
+         a.date_achat, a.mois, a.notes,
+         COALESCE(p.nom, 'Produit')     as produit_nom,
+         COALESCE(c.icone, '📦')        as produit_icone,
+         COALESCE(m.nom, 'Non précisé') as magasin_nom
+       FROM achats a
+       LEFT JOIN produits p   ON a.produit_id   = p.id
+       LEFT JOIN categories c ON p.categorie_id = c.id
+       LEFT JOIN magasins m   ON a.magasin_id   = m.id
+       WHERE a.produit_id = ? AND a.utilisateur_id = ?
+       ORDER BY a.date_achat DESC`,
+      [produitId, userId]
+    );
+  }
+
   return db.getAllSync<Achat>(
     `SELECT
-       a.id, a.produit_id, a.utilisateur_id, a.magasin_id,
+       a.id, a.produit_id, a.utilisateur_id, a.magasin_id, a.categorie_id,
+       COALESCE(a.titre, '') as titre,
        a.prix_unitaire, a.quantite, a.prix_total,
        a.date_achat, a.mois, a.notes,
-       p.nom         as produit_nom,
-       c.icone       as produit_icone,
+       COALESCE(p.nom, 'Produit')     as produit_nom,
+       COALESCE(c.icone, '📦')        as produit_icone,
        COALESCE(m.nom, 'Non précisé') as magasin_nom
      FROM achats a
-     JOIN produits p    ON a.produit_id    = p.id
-     JOIN categories c  ON p.categorie_id  = c.id
-     LEFT JOIN magasins m ON a.magasin_id  = m.id
+     LEFT JOIN produits p   ON a.produit_id   = p.id
+     LEFT JOIN categories c ON p.categorie_id = c.id
+     LEFT JOIN magasins m   ON a.magasin_id   = m.id
      WHERE a.produit_id = ?
      ORDER BY a.date_achat DESC`,
     [produitId]
   );
 }
 
-// ----------------------------------------------------------------
-// insertProduit()
-// RÔLE : Crée un nouveau produit dans la base de données.
-//        Appelé quand le formulaire "Nouveau Produit" est soumis.
-//
-// Retourne : l'ID du nouveau produit inséré (utile pour y naviguer)
-// ----------------------------------------------------------------
 export function insertProduit(data: {
   nom: string;
   marque: string;
   unite: string;
   categorie_id: number;
   created_by: number;
+  photo_uri?: string;
 }): number {
-  // runSync retourne un objet avec 'lastInsertRowId' = l'ID auto-généré
   const result = db.runSync(
-    `INSERT INTO produits (nom, marque, unite, categorie_id, created_by)
-     VALUES (?, ?, ?, ?, ?)`,
-    [data.nom, data.marque, data.unite, data.categorie_id, data.created_by]
+    `INSERT INTO produits (nom, marque, unite, categorie_id, created_by, photo_uri)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [data.nom, data.marque, data.unite, data.categorie_id, data.created_by, data.photo_uri ?? '']
   );
-  // lastInsertRowId = l'ID attribué automatiquement par SQLite (AUTOINCREMENT)
   return result.lastInsertRowId;
 }
 
 // ============================================================
-// SECTION D — CATÉGORIES ET MAGASINS (Données de référence)
+// SECTION D — CATEGORIES ET MAGASINS
 // ============================================================
 
-// ----------------------------------------------------------------
-// getAllCategories()
-// RÔLE : Retourne toutes les catégories disponibles.
-//        Utilisé dans les listes déroulantes des formulaires.
-// ----------------------------------------------------------------
-export function getAllCategories(): Categorie[] {
-  // Tri par nom pour un affichage alphabétique dans les listes
+export function getAllCategories(uniquementVisibles: boolean = true): Categorie[] {
+  if (uniquementVisibles) {
+    return db.getAllSync<Categorie>(
+      `SELECT * FROM categories WHERE est_visible = 1 ORDER BY est_defaut DESC, nom ASC`
+    );
+  }
   return db.getAllSync<Categorie>(`SELECT * FROM categories ORDER BY nom ASC`);
 }
 
-// ----------------------------------------------------------------
-// getAllMagasins()
-// RÔLE : Retourne tous les magasins disponibles.
-//        Utilisé dans la liste déroulante du formulaire Achat.
-// ----------------------------------------------------------------
 export function getAllMagasins(): Magasin[] {
   return db.getAllSync<Magasin>(`SELECT * FROM magasins ORDER BY nom ASC`);
 }
 
+export function reassignerDepensesCategorieVersAutres(ancienneCategorieId: number): void {
+  const autresCat = db.getFirstSync<{ id: number }>(
+    `SELECT id FROM categories WHERE nom = 'Autres' COLLATE NOCASE`
+  );
+  if (!autresCat) return;
+
+  // 1. Réassigne les produits
+  db.runSync(
+    `UPDATE produits SET categorie_id = ? WHERE categorie_id = ?`,
+    [autresCat.id, ancienneCategorieId]
+  );
+
+  // 2. Réassigne les achats directs
+  db.runSync(
+    `UPDATE achats SET categorie_id = ? WHERE categorie_id = ?`,
+    [autresCat.id, ancienneCategorieId]
+  );
+}
+
 // ============================================================
-// SECTION E — ANALYSES (Statistiques et graphiques)
+// SECTION E — BUDGETS PAR ENVELOPPES
 // ============================================================
 
-// ----------------------------------------------------------------
-// getDepensesParCategorie()
-// RÔLE : Calcule le total dépensé par catégorie pour un mois.
-//        Utilisé sur l'écran Analyses pour les barres de dépenses.
-//
-// Retourne un tableau trié du plus dépensé au moins dépensé.
-// ----------------------------------------------------------------
-export function getDepensesParCategorie(
-  utilisateurId: number,
+export function getMonthlyBudget(
+  userId: number,
   mois: string
-): DepenseParCategorie[] {
-  // GROUP BY c.id = regroupe tous les achats par catégorie
-  // SUM(a.prix_total) = additionne les prix de chaque groupe
-  // HAVING SUM(...) > 0 = exclut les catégories sans dépenses
-  // ORDER BY total DESC = du plus dépensé au moins dépensé
-  return db.getAllSync<DepenseParCategorie>(
+): { id: number; montant_total: number; est_evalue: number } | null {
+  return (
+    db.getFirstSync<{ id: number; montant_total: number; est_evalue: number }>(
+      `SELECT id, montant_total, est_evalue
+       FROM monthly_budgets
+       WHERE utilisateur_id = ? AND mois = ?`,
+      [userId, mois]
+    ) ?? null
+  );
+}
+
+export function saveMonthlyBudget(
+  userId: number,
+  mois: string,
+  total: number,
+  enveloppes: { categorie_id: number; montant: number; pourcentage: number }[]
+): void {
+  // 1. Met à jour la table utilisateur
+  db.runSync(
+    `UPDATE utilisateurs SET budget_mensuel = ? WHERE id = ?`,
+    [total, userId]
+  );
+
+  // 2. Insère ou remplace le budget mensuel
+  db.runSync(
+    `INSERT INTO monthly_budgets (utilisateur_id, mois, montant_total)
+     VALUES (?, ?, ?)
+     ON CONFLICT(utilisateur_id, mois) DO UPDATE SET montant_total = excluded.montant_total`,
+    [userId, mois, total]
+  );
+
+  const budget = getMonthlyBudget(userId, mois);
+  if (!budget) return;
+
+  // 3. Supprime les anciennes enveloppes de ce mois
+  db.runSync(`DELETE FROM category_budgets WHERE monthly_budget_id = ?`, [budget.id]);
+
+  // 4. Réinsère les nouvelles enveloppes
+  for (const env of enveloppes) {
+    if (env.montant > 0) {
+      db.runSync(
+        `INSERT INTO category_budgets (monthly_budget_id, categorie_id, montant, pourcentage)
+         VALUES (?, ?, ?, ?)`,
+        [budget.id, env.categorie_id, env.montant, env.pourcentage]
+      );
+    }
+  }
+}
+
+// ------------------------------------------------------------
+// getEnveloppesBudget : Calcule la consommation en temps réel de chaque enveloppe
+// ------------------------------------------------------------
+export function getEnveloppesBudget(userId: number, mois: string): EnveloppeBudget[] {
+  const budget = getMonthlyBudget(userId, mois);
+  if (!budget) return [];
+
+  // Récupère les enveloppes allouées
+  const envelopes = db.getAllSync<{
+    categorie_id: number;
+    categorie_nom: string;
+    categorie_icone: string;
+    montant_alloue: number;
+    pourcentage_alloue: number;
+  }>(
     `SELECT
+       cb.categorie_id,
        c.nom   as categorie_nom,
        c.icone as categorie_icone,
-       SUM(a.prix_total) as total
+       cb.montant     as montant_alloue,
+       cb.pourcentage as pourcentage_alloue
+     FROM category_budgets cb
+     JOIN categories c ON cb.categorie_id = c.id
+     WHERE cb.monthly_budget_id = ?
+     ORDER BY cb.montant DESC`,
+    [budget.id]
+  );
+
+  return envelopes.map((env) => {
+    // Calcule les dépenses liées à cette catégorie (via le produit ou directes)
+    const depenseRow = db.getFirstSync<{ total: number }>(
+      `SELECT COALESCE(SUM(a.prix_total), 0) as total
+       FROM achats a
+       LEFT JOIN produits p ON a.produit_id = p.id
+       WHERE a.utilisateur_id = ?
+         AND a.mois = ?
+         AND (p.categorie_id = ? OR a.categorie_id = ?)`,
+      [userId, mois, env.categorie_id, env.categorie_id]
+    );
+
+    const depense = depenseRow?.total ?? 0;
+    const restant = Math.max(0, env.montant_alloue - depense);
+    const pctConsomme = env.montant_alloue > 0 ? (depense / env.montant_alloue) * 100 : 0;
+
+    return {
+      categorie_id: env.categorie_id,
+      categorie_nom: env.categorie_nom,
+      categorie_icone: env.categorie_icone,
+      montant_alloue: env.montant_alloue,
+      montant_depense: depense,
+      montant_restant: restant,
+      pourcentage_alloue: env.pourcentage_alloue,
+      pourcentage_consomme: pctConsomme,
+    };
+  });
+}
+
+// ------------------------------------------------------------
+// getNonBudgetedDepenses : Dépenses faites dans des catégories sans enveloppe
+// ------------------------------------------------------------
+export function getNonBudgetedDepenses(userId: number, mois: string): number {
+  const budget = getMonthlyBudget(userId, mois);
+  if (!budget) return 0;
+
+  const result = db.getFirstSync<{ total: number }>(
+    `SELECT COALESCE(SUM(a.prix_total), 0) as total
      FROM achats a
-     JOIN produits p   ON a.produit_id    = p.id
-     JOIN categories c ON p.categorie_id  = c.id
-     WHERE a.utilisateur_id = ? AND a.mois = ?
-     GROUP BY c.id
-     HAVING SUM(a.prix_total) > 0
-     ORDER BY total DESC`,
-    [utilisateurId, mois]
+     LEFT JOIN produits p ON a.produit_id = p.id
+     WHERE a.utilisateur_id = ?
+       AND a.mois = ?
+       AND COALESCE(p.categorie_id, a.categorie_id) NOT IN (
+         SELECT categorie_id FROM category_budgets WHERE monthly_budget_id = ?
+       )`,
+    [userId, mois, budget.id]
+  );
+
+  return result?.total ?? 0;
+}
+
+// ------------------------------------------------------------
+// canDecreaseBudget : Règle Anti-triche
+// Interdit de baisser le budget d'une catégorie sous le montant déjà dépensé
+// ------------------------------------------------------------
+export function canDecreaseBudget(
+  userId: number,
+  mois: string,
+  categorieId: number,
+  nouveauMontant: number
+): boolean {
+  const depenseRow = db.getFirstSync<{ total: number }>(
+    `SELECT COALESCE(SUM(a.prix_total), 0) as total
+     FROM achats a
+     LEFT JOIN produits p ON a.produit_id = p.id
+     WHERE a.utilisateur_id = ?
+       AND a.mois = ?
+       AND (p.categorie_id = ? OR a.categorie_id = ?)`,
+    [userId, mois, categorieId, categorieId]
+  );
+
+  const dejaDepense = depenseRow?.total ?? 0;
+  return nouveauMontant >= dejaDepense;
+}
+
+// ------------------------------------------------------------
+// copyPreviousMonthBudget : Recopie le budget du mois précédent
+// ------------------------------------------------------------
+export function copyPreviousMonthBudget(userId: number, moisCourant: string): boolean {
+  const [annee, mois] = moisCourant.split('-').map(Number);
+  const moisPrec = mois === 1 ? 12 : mois - 1;
+  const anneePrec = mois === 1 ? annee - 1 : annee;
+  const moisPrecedent = `${anneePrec}-${String(moisPrec).padStart(2, '0')}`;
+
+  const ancienBudget = getMonthlyBudget(userId, moisPrecedent);
+  if (!ancienBudget) return false;
+
+  const anciennesEnveloppes = db.getAllSync<{
+    categorie_id: number;
+    montant: number;
+    pourcentage: number;
+  }>(
+    `SELECT categorie_id, montant, pourcentage
+     FROM category_budgets
+     WHERE monthly_budget_id = ?`,
+    [ancienBudget.id]
+  );
+
+  saveMonthlyBudget(userId, moisCourant, ancienBudget.montant_total, anciennesEnveloppes);
+  return true;
+}
+
+// ============================================================
+// SECTION F — GAMIFICATION & POINTS
+// ============================================================
+
+export function getPointsSettings(): PointsSettings {
+  const s = db.getFirstSync<PointsSettings>(`SELECT * FROM reglages_points LIMIT 1`);
+  return (
+    s ?? {
+      points_categorie_respectee: 10,
+      points_bonus_mensuel: 50,
+      points_bonus_serie: 20,
+      seuil_debutant: 0,
+      seuil_econome: 100,
+      seuil_expert: 300,
+    }
+  );
+}
+
+export function updatePointsSettings(settings: PointsSettings): void {
+  db.runSync(
+    `UPDATE reglages_points
+     SET points_categorie_respectee = ?,
+         points_bonus_mensuel = ?,
+         points_bonus_serie = ?,
+         seuil_debutant = ?,
+         seuil_econome = ?,
+         seuil_expert = ?`,
+    [
+      settings.points_categorie_respectee,
+      settings.points_bonus_mensuel,
+      settings.points_bonus_serie,
+      settings.seuil_debutant,
+      settings.seuil_econome,
+      settings.seuil_expert,
+    ]
+  );
+}
+
+export function getTotalPoints(userId: number): number {
+  const result = db.getFirstSync<{ total: number }>(
+    `SELECT COALESCE(SUM(points), 0) as total FROM points_log WHERE utilisateur_id = ?`,
+    [userId]
+  );
+  return result?.total ?? 0;
+}
+
+// ------------------------------------------------------------
+// evaluerMoisPrecedent : Évaluation automatique au lancement de l'application
+// ------------------------------------------------------------
+export function evaluerMoisPrecedent(
+  userId: number,
+  moisCourant: string
+): { pointsGagnes: number; evalue: boolean; message: string } {
+  const [annee, mois] = moisCourant.split('-').map(Number);
+  const moisPrec = mois === 1 ? 12 : mois - 1;
+  const anneePrec = mois === 1 ? annee - 1 : annee;
+  const moisPrecedent = `${anneePrec}-${String(moisPrec).padStart(2, '0')}`;
+
+  const budget = getMonthlyBudget(userId, moisPrecedent);
+
+  // Si pas de budget défini ou mois déjà évalué -> rien à faire
+  if (!budget || budget.est_evalue === 1) {
+    return { pointsGagnes: 0, evalue: false, message: '' };
+  }
+
+  const settings = getPointsSettings();
+  const enveloppes = getEnveloppesBudget(userId, moisPrecedent);
+
+  let points = 0;
+  let categoriesReussies = 0;
+
+  for (const env of enveloppes) {
+    if (env.montant_depense <= env.montant_alloue) {
+      points += settings.points_categorie_respectee;
+      categoriesReussies++;
+    }
+  }
+
+  const grandChelem = categoriesReussies === enveloppes.length && enveloppes.length > 0;
+  if (grandChelem) {
+    points += settings.points_bonus_mensuel;
+  }
+
+  // Enregistre dans le journal des points
+  if (points > 0) {
+    db.runSync(
+      `INSERT INTO points_log (utilisateur_id, mois, raison, points)
+       VALUES (?, ?, ?, ?)`,
+      [
+        userId,
+        moisPrecedent,
+        grandChelem ? 'Mois parfait (Bonus Grand Chelem)' : 'Budgets respectés',
+        points,
+      ]
+    );
+  }
+
+  // Marque le mois comme évalué pour ne jamais recommencer
+  db.runSync(
+    `UPDATE monthly_budgets SET est_evalue = 1 WHERE id = ?`,
+    [budget.id]
+  );
+
+  return {
+    pointsGagnes: points,
+    evalue: true,
+    message: grandChelem
+      ? 'Félicitations ! Vous avez respecté toutes vos enveloppes ce mois-ci !'
+      : `Bravo ! Vous avez respecté ${categoriesReussies} enveloppe(s) budgétaire(s).`,
+  };
+}
+
+// ------------------------------------------------------------
+// Gestion des alertes 80% et 100% (jamais répétées dans le même mois)
+// ------------------------------------------------------------
+export function hasAlerteBeenShown(
+  userId: number,
+  mois: string,
+  categorieId: number,
+  seuil: number
+): boolean {
+  const r = db.getFirstSync<{ id: number }>(
+    `SELECT id FROM alertes_log
+     WHERE utilisateur_id = ? AND mois = ? AND categorie_id = ? AND seuil = ?`,
+    [userId, mois, categorieId, seuil]
+  );
+  return r !== null;
+}
+
+export function logAlerte(
+  userId: number,
+  mois: string,
+  categorieId: number,
+  seuil: number
+): void {
+  db.runSync(
+    `INSERT OR IGNORE INTO alertes_log (utilisateur_id, mois, categorie_id, seuil)
+     VALUES (?, ?, ?, ?)`,
+    [userId, mois, categorieId, seuil]
   );
 }
 
 // ============================================================
-// SECTION F — ADMINISTRATION
+// SECTION G — SUPERVISION ADMINISTRATEUR (Totaux anonymes UNIQUEMENT)
 // ============================================================
 
-// ----------------------------------------------------------------
-// getAllUtilisateurs()
-// RÔLE : Retourne tous les comptes utilisateurs.
-//        Réservé à l'admin sur l'écran Admin > Utilisateurs.
-// ----------------------------------------------------------------
-export function getAllUtilisateurs(): Utilisateur[] {
-  // On n'exporte pas les mots de passe (bonne pratique)
-  // mais pour ce projet scolaire on retourne tout
+export function getAdminGlobalStats(): AdminGlobalStats {
+  const usersCount = db.getFirstSync<{ total: number; actifs: number }>(`
+    SELECT
+      COUNT(*) as total,
+      COALESCE(SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END), 0) as actifs
+    FROM utilisateurs
+    WHERE role = 'user'
+  `);
+
+  const prodsCount = db.getFirstSync<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM produits`);
+  const achatsCount = db.getFirstSync<{ cnt: number; vol: number }>(`
+    SELECT COUNT(*) as cnt, COALESCE(SUM(prix_total), 0) as vol FROM achats
+  `);
+
+  const topCat = db.getFirstSync<{ nom: string }>(`
+    SELECT c.nom
+    FROM achats a
+    LEFT JOIN produits p ON a.produit_id = p.id
+    LEFT JOIN categories c ON COALESCE(p.categorie_id, a.categorie_id) = c.id
+    GROUP BY c.id
+    ORDER BY COUNT(a.id) DESC
+    LIMIT 1
+  `);
+
+  return {
+    nbUtilisateurs: usersCount?.total ?? 0,
+    nbUtilisateursActifs: usersCount?.actifs ?? 0,
+    nbProduits: prodsCount?.cnt ?? 0,
+    nbAchats: achatsCount?.cnt ?? 0,
+    volumeTotalTND: achatsCount?.vol ?? 0,
+    topCategorieNom: topCat?.nom ?? 'Non définie',
+  };
+}
+
+export function getAllUsersAdmin(): Utilisateur[] {
   return db.getAllSync<Utilisateur>(
-    `SELECT * FROM utilisateurs ORDER BY role DESC, nom ASC`
-    // ORDER BY role DESC = les admins apparaissent en premier ('utilisateur' < 'admin' alphabétiquement DESC)
+    `SELECT id, nom, email, password_hash, role, is_active, must_change_password, budget_mensuel, langue, created_at
+     FROM utilisateurs
+     ORDER BY role DESC, nom ASC`
   );
 }
 
-// ============================================================
-// SECTION G — RÉGLAGES (Mise à jour du profil)
-// ============================================================
+export function addCategoryAdmin(nom: string, icone: string, pct: number, theme: string): number {
+  const res = db.runSync(
+    `INSERT INTO categories (nom, icone, pourcentage_defaut, est_defaut, est_visible, est_systeme, theme)
+     VALUES (?, ?, ?, 0, 1, 0, ?)`,
+    [nom.trim(), icone.trim() || '📦', pct, theme.trim() || 'Divers']
+  );
+  return res.lastInsertRowId;
+}
 
-// ----------------------------------------------------------------
-// updateBudget()
-// RÔLE : Modifie le budget mensuel d'un utilisateur.
-//        Appelé depuis l'écran Réglages.
-// ----------------------------------------------------------------
+export function updateCategoryAdmin(
+  id: number,
+  nom: string,
+  icone: string,
+  pct: number,
+  isVisible: boolean
+): void {
+  db.runSync(
+    `UPDATE categories
+     SET nom = ?, icone = ?, pourcentage_defaut = ?, est_visible = ?
+     WHERE id = ?`,
+    [nom.trim(), icone.trim(), pct, isVisible ? 1 : 0, id]
+  );
+}
+
 export function updateBudget(utilisateurId: number, budget: number): void {
-  // UPDATE = modifie des lignes existantes
-  // SET budget_mensuel = ? → remplace la valeur
-  // WHERE id = ? → sur la ligne de cet utilisateur uniquement
   db.runSync(
     `UPDATE utilisateurs SET budget_mensuel = ? WHERE id = ?`,
     [budget, utilisateurId]
   );
 }
 
-// ----------------------------------------------------------------
-// updateLangue()
-// RÔLE : Change la langue préférée d'un utilisateur.
-//        Appelé depuis l'écran Réglages quand on choisit FR ou AR.
-// ----------------------------------------------------------------
 export function updateLangue(utilisateurId: number, langue: string): void {
   db.runSync(
     `UPDATE utilisateurs SET langue = ? WHERE id = ?`,
@@ -493,3 +876,22 @@ export function updateLangue(utilisateurId: number, langue: string): void {
   );
 }
 
+export function getDepensesParCategorie(
+  utilisateurId: number,
+  mois: string
+): DepenseParCategorie[] {
+  return db.getAllSync<DepenseParCategorie>(
+    `SELECT
+       COALESCE(c.nom, 'Autres')   as categorie_nom,
+       COALESCE(c.icone, '📦')     as categorie_icone,
+       SUM(a.prix_total)           as total
+     FROM achats a
+     LEFT JOIN produits p   ON a.produit_id   = p.id
+     LEFT JOIN categories c ON COALESCE(p.categorie_id, a.categorie_id) = c.id
+     WHERE a.utilisateur_id = ? AND a.mois = ?
+     GROUP BY c.id
+     HAVING SUM(a.prix_total) > 0
+     ORDER BY total DESC`,
+    [utilisateurId, mois]
+  );
+}

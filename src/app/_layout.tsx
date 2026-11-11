@@ -1,69 +1,88 @@
 // ============================================================
 // FICHIER : src/app/_layout.tsx
-// RÔLE    : Agencement racine (Root Layout) de l'application.
-//           C'est le composant père suprême de tout le projet :
-//           1. Il initialise la base SQLite locale (initDatabase).
-//           2. Il injecte le contexte d'authentification (AuthProvider).
-//           3. Il configure la pile de navigation (Stack Navigator).
-//           4. Il redirige automatiquement vers /login si personne n'est connecté.
-//
-// VISUEL SUR L'ÉCRAN :
-//   Ne produit pas d'affichage direct par lui-même, mais gère
-//   les transitions animées entre les écrans :
-//   - Écran de connexion (Login) sans barre supérieure.
-//   - Groupe d'onglets (Tabs) pour l'utilisateur normal.
-//   - Groupe d'onglets (Admin) pour le tableau de bord administrateur.
-//   - Modales (glissement du bas vers le haut) pour les ajouts.
-//   - Écran de détail produit avec bouton retour automatique.
+// RÔLE    : Agencement racine (Root Layout) et Pare-feu de Navigation.
+//           1. Initialise la base SQLite locale.
+//           2. Fournit le contexte AuthProvider.
+//           3. Applique la Navigation Conditionnelle stricte (RBAC) :
+//              - Non connecté      -> /login ou /inscription
+//              - Doit changer mdp  -> /changer-mot-de-passe
+//              - Rôle 'user'       -> / (tabs) [accès à (admin) strictement bloqué]
+//              - Rôle 'admin'      -> / (admin) [accès à (tabs) strictement bloqué]
 // ============================================================
 
 import React, { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack, router, useSegments } from 'expo-router';
 
-// Initialisation de la base de données SQLite locale
+// Initialisation de la base SQLite
 import { initDatabase } from '../db/database';
 
-// Fournisseur du Contexte Global d'Authentification
+// Contexte d'authentification
 import { AuthProvider, useAuth } from '../utils/auth';
 
 // ------------------------------------------------------------
-// COMPOSANT INTERNE : NavigationGuard
-// RÔLE : Surveille l'état de connexion et redirige si nécessaire.
-//        Séparé du RootLayout pour pouvoir utiliser useAuth()
-//        APRÈS que AuthProvider soit déjà monté.
-//
-// LOGIQUE :
-//   - user === null et on n'est pas sur /login → redirect vers /login
-//   - user !== null et on est sur /login → redirect vers /(tabs)
+// COMPOSANT : NavigationGuard (Pare-feu applicatif)
 // ------------------------------------------------------------
 function NavigationGuard() {
-  // Récupère l'utilisateur connecté depuis le contexte Auth
-  const { user } = useAuth();
-
-  // useSegments() retourne les segments URL actuels
-  // Ex: sur /(tabs)/index → ['(tabs)', 'index']
-  // Ex: sur /login → ['login']
+  const { user, isLoading } = useAuth();
   const segments = useSegments();
 
   useEffect(() => {
-    // Détermine si l'écran actuel est l'écran de login
-    // segments[0] === 'login' signifie qu'on est sur /login
-    const estSurLogin = segments[0] === 'login';
+    // Si la session est en cours de restauration depuis SecureStore, on attend
+    if (isLoading) return;
 
-    if (!user && !estSurLogin) {
-      // Cas 1 : Personne n'est connecté et on n'est pas sur login
-      // → Redirection forcée vers l'écran de connexion
-      router.replace('/login');
-    } else if (user && estSurLogin) {
-      // Cas 2 : Utilisateur connecté mais toujours sur l'écran login
-      // → Redirection vers l'accueil (ne devrait pas arriver, mais sécurité)
-      router.replace('/(tabs)');
+    const premierSegment = segments[0] as string | undefined;
+
+    const estSurLogin = premierSegment === 'login';
+    const estSurInscription = premierSegment === 'inscription';
+    const estSurChangerMdp = premierSegment === 'changer-mot-de-passe';
+    const estSurTabs = premierSegment === '(tabs)';
+    const estSurAdmin = premierSegment === '(admin)';
+
+    // CAS 1 : Utilisateur NON CONNECTÉ
+    if (!user) {
+      if (!estSurLogin && !estSurInscription) {
+        router.replace('/login');
+      }
+      return;
     }
-    // Cas 3 : user === null et on est déjà sur login → rien à faire
-    // Cas 4 : user !== null et on n'est pas sur login → rien à faire
-  }, [user, segments]);
 
-  // Ce composant ne rend rien visuellement, il ne fait que surveiller
+    // CAS 2 : MOT DE PASSE TEMPORAIRE -> Changement obligatoire forcé
+    if (user.must_change_password === 1) {
+      if (!estSurChangerMdp) {
+        router.replace('/changer-mot-de-passe');
+      }
+      return;
+    }
+
+    // CAS 3 : UTILISATEUR NORMAL (rôle 'user')
+    if (user.role === 'user') {
+      // Bloque l'accès à l'espace admin et aux pages d'auth
+      if (estSurAdmin || estSurLogin || estSurInscription || estSurChangerMdp) {
+        router.replace('/(tabs)');
+      }
+      return;
+    }
+
+    // CAS 4 : ADMINISTRATEUR (rôle 'admin')
+    if (user.role === 'admin') {
+      // Bloque l'accès aux onglets utilisateurs et aux pages d'auth
+      if (estSurTabs || estSurLogin || estSurInscription || estSurChangerMdp) {
+        router.replace('/(admin)/dashboard' as any);
+      }
+      return;
+    }
+  }, [user, isLoading, segments]);
+
+  // Écran d'attente lors de la restauration de la session matérielle
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2563EB" />
+      </View>
+    );
+  }
+
   return null;
 }
 
@@ -71,79 +90,77 @@ function NavigationGuard() {
 // COMPOSANT PRINCIPAL : RootLayout
 // ------------------------------------------------------------
 export default function RootLayout() {
-  // useEffect avec tableau de dépendances vide [] :
-  // S'exécute une seule et unique fois lors du lancement de l'application
   useEffect(() => {
     try {
-      // Crée les tables SQLite (utilisateurs, categories, produits, achats...)
-      // et insère les comptes et données initiales de test
       initDatabase();
     } catch (error) {
-      console.error('Erreur lors de l\'initialisation de SQLite :', error);
+      console.error('Erreur initialisation SQLite :', error);
     }
   }, []);
 
   return (
-    // AuthProvider entoure toute l'application : tous les écrans
-    // pourront accéder à l'utilisateur connecté via useAuth()
     <AuthProvider>
-      {/* NavigationGuard surveille user et redirige si besoin */}
       <NavigationGuard />
 
-      <Stack>
-        {/* 1. Écran de connexion : premier écran affiché */}
-        <Stack.Screen
-          name="login"
-          options={{
-            headerShown: false, // Pas d'en-tête natif sur le login
-          }}
-        />
+      <Stack screenOptions={{ headerShown: false }}>
+        {/* Écrans Publics d'Authentification */}
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="inscription" options={{ headerShown: false }} />
+        <Stack.Screen name="changer-mot-de-passe" options={{ headerShown: false }} />
 
-        {/* 2. Le groupe d'onglets principal (Accueil, Produits, Analyses, Réglages) */}
-        <Stack.Screen
-          name="(tabs)"
-          options={{
-            headerShown: false, // Chaque onglet gère sa propre barre de titre
-          }}
-        />
+        {/* Espace Utilisateur (Tabs) */}
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
-        {/* 3. Le groupe d'onglets d'administration (Réservé au rôle Admin) */}
-        <Stack.Screen
-          name="(admin)"
-          options={{
-            headerShown: false,
-          }}
-        />
+        {/* Espace Administrateur */}
+        <Stack.Screen name="(admin)" options={{ headerShown: false }} />
 
-        {/* 4. Modale : Enregistrement d'un nouvel achat (glisse depuis le bas) */}
+        {/* Modales Fonctionnelles */}
         <Stack.Screen
           name="nouvel-achat"
           options={{
-            presentation: 'modal', // Animation modale native iOS/Android
-            title: 'Enregistrer un achat',
+            presentation: 'modal',
             headerShown: true,
+            title: 'Enregistrer une dépense',
           }}
         />
-
-        {/* 5. Modale : Création d'un nouveau produit (glisse depuis le bas) */}
         <Stack.Screen
           name="nouveau-produit"
           options={{
             presentation: 'modal',
-            title: 'Nouveau Produit',
             headerShown: true,
+            title: 'Nouveau Produit',
           }}
         />
-
-        {/* 6. Écran dynamique : Fiche détaillée d'un produit (/produit/[id]) */}
+        <Stack.Screen
+          name="budget-mois"
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            title: 'Budget par enveloppes',
+          }}
+        />
         <Stack.Screen
           name="produit/[id]"
           options={{
-            title: 'Fiche Produit',
             headerShown: true,
+            title: 'Fiche Produit',
           }}
         />
       </Stack>
     </AuthProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+});

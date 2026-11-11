@@ -1,24 +1,21 @@
 // ============================================================
 // FICHIER : src/app/(tabs)/reglages.tsx
-// RÔLE    : Écran des réglages et préférences de l'utilisateur.
+// RÔLE    : Écran des réglages et préférences de l'utilisateur normal.
 //
 // VISUEL SUR L'ÉCRAN :
-//   1. Section "Budget Mensuel" :
-//      - Champ de saisie numérique interactif pour définir le plafond en TND.
-//      - Bouton bleu "Enregistrer le budget" qui sauvegarde en base SQLite.
-//      - Message de confirmation vert temporaire lors de l'enregistrement.
-//   2. Section "Langue / اللغة" :
-//      - Deux boutons interactifs : "🇫🇷 Français" et "🇸🇦 عربي".
-//      - Met en valeur la langue active et change instantanément
-//        tous les textes de l'application (Démonstration du critère
-//        "Ressources avec qualificateurs" demandé par le professeur).
-//   3. Section "Mon Compte" :
-//      - Nom, email et rôle (Utilisateur ou Administrateur).
-//      - Bouton rouge "Se déconnecter" qui réinitialise la session
-//        et renvoie vers l'écran de connexion.
+//   1. Section "Budget & Enveloppes" :
+//      - Raccourci vers l'écran complet de gestion des enveloppes.
+//   2. Section "Changer mon mot de passe" :
+//      - Formulaire sécurisé avec hachage SHA-256 + sel.
+//   3. Section "Langue / اللغة" :
+//      - Sélecteur bilingue Français / Arabe.
+//   4. Section "Documentation" :
+//      - Manuel d'utilisation PDF.
+//   5. Section "Mon Compte & Déconnexion" :
+//      - Profil et déconnexion sécurisée de la session.
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -30,127 +27,112 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 
-// Fonctions SQLite de mise à jour
-import { updateBudget, updateLangue } from '../../db/queries';
+// Fonctions SQLite
+import { updateLangue } from '../../db/queries';
 
 // Contexte et internationalisation
 import { useAuth } from '../../utils/auth';
 import { useTranslation, Langue } from '../../utils/i18n';
 
 export default function ReglagesScreen() {
-  const { user, updateUser, logout } = useAuth();
+  const { user, updateUser, changePassword, logout } = useAuth();
   const { t, langue } = useTranslation();
 
-  // ÉTAT LOCAL pour la valeur du champ Budget
-  const [budgetTexte, setBudgetTexte] = useState<string>('');
-
-  // Message de confirmation vert temporaire
-  const [messageSucces, setMessageSucces] = useState<string>('');
-
-  // Synchronise le champ avec la valeur du budget de l'utilisateur au chargement
-  useEffect(() => {
-    if (user?.budget_mensuel !== undefined) {
-      setBudgetTexte(String(user.budget_mensuel));
-    }
-  }, [user?.budget_mensuel]);
+  const [nouveauMdp, setNouveauMdp] = useState('');
+  const [confirmationMdp, setConfirmationMdp] = useState('');
+  const [messageSucces, setMessageSucces] = useState('');
 
   // ----------------------------------------------------------
-  // FONCTION : handleSauvegarderBudget
-  // RÔLE : Met à jour le budget en base SQLite et dans le Contexte
+  // CHANGEMENT DE MOT DE PASSE UTILISATEUR
   // ----------------------------------------------------------
-  function handleSauvegarderBudget() {
-    if (!user) return;
-
-    // Convertit le texte saisi en nombre flottant
-    const montant = parseFloat(budgetTexte);
-
-    if (isNaN(montant) || montant < 0) {
-      Alert.alert('Erreur', 'Veuillez saisir un montant valide supérieur ou égal à 0.');
+  async function handleChangerMotDePasse() {
+    if (nouveauMdp.length < 6) {
+      Alert.alert('Erreur', t('erreur_mdp_trop_court'));
       return;
     }
 
-    // 1. Mise à jour persistante dans la base SQLite locale
-    updateBudget(user.id, montant);
+    if (nouveauMdp !== confirmationMdp) {
+      Alert.alert('Erreur', t('erreur_confirmation_mdp'));
+      return;
+    }
 
-    // 2. Mise à jour du state global dans le Contexte React
-    updateUser({ budget_mensuel: montant });
-
-    // 3. Affiche le message de confirmation
-    setMessageSucces('Budget mis à jour avec succès !');
-    setTimeout(() => setMessageSucces(''), 3000); // Disparaît après 3 secondes
+    const res = await changePassword(nouveauMdp);
+    if (res.success) {
+      setNouveauMdp('');
+      setConfirmationMdp('');
+      setMessageSucces('Mot de passe modifié avec succès !');
+      setTimeout(() => setMessageSucces(''), 3000);
+    }
   }
 
   // ----------------------------------------------------------
-  // FONCTION : handleChangerLangue
-  // RÔLE : Bascule l'application entre Français et Arabe
+  // BASCULE DE LANGUE
   // ----------------------------------------------------------
   function handleChangerLangue(nouvelleLangue: Langue) {
     if (!user) return;
-
-    // 1. Sauvegarde dans SQLite
     updateLangue(user.id, nouvelleLangue);
-
-    // 2. Met à jour le contexte global (provoque le re-render des textes)
     updateUser({ langue: nouvelleLangue });
-  }
-
-  // ----------------------------------------------------------
-  // FONCTION : handleDeconnexion
-  // RÔLE : Déconnecte l'utilisateur et retourne au Login
-  // ----------------------------------------------------------
-  function handleDeconnexion() {
-    logout();
-    router.replace('/login' as any);
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* ==================================================== */}
-      {/* SECTION 1 : CONFIGURATION DU BUDGET MENSUEL          */}
-      {/* ==================================================== */}
-      <Text style={styles.sectionTitle}>{t('budget_mensuel')}</Text>
+      {/* SECTION 1 : GESTION DES ENVELOPPES DU BUDGET */}
+      <Text style={styles.sectionTitle}>{t('budget_enveloppes')}</Text>
       <View style={styles.card}>
-        <Text style={styles.label}>{t('fixer_budget')}</Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Ex: 800"
-          placeholderTextColor="#94A3B8"
-          keyboardType="numeric" // Affiche le clavier numérique sur mobile
-          value={budgetTexte}
-          onChangeText={(texte) => setBudgetTexte(texte)}
-        />
-
-        <Text style={styles.hint}>
-          Une alerte s'affichera à 80 % et au dépassement du seuil.
+        <Text style={styles.label}>
+          Configurez vos enveloppes « Masrouf [Catégorie] » et vos pourcentages :
         </Text>
-
-        {/* Bouton d'enregistrement */}
         <TouchableOpacity
-          style={styles.saveButton}
-          onPress={handleSauvegarderBudget}
+          style={styles.envelopeBtn}
+          onPress={() => router.push('/budget-mois')}
           activeOpacity={0.8}
         >
-          <Text style={styles.saveButtonText}>{t('enregistrer_budget')}</Text>
+          <Text style={styles.envelopeBtnText}>💼 {t('gerer_enveloppes')} →</Text>
         </TouchableOpacity>
+      </View>
 
-        {/* Message de succès vert */}
+      {/* SECTION 2 : CHANGER MON MOT DE PASSE */}
+      <Text style={styles.sectionTitle}>{t('changer_mot_de_passe')}</Text>
+      <View style={styles.card}>
+        <Text style={styles.label}>{t('nouveau_mot_de_passe')} (min. 6 caractères)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="••••••••"
+          placeholderTextColor="#94A3B8"
+          secureTextEntry
+          value={nouveauMdp}
+          onChangeText={setNouveauMdp}
+        />
+
+        <Text style={styles.label}>{t('confirmer_mot_de_passe')}</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="••••••••"
+          placeholderTextColor="#94A3B8"
+          secureTextEntry
+          value={confirmationMdp}
+          onChangeText={setConfirmationMdp}
+        />
+
         {messageSucces ? (
           <View style={styles.successBox}>
             <Text style={styles.successText}>✅ {messageSucces}</Text>
           </View>
         ) : null}
+
+        <TouchableOpacity
+          style={styles.savePasswordBtn}
+          onPress={handleChangerMotDePasse}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.savePasswordBtnText}>{t('sauvegarder')}</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* ==================================================== */}
-      {/* SECTION 2 : QUALIFICATEURS DE RESSOURCE - LANGUE     */}
-      {/* ==================================================== */}
+      {/* SECTION 3 : LANGUE */}
       <Text style={styles.sectionTitle}>{t('langue')} / اللغة</Text>
       <View style={styles.card}>
-        <Text style={styles.label}>Sélectionnez la langue de l'interface :</Text>
-
         <View style={styles.languageRow}>
-          {/* Bouton Français */}
           <TouchableOpacity
             style={[
               styles.langBtn,
@@ -168,7 +150,6 @@ export default function ReglagesScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* Bouton Arabe */}
           <TouchableOpacity
             style={[
               styles.langBtn,
@@ -188,12 +169,9 @@ export default function ReglagesScreen() {
         </View>
       </View>
 
-      {/* ==================================================== */}
-      {/* SECTION 3 : DOCUMENTATION & RESSOURCES EXTERNES (PDF) */}
-      {/* ==================================================== */}
+      {/* SECTION 4 : DOCUMENTATION PDF */}
       <Text style={styles.sectionTitle}>{t('documentation')}</Text>
       <View style={styles.card}>
-        <Text style={styles.label}>Guide d'utilisation officiel de l'application :</Text>
         <TouchableOpacity
           style={styles.manualButton}
           onPress={() => {
@@ -208,28 +186,21 @@ export default function ReglagesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ==================================================== */}
-      {/* SECTION 4 : INFORMATIONS DU COMPTE & DÉCONNEXION     */}
-      {/* ==================================================== */}
+      {/* SECTION 5 : PROFIL & DECONNEXION */}
       <Text style={styles.sectionTitle}>{t('compte')}</Text>
       <View style={styles.card}>
         <View style={styles.profileRow}>
-          <Text style={styles.profileAvatar}>
-            {user?.role === 'admin' ? '👑' : '👤'}
-          </Text>
+          <Text style={styles.profileAvatar}>👤</Text>
           <View style={styles.profileDetails}>
             <Text style={styles.profileName}>{user?.nom}</Text>
             <Text style={styles.profileEmail}>{user?.email}</Text>
-            <Text style={styles.profileRole}>
-              Rôle : {user?.role === 'admin' ? 'Administrateur' : 'Utilisateur'}
-            </Text>
+            <Text style={styles.profileRole}>Rôle : Utilisateur Personnel</Text>
           </View>
         </View>
 
-        {/* Bouton de déconnexion */}
         <TouchableOpacity
           style={styles.logoutButton}
-          onPress={handleDeconnexion}
+          onPress={() => logout()}
           activeOpacity={0.8}
         >
           <Text style={styles.logoutButtonText}>🚪 {t('se_deconnecter')}</Text>
@@ -239,9 +210,6 @@ export default function ReglagesScreen() {
   );
 }
 
-// ------------------------------------------------------------
-// STYLES GRAPHIQUES
-// ------------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -249,68 +217,78 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 36,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     color: '#1E293B',
-    marginBottom: 10,
-    marginTop: 8,
+    marginBottom: 8,
+    marginTop: 6,
   },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#334155',
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 16,
-    color: '#1E293B',
     marginBottom: 6,
+  },
+  envelopeBtn: {
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-  },
-  hint: {
-    fontSize: 12,
-    color: '#64748B',
-    marginBottom: 14,
-  },
-  saveButton: {
-    backgroundColor: '#2563EB',
+    borderColor: '#BFDBFE',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
+    marginTop: 6,
   },
-  saveButtonText: {
-    color: '#FFFFFF',
+  envelopeBtnText: {
+    color: '#1D4ED8',
     fontWeight: '700',
     fontSize: 14,
   },
+  input: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 14,
+    color: '#1E293B',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  savePasswordBtn: {
+    backgroundColor: '#2563EB',
+    paddingVertical: 11,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  savePasswordBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
   successBox: {
     backgroundColor: '#ECFDF5',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10,
+    padding: 8,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#A7F3D0',
     alignItems: 'center',
+    marginBottom: 8,
   },
   successText: {
     color: '#065F46',
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: 12,
   },
   languageRow: {
     flexDirection: 'row',
@@ -341,42 +319,42 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   manualButton: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#E2E8F0',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
   },
   manualButtonText: {
-    color: '#1D4ED8',
+    color: '#475569',
     fontWeight: '700',
     fontSize: 14,
   },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   profileAvatar: {
-    fontSize: 36,
-    marginRight: 14,
+    fontSize: 32,
+    marginRight: 12,
   },
   profileDetails: {
     flex: 1,
   },
   profileName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#1E293B',
   },
   profileEmail: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#64748B',
     marginTop: 1,
   },
   profileRole: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#2563EB',
     fontWeight: '600',
     marginTop: 2,
@@ -385,13 +363,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
     borderWidth: 1,
     borderColor: '#FECACA',
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 11,
+    borderRadius: 8,
     alignItems: 'center',
   },
   logoutButtonText: {
     color: '#DC2626',
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 13,
   },
 });

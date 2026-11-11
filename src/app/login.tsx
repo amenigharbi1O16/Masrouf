@@ -1,27 +1,11 @@
 // ============================================================
 // FICHIER : src/app/login.tsx
 // RÔLE    : Écran de connexion (Login) de l'application Masrouf.
-//           Permet à un utilisateur ou à un administrateur de
-//           saisir ses identifiants et d'accéder à l'application.
-//
-// VISUEL SUR L'ÉCRAN :
-//   1. En haut : Logo/Icône de l'application avec le titre "Masrouf"
-//      et le sous-titre "Suivi de budget familial".
-//   2. Au milieu : Formulaire moderne avec champ Email et mot de passe.
-//   3. Sous les champs : Message d'erreur rouge si identifiants faux.
-//   4. Bouton principal "Se connecter" bleu.
-//   5. En bas : Bloc d'aide avec les comptes de test (Admin et User)
-//      pour faciliter la démonstration devant le professeur !
-//
-// CONCEPTS REACT NATIVE & PROGRAMMATION ÉVÉNEMENTIELLE :
-//   - useState : variables d'état pour retenir la saisie (email, pass).
-//   - onChangeText : événement déclenché à chaque frappe au clavier.
-//   - onPress : événement déclenché lors du clic sur le bouton.
-//   - useAuth : mise à jour du contexte global après validation SQL.
-//   - router.replace : navigation vers l'accueil sans retour possible.
+//           Valide les identifiants avec hachage SHA-256 et sel,
+//           gère les messages d'erreur détaillés (compte désactivé,
+//           e-mail invalide, mot de passe faux) et dirige vers la bonne interface.
 // ============================================================
 
-// Importation des composants fondamentaux de React et React Native
 import React, { useState } from 'react';
 import {
   View,
@@ -32,78 +16,54 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
-
-// Importation de l'outil de navigation d'Expo Router
 import { router } from 'expo-router';
 
-// Importation de la fonction SQL qui vérifie l'utilisateur en base SQLite
-import { getUserByEmailPassword } from '../db/queries';
-
-// Importation du hook d'authentification pour mémoriser la session
+// Contexte d'authentification
 import { useAuth } from '../utils/auth';
 
-// Importation du système de traduction multi-langues (Français / Arabe)
+// Internationalisation
 import { useTranslation } from '../utils/i18n';
 
-// ------------------------------------------------------------
-// COMPOSANT PRINCIPAL : LoginScreen
-// ------------------------------------------------------------
 export default function LoginScreen() {
-  // Récupération de la fonction login du contexte d'authentification
   const { login } = useAuth();
-
-  // Récupération de la fonction de traduction 't' pour afficher les textes
   const { t } = useTranslation();
 
-  // ÉTATS LOCAUX (useState) :
-  // email : stocke le texte saisi dans le champ email
   const [email, setEmail] = useState('user@masrouf.tn');
-
-  // motDePasse : stocke le texte saisi dans le champ mot de passe
   const [motDePasse, setMotDePasse] = useState('user123');
-
-  // erreur : stocke le message d'erreur éventuel (vide si pas d'erreur)
   const [erreur, setErreur] = useState('');
+  const [enChargement, setEnChargement] = useState(false);
 
   // ----------------------------------------------------------
   // FONCTION : handleConnexion
-  // RÔLE : Appelée lors de l'événement onPress du bouton "Se connecter".
-  //        Interroge SQLite, valide l'existence du compte,
-  //        met à jour le contexte global et navigue vers l'application.
   // ----------------------------------------------------------
-  function handleConnexion() {
-    // 1. Réinitialisation de l'erreur précédente
+  async function handleConnexion() {
     setErreur('');
 
-    // 2. Vérification des champs vides
     if (!email.trim() || !motDePasse.trim()) {
-      setErreur('Veuillez remplir tous les champs.');
+      setErreur(t('erreur_champ_requis'));
       return;
     }
 
-    // 3. Interrogation de la base de données locale SQLite
-    // Cherche si un utilisateur avec cet email et mot de passe existe
-    const utilisateur = getUserByEmailPassword(email.trim(), motDePasse);
+    setEnChargement(true);
+    try {
+      const res = await login(email, motDePasse);
 
-    // 4. Si l'utilisateur est trouvé en base
-    if (utilisateur) {
-      // On sauvegarde l'utilisateur dans le Contexte Global React
-      login(utilisateur);
-
-      // Si c'est un administrateur, on le redirige vers l'accueil ou l'espace admin
-      // router.replace remplace la pile de navigation (l'utilisateur ne peut pas faire retour vers login)
-      router.replace('/(tabs)');
-    } else {
-      // 5. Si aucun utilisateur ne correspond, on affiche le message d'erreur
+      if (!res.success) {
+        setErreur(t(res.errorKey ?? 'erreur_connexion'));
+      }
+      // Si la connexion réussit, le composant NavigationGuard dans _layout.tsx
+      // redirige automatiquement vers /(tabs) ou /(admin) ou /changer-mot-de-passe
+    } catch {
       setErreur(t('erreur_connexion'));
+    } finally {
+      setEnChargement(false);
     }
   }
 
   // ----------------------------------------------------------
-  // FONCTION : remplirIdentifiantsTest
-  // RÔLE : Raccourci pour la soutenance orale : remplit automatiquement
-  //        les champs avec le compte Admin ou User en un clic !
+  // Raccourci démo soutenance
   // ----------------------------------------------------------
   function remplirIdentifiantsTest(role: 'admin' | 'user') {
     if (role === 'admin') {
@@ -113,88 +73,89 @@ export default function LoginScreen() {
       setEmail('user@masrouf.tn');
       setMotDePasse('user123');
     }
-    setErreur('');
   }
 
-  // ----------------------------------------------------------
-  // RENDU VISUEL (JSX)
-  // ----------------------------------------------------------
   return (
-    // KeyboardAvoidingView évite que le clavier virtuel ne cache les champs sur mobile
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.keyboardContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* ==================================================== */}
-        {/* EN-TÊTE : LOGO ET TITRES                            */}
-        {/* ==================================================== */}
+        {/* LOGO & TITRE */}
         <View style={styles.headerBox}>
-          {/* Icône principale emoji de tirelire / portefeuille */}
           <Text style={styles.logoIcon}>💰</Text>
-          {/* Titre de l'application */}
-          <Text style={styles.appTitle}>Masrouf • مصروف</Text>
-          {/* Sous-titre explicatif */}
+          <Text style={styles.appTitle}>Masrouf • مَصْرُوف</Text>
           <Text style={styles.appSubtitle}>{t('slogan')}</Text>
         </View>
 
-        {/* ==================================================== */}
-        {/* FORMULAIRE DE CONNEXION                              */}
-        {/* ==================================================== */}
+        {/* CARTE FORMULAIRE */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t('connexion')}</Text>
 
-          {/* CHAMP 1 : EMAIL */}
+          {/* Champ Email */}
           <Text style={styles.inputLabel}>{t('email')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="exemple@masrouf.tn"
+            placeholder="exemple@email.tn"
             placeholderTextColor="#94A3B8"
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
-            // Événement déclenché à chaque caractère tapé
-            onChangeText={(texte) => setEmail(texte)}
+            onChangeText={(txt) => {
+              setEmail(txt);
+              setErreur('');
+            }}
           />
 
-          {/* CHAMP 2 : MOT DE PASSE */}
+          {/* Champ Mot de passe */}
           <Text style={styles.inputLabel}>{t('mot_de_passe')}</Text>
           <TextInput
             style={styles.input}
             placeholder="••••••••"
             placeholderTextColor="#94A3B8"
-            secureTextEntry={true} // Masque les caractères saisis
+            secureTextEntry
             value={motDePasse}
-            // Événement déclenché à chaque caractère tapé
-            onChangeText={(texte) => setMotDePasse(texte)}
+            onChangeText={(txt) => {
+              setMotDePasse(txt);
+              setErreur('');
+            }}
           />
 
-          {/* MESSAGE D'ERREUR (affiché uniquement si erreur n'est pas vide) */}
+          {/* Message d'erreur */}
           {erreur ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>⚠️ {erreur}</Text>
             </View>
           ) : null}
 
-          {/* BOUTON D'ACTION : SE CONNECTER */}
+          {/* Bouton Se connecter */}
           <TouchableOpacity
             style={styles.loginButton}
-            onPress={handleConnexion} // Déclenche la fonction lors du clic
+            onPress={handleConnexion}
+            disabled={enChargement}
             activeOpacity={0.8}
           >
-            <Text style={styles.loginButtonText}>{t('connexion')} →</Text>
+            {enChargement ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.loginButtonText}>{t('connexion')} →</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Lien vers Inscription */}
+          <TouchableOpacity
+            style={styles.registerLink}
+            onPress={() => router.push('/inscription' as any)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.registerLinkText}>{t('pas_de_compte')}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* ==================================================== */}
-        {/* ZONE DE DÉMONSTRATION POUR LA SOUTENANCE             */}
-        {/* Permet de basculer facilement entre Admin et User    */}
-        {/* ==================================================== */}
+        {/* RACCOURCIS DE DÉMONSTRATION POUR LE PROFESSEUR */}
         <View style={styles.demoCard}>
-          <Text style={styles.demoTitle}>💡 Comptes de test pour l'évaluation :</Text>
-          
+          <Text style={styles.demoTitle}>💡 Raccourcis de test pour l'évaluation :</Text>
           <View style={styles.demoButtonsRow}>
-            {/* Bouton pour tester en tant qu'utilisateur normal */}
             <TouchableOpacity
               style={[styles.demoBtn, styles.demoBtnUser]}
               onPress={() => remplirIdentifiantsTest('user')}
@@ -203,7 +164,6 @@ export default function LoginScreen() {
               <Text style={styles.demoBtnSub}>user@masrouf.tn</Text>
             </TouchableOpacity>
 
-            {/* Bouton pour tester en tant qu'administrateur */}
             <TouchableOpacity
               style={[styles.demoBtn, styles.demoBtnAdmin]}
               onPress={() => remplirIdentifiantsTest('admin')}
@@ -218,13 +178,10 @@ export default function LoginScreen() {
   );
 }
 
-// ------------------------------------------------------------
-// FEUILLE DE STYLES GRAPHIQUES (StyleSheet)
-// ------------------------------------------------------------
 const styles = StyleSheet.create({
   keyboardContainer: {
     flex: 1,
-    backgroundColor: '#F8FAFC', // Fond de page moderne gris perle
+    backgroundColor: '#F8FAFC',
   },
   scrollContent: {
     padding: 24,
@@ -233,20 +190,19 @@ const styles = StyleSheet.create({
   },
   headerBox: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 24,
   },
   logoIcon: {
-    fontSize: 56,
+    fontSize: 52,
     marginBottom: 8,
   },
   appTitle: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     color: '#1E293B',
-    letterSpacing: 0.5,
   },
   appSubtitle: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#64748B',
     marginTop: 4,
   },
@@ -260,16 +216,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 2, // Ombre sur Android
+    elevation: 2,
   },
   cardTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '700',
     color: '#1E293B',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   inputLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#334155',
     marginBottom: 6,
@@ -278,7 +234,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: '#F1F5F9',
     borderRadius: 10,
-    padding: 14,
+    padding: 12,
     fontSize: 15,
     color: '#1E293B',
     borderWidth: 1,
@@ -290,7 +246,7 @@ const styles = StyleSheet.create({
     borderColor: '#FCA5A5',
     padding: 10,
     borderRadius: 8,
-    marginTop: 14,
+    marginTop: 12,
   },
   errorText: {
     color: '#DC2626',
@@ -298,30 +254,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   loginButton: {
-    backgroundColor: '#2563EB', // Bleu principal
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: '#2563EB',
+    borderRadius: 10,
+    paddingVertical: 13,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 18,
   },
   loginButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
+  registerLink: {
+    alignItems: 'center',
+    marginTop: 14,
+    paddingVertical: 6,
+  },
+  registerLinkText: {
+    color: '#2563EB',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   demoCard: {
-    marginTop: 24,
+    marginTop: 20,
     backgroundColor: '#F1F5F9',
     borderRadius: 12,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#CBD5E1',
   },
   demoTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#475569',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   demoButtonsRow: {
     flexDirection: 'row',
@@ -329,7 +295,7 @@ const styles = StyleSheet.create({
   },
   demoBtn: {
     flex: 1,
-    padding: 10,
+    padding: 8,
     borderRadius: 8,
     alignItems: 'center',
   },
@@ -341,7 +307,7 @@ const styles = StyleSheet.create({
   demoBtnUserText: {
     color: '#1D4ED8',
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 11,
   },
   demoBtnAdmin: {
     backgroundColor: '#FAF5FF',
@@ -351,12 +317,11 @@ const styles = StyleSheet.create({
   demoBtnAdminText: {
     color: '#7E22CE',
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 11,
   },
   demoBtnSub: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#64748B',
     marginTop: 2,
   },
 });
-

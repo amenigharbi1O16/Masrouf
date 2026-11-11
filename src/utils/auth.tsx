@@ -1,175 +1,274 @@
 // ============================================================
-// FICHIER : src/utils/auth.ts
-// RÔLE    : Système d'authentification global de l'application.
-//           Utilise React Context pour partager l'utilisateur
-//           connecté avec TOUS les écrans sans passer de props.
+// FICHIER : src/utils/auth.tsx
+// RÔLE    : Contexte d'authentification global de Masrouf.
+//           Gère la connexion, l'inscription, la restauration de session
+//           sécurisée (expo-secure-store), et le changement de mot de passe.
 //
-// CONCEPT "REACT CONTEXT" :
-//   Imagine un tableau d'affichage visible depuis toute l'école.
-//   AuthContext = ce tableau. N'importe quel écran peut y lire
-//   "qui est connecté" sans qu'on le lui transmette manuellement.
-//
-// COMPOSANTS EXPORTÉS :
-//   AuthProvider    → Enveloppe toute l'app dans _layout.tsx
-//   useAuth()       → Hook pour lire le contexte dans n'importe quel écran
-//
-// UTILISATION DANS LES ÉCRANS :
-//   const { user, login, logout } = useAuth();
-//   if (user.role === 'admin') { ... }
+// CONCEPTS REACT CONTEXT & SÉCURITÉ :
+//   - Persistance sécurisée : au démarrage, restaure l'ID stocké dans
+//     expo-secure-store pour éviter de redemander la connexion à chaque ouverture.
+//   - Déconnexion automatique : si un compte est suspendu par l'administrateur
+//     alors qu'il est en cours d'utilisation, l'app le déconnecte immédiatement.
 // ============================================================
 
-// createContext  = crée un "espace de partage" global
-// useContext     = permet de lire cet espace depuis n'importe où
-// useState       = variable réactive (re-render quand elle change)
-// ReactNode      = type pour "tout ce qui peut être affiché" (enfants JSX)
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from 'react';
 
-// Importe le type Utilisateur défini dans queries.ts
-import type { Utilisateur } from '../db/queries';
+// Fonctions SQLite
+import {
+  getUserByEmail,
+  getUserById,
+  registerUser,
+  updateUserPassword,
+  Utilisateur,
+} from '../db/queries';
+
+// Modules de cryptographie et de coffre sécurisé
+import { createPasswordHash, verifyPassword } from './security';
+import {
+  saveSessionUserId,
+  getSessionUserId,
+  clearSessionUserId,
+} from './session';
 
 // ============================================================
-// TYPES : définit la forme du contexte Auth
+// TYPES
 // ============================================================
 
-// Ce que le contexte fournit à chaque écran
-type AuthContextType = {
-  // user = l'utilisateur actuellement connecté, ou null si déconnecté
-  user: Utilisateur | null;
-
-  // login() = enregistre l'utilisateur dans le contexte
-  // Paramètre : l'objet Utilisateur récupéré depuis SQLite
-  login: (utilisateur: Utilisateur) => void;
-
-  // logout() = efface l'utilisateur du contexte (déconnexion)
-  logout: () => void;
-
-  // updateUser() = met à jour les infos de l'utilisateur connecté
-  // (utilisé après avoir sauvegardé le budget ou changé la langue)
-  updateUser: (updates: Partial<Utilisateur>) => void;
+type LoginResult = {
+  success: boolean;
+  errorKey?: string;
+  mustChangePassword?: boolean;
 };
 
-// ============================================================
-// CRÉATION DU CONTEXTE
-// createContext() crée le "tableau d'affichage" vide.
-// La valeur undefined sera remplacée par AuthProvider.
-// ============================================================
+type RegisterResult = {
+  success: boolean;
+  errorKey?: string;
+};
+
+type AuthContextType = {
+  user: Utilisateur | null;
+  isLoading: boolean;
+  login: (email: string, mdp: string) => Promise<LoginResult>;
+  register: (nom: string, email: string, mdp: string) => Promise<RegisterResult>;
+  changePassword: (nouveauMdp: string) => Promise<{ success: boolean; errorKey?: string }>;
+  logout: () => Promise<void>;
+  updateUser: (updates: Partial<Utilisateur>) => void;
+  refreshUser: () => void;
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // ============================================================
-// AUTHPROVIDER — Le composant qui "remplit" le contexte
-//
-// RÔLE : Enveloppe toute l'application et fournit les fonctions
-//        login, logout, updateUser à tous les enfants.
-//
-// UTILISATION DANS _layout.tsx :
-//   <AuthProvider>
-//     <Stack>...</Stack>
-//   </AuthProvider>
-//
-// Paramètre 'children' : tout ce que l'on enveloppe
-//   (= toute l'application : tous les écrans, navigateurs...)
+// COMPOSANT FOURNISSEUR : AuthProvider
 // ============================================================
 export function AuthProvider({ children }: { children: ReactNode }) {
-
-  // STATE : stocke l'utilisateur connecté
-  // null = personne n'est connecté (état initial au démarrage)
-  // Utilisateur = objet avec id, nom, email, role, budget, langue...
   const [user, setUser] = useState<Utilisateur | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // ----------------------------------------------------------
+  // RESTAURATION AUTOMATIQUE DE LA SESSION AU DÉMARRAGE
+  // ----------------------------------------------------------
+  useEffect(() => {
+    async function restaurerSession() {
+      try {
+        const storedId = await getSessionUserId();
+        if (storedId) {
+          const compte = getUserById(storedId);
+          // Si le compte existe et est toujours actif
+          if (compte && compte.is_active === 1) {
+            setUser(compte);
+          } else {
+            // Si le compte a été suspendu ou supprimé entre-temps
+            await clearSessionUserId();
+            setUser(null);
+          }
+        }
+      } catch (err) {
+        console.error('Erreur lors de la restauration de session :', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    restaurerSession();
+  }, []);
 
   // ----------------------------------------------------------
   // FONCTION login()
-  // RÔLE : Appelée par l'écran Login après vérification des credentials.
-  //        Sauvegarde l'utilisateur dans le state → tous les écrans
-  //        se mettent à jour automatiquement.
+  // RÔLE : Vérification rigoureuse avec codes d'erreur précis
   // ----------------------------------------------------------
-  function login(utilisateur: Utilisateur) {
-    setUser(utilisateur);
-    // setUser déclenche un re-render de toute l'application avec
-    // le nouvel utilisateur disponible dans le contexte
+  async function login(email: string, mdp: string): Promise<LoginResult> {
+    const emailNettoye = email.trim().toLowerCase();
+
+    // 1. Validation de l'e-mail
+    if (!emailNettoye || !emailNettoye.includes('@')) {
+      return { success: false, errorKey: 'erreur_email_invalide' };
+    }
+
+    if (!mdp.trim()) {
+      return { success: false, errorKey: 'erreur_champ_requis' };
+    }
+
+    // 2. Recherche du compte dans SQLite
+    const compte = getUserByEmail(emailNettoye);
+    if (!compte) {
+      return { success: false, errorKey: 'erreur_compte_inconnu' };
+    }
+
+    // 3. Vérification du statut du compte
+    if (compte.is_active === 0) {
+      return { success: false, errorKey: 'erreur_compte_desactive' };
+    }
+
+    // 4. Vérification cryptographique du mot de passe (SHA-256 avec sel)
+    const mdpValide = await verifyPassword(mdp, compte.password_hash);
+    if (!mdpValide) {
+      return { success: false, errorKey: 'erreur_mot_de_passe_faux' };
+    }
+
+    // 5. Sauvegarde de la session dans le coffre matériel
+    await saveSessionUserId(compte.id);
+    setUser(compte);
+
+    return {
+      success: true,
+      mustChangePassword: compte.must_change_password === 1,
+    };
+  }
+
+  // ----------------------------------------------------------
+  // FONCTION register()
+  // RÔLE : Inscription sécurisée d'un utilisateur de rôle 'user' uniquement
+  // ----------------------------------------------------------
+  async function register(
+    nom: string,
+    email: string,
+    mdp: string
+  ): Promise<RegisterResult> {
+    const nomNettoye = nom.trim();
+    const emailNettoye = email.trim().toLowerCase();
+
+    if (!nomNettoye) {
+      return { success: false, errorKey: 'erreur_nom_requis' };
+    }
+
+    if (!emailNettoye || !emailNettoye.includes('@')) {
+      return { success: false, errorKey: 'erreur_email_invalide' };
+    }
+
+    if (mdp.length < 6) {
+      return { success: false, errorKey: 'erreur_mdp_trop_court' };
+    }
+
+    // Vérifie si l'e-mail est déjà utilisé
+    const existeDeja = getUserByEmail(emailNettoye);
+    if (existeDeja) {
+      return { success: false, errorKey: 'erreur_email_deja_pris' };
+    }
+
+    // Hachage du mot de passe avec un nouveau sel aléatoire
+    const hashSecurise = await createPasswordHash(mdp);
+
+    // Insertion du compte de rôle 'user' dans SQLite
+    const nouveauId = registerUser(nomNettoye, emailNettoye, hashSecurise);
+    const nouveauCompte = getUserById(nouveauId);
+
+    if (nouveauCompte) {
+      await saveSessionUserId(nouveauCompte.id);
+      setUser(nouveauCompte);
+      return { success: true };
+    }
+
+    return { success: false, errorKey: 'erreur_inconnue' };
+  }
+
+  // ----------------------------------------------------------
+  // FONCTION changePassword()
+  // RÔLE : Mise à jour du mot de passe et levée de l'obligation must_change_password
+  // ----------------------------------------------------------
+  async function changePassword(
+    nouveauMdp: string
+  ): Promise<{ success: boolean; errorKey?: string }> {
+    if (!user) {
+      return { success: false, errorKey: 'erreur_non_connecte' };
+    }
+
+    if (nouveauMdp.length < 6) {
+      return { success: false, errorKey: 'erreur_mdp_trop_court' };
+    }
+
+    // Calcule le nouveau hash avec sel
+    const nouveauHash = await createPasswordHash(nouveauMdp);
+
+    // Met à jour SQLite
+    updateUserPassword(user.id, nouveauHash);
+
+    // Met à jour le state local
+    setUser((prev) =>
+      prev ? { ...prev, password_hash: nouveauHash, must_change_password: 0 } : null
+    );
+
+    return { success: true };
   }
 
   // ----------------------------------------------------------
   // FONCTION logout()
-  // RÔLE : Déconnecte l'utilisateur en remettant user à null.
-  //        Appelée depuis l'écran Réglages.
+  // RÔLE : Efface la session sécurisée et déconnecte l'utilisateur
   // ----------------------------------------------------------
-  function logout() {
+  async function logout(): Promise<void> {
+    await clearSessionUserId();
     setUser(null);
-    // Remettre null → le _layout.tsx détecte user=null et redirige
-    // automatiquement vers l'écran de Login
   }
 
   // ----------------------------------------------------------
   // FONCTION updateUser()
-  // RÔLE : Met à jour partiellement l'utilisateur en mémoire.
-  //        Utilisé après :
-  //          - Sauvegarde du budget (budget_mensuel change)
-  //          - Changement de langue (langue change → toute l'app se
-  //            traduit instantanément sans ré-ouverture)
-  //
-  // Paramètre 'updates' : Partial<Utilisateur> = objet avec
-  //   seulement les champs à modifier (pas besoin de tout envoyer)
-  //   Exemple : updateUser({ budget_mensuel: 900 })
-  //   → seul budget_mensuel est modifié, le reste reste intact
   // ----------------------------------------------------------
   function updateUser(updates: Partial<Utilisateur>) {
-    setUser(prev => {
-      // Si personne n'est connecté, on ne fait rien
-      if (!prev) return null;
-      // Spread operator (...) : crée un nouvel objet en combinant
-      // l'ancien utilisateur et les nouvelles valeurs
-      // Les nouvelles valeurs écrasent les anciennes si elles existent
-      return { ...prev, ...updates };
-    });
+    setUser((prev) => (prev ? { ...prev, ...updates } : null));
   }
 
   // ----------------------------------------------------------
-  // VALEUR DU CONTEXTE
-  // On rassemble tout ce qu'on veut partager dans un objet
+  // FONCTION refreshUser()
+  // RÔLE : Recharge les informations fraîches depuis SQLite
+  //        et déconnecte si le compte a été suspendu par l'admin
   // ----------------------------------------------------------
-  const valeurContexte: AuthContextType = {
-    user,         // l'utilisateur connecté (ou null)
-    login,        // fonction pour se connecter
-    logout,       // fonction pour se déconnecter
-    updateUser,   // fonction pour mettre à jour le profil
+  function refreshUser() {
+    if (!user) return;
+    const frais = getUserById(user.id);
+    if (!frais || frais.is_active === 0) {
+      logout();
+    } else {
+      setUser(frais);
+    }
+  }
+
+  const valeur: AuthContextType = {
+    user,
+    isLoading,
+    login,
+    register,
+    changePassword,
+    logout,
+    updateUser,
+    refreshUser,
   };
 
-  // ----------------------------------------------------------
-  // RENDU : on enveloppe les enfants avec le Provider
-  // AuthContext.Provider = "affiche" la valeur sur le tableau
-  // Tous les composants enfants peuvent maintenant "lire" le tableau
-  // ----------------------------------------------------------
-  return (
-    <AuthContext.Provider value={valeurContexte}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={valeur}>{children}</AuthContext.Provider>;
 }
 
-// ============================================================
+// ------------------------------------------------------------
 // HOOK useAuth()
-// RÔLE : Donne accès au contexte Auth depuis n'importe quel écran.
-//        C'est le "raccourci" pour lire le tableau d'affichage.
-//
-// UTILISATION :
-//   const { user, login, logout } = useAuth();
-//
-// PROTECTION : Si useAuth() est appelé en dehors de AuthProvider,
-//              on lance une erreur claire pour faciliter le debug.
-// ============================================================
+// ------------------------------------------------------------
 export function useAuth(): AuthContextType {
-  // useContext(AuthContext) = lit la valeur actuelle du contexte
   const context = useContext(AuthContext);
-
-  // Vérification : si context est undefined, c'est que useAuth()
-  // a été appelé à l'extérieur de AuthProvider
-  if (context === undefined) {
-    throw new Error(
-      'useAuth() doit être utilisé à l\'intérieur de <AuthProvider>.\n' +
-      'Vérifiez que AuthProvider enveloppe bien tout dans _layout.tsx.'
-    );
+  if (!context) {
+    throw new Error('useAuth() doit être utilisé dans <AuthProvider>.');
   }
-
   return context;
 }
-
