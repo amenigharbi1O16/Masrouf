@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Rapport de Projet — Application Mobile Masrouf</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 20mm;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1e293b;
+      line-height: 1.6;
+      background: #ffffff;
+      padding: 40px;
+      max-width: 900px;
+      margin: auto;
+    }
+    h1 {
+      color: #1e3a8a;
+      border-bottom: 3px solid #2563eb;
+      padding-bottom: 12px;
+      margin-top: 0;
+    }
+    h2 {
+      color: #1e40af;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 6px;
+      margin-top: 36px;
+    }
+    h3 {
+      color: #3b82f6;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 14px;
+    }
+    th {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      font-weight: 700;
+    }
+    tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-purple { background: #f3e8ff; color: #7e22ce; }
+    .box {
+      background: #f8fafc;
+      border-left: 4px solid #2563eb;
+      padding: 14px 18px;
+      margin: 18px 0;
+      border-radius: 4px;
+    }
+    .qa-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .qa-q {
+      font-weight: bold;
+      color: #1e3a8a;
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+    .qa-a {
+      color: #334155;
+      font-size: 14px;
+    }
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 14px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+      h2 { page-break-before: always; }
+      h2:first-of-type { page-break-before: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="no-print" style="background: #2563eb; color: #fff; padding: 12px 20px; border-radius: 8px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center;">
+    <span>💡 <b>Pour imprimer ou enregistrer en PDF :</b> Appuyez sur <code>Ctrl + P</code> puis choisissez <i>"Enregistrer au format PDF"</i>.</span>
+    <button onclick="window.print()" style="background:#fff; color:#2563eb; font-weight:bold; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">🖨️ Imprimer en PDF</button>
+  </div>
+
+  <h1>📱 Rapport de Projet — Application Mobile « Masrouf » (مصروف)</h1>
+  <p><b>Projet :</b> Développement d'Application Mobile React Native</p>
+  <p><b>Auteur :</b> Mini-Projet Étudiant &nbsp;|&nbsp; <b>Date :</b> Novembre 2026</p>
+  <p><b>Environnement :</b> React Native (Expo SDK 58), TypeScript, SQLite (<code>expo-sqlite</code>), Expo Router</p>
+
+  <hr style="border:none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+
+  <h2>1. Description du Sujet du Projet</h2>
+  <p>
+    <b>« Masrouf » (مصروف)</b> est une application mobile d'assistance budgétaire domestique destinée à aider les ménages à maîtriser leurs dépenses d'épicerie et de consommation quotidienne.
+  </p>
+  <p>Elle résout les problématiques suivantes :</p>
+  <ul>
+    <li>Oubli des tarifs réels payés pour les produits de première nécessité.</li>
+    <li>Absence de comparaison rapide entre les grandes surfaces (Carrefour, Monoprix, Aziza, MG).</li>
+    <li>Dépassement imprévu du budget mensuel fixé.</li>
+  </ul>
+
+  <div class="box">
+    <b>Fonctionnalités clés développées :</b>
+    <ul>
+      <li>Authentification sécurisée avec rôles multiples (Administrateur et Utilisateur standard).</li>
+      <li>Gestion et calcul automatique du budget mensuel en Dinars Tunisiens (TND).</li>
+      <li>Barre de progression dynamique avec alertes événementielles à 80 % et au dépassement.</li>
+      <li>Catalogue de produits avec recherche instantanée par nom ou marque.</li>
+      <li>Fiche détaillée par article avec calcul automatique du <b>meilleur prix historique</b> et de l'enseigne la moins chère.</li>
+      <li>Analyses budgétaires graphiques avec répartition par catégorie et comparaison mois courant / précédent.</li>
+      <li>Support bilingue intégral (Français et Arabe) via des ressources qualifiées.</li>
+      <li>Tableau de bord administrateur avec supervision de tous les comptes et ajustement des budgets.</li>
+    </ul>
+  </div>
+
+  <h2>2. Liste des Acteurs (Utilisateurs)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Acteur</th>
+        <th>Rôle & Accès</th>
+        <th>Fonctionnalités Dédiées</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>👤 Utilisateur Standard</b></td>
+        <td><span class="badge badge-blue">Rôle 'utilisateur'</span></td>
+        <td>
+          - Se connecter avec ses identifiants.<br>
+          - Définir et ajuster son budget mensuel personnel.<br>
+          - Consulter le catalogue et créer de nouveaux articles.<br>
+          - Enregistrer ses achats quotidiens (prix, quantité, magasin).<br>
+          - Visualiser ses statistiques par catégorie et son historique.<br>
+          - Changer la langue d'affichage (Français ↔ Arabe).
+        </td>
+      </tr>
+      <tr>
+        <td><b>👑 Administrateur</b></td>
+        <td><span class="badge badge-purple">Rôle 'admin'</span></td>
+        <td>
+          - Dispose de tous les droits de l'utilisateur standard.<br>
+          - Accède à l'espace de gestion restreint <code>/(admin)</code>.<br>
+          - Visualise la liste de tous les utilisateurs inscrits.<br>
+          - Supervise la somme cumulée de toutes les dépenses du système.<br>
+          - Détecte les utilisateurs en dépassement budgétaire.<br>
+          - Ajuste ou réinitialise le budget alloué à n'importe quel utilisateur.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3. Spécifications des Cas d'Utilisation</h2>
+
+  <h3>UC1 : Se connecter (Authentification)</h3>
+  <ul>
+    <li><b>Acteur :</b> Utilisateur ou Administrateur.</li>
+    <li><b>Scénario nominal :</b> L'utilisateur renseigne email et mot de passe. Si le compte existe dans la table SQLite <code>utilisateurs</code>, il est injecté dans le contexte global <code>AuthContext</code> et redirigé vers l'accueil.</li>
+    <li><b>Scénario alternatif :</b> En cas d'identifiants incorrects, un message d'erreur rouge s'affiche.</li>
+  </ul>
+
+  <h3>UC2 : Enregistrer un achat</h3>
+  <ul>
+    <li><b>Acteur :</b> Utilisateur.</li>
+    <li><b>Scénario nominal :</b> Clic sur <i>« + Achat »</i> → sélection du produit → sélection du magasin → saisie prix unitaire et quantité. Le système calcule le <code>Total = Prix × Quantité</code>. À la validation, la transaction est insérée dans la table SQLite <code>achats</code> et l'accueil met à jour le solde restant.</li>
+  </ul>
+
+  <h3>UC3 : Créer un produit</h3>
+  <ul>
+    <li><b>Acteur :</b> Utilisateur ou Administrateur.</li>
+    <li><b>Scénario nominal :</b> Clic sur <i>« + Produit »</i> → saisie du nom, de la marque, sélection de l'unité (L, kg, pièce) et de la catégorie (🍞, 🥤, 🧼). Le produit est ajouté dans la table <code>produits</code>.</li>
+  </ul>
+
+  <h3>UC4 : Consulter la fiche produit et son historique</h3>
+  <ul>
+    <li><b>Acteur :</b> Utilisateur.</li>
+    <li><b>Scénario nominal :</b> Clic sur un article → navigation vers <code>/produit/[id]</code>. Le système interroge SQLite et calcule automatiquement le <b>meilleur prix (magasin le moins cher)</b> et le prix moyen.</li>
+  </ul>
+
+  <h3>UC5 : Visualiser les analyses mensuelles</h3>
+  <ul>
+    <li><b>Acteur :</b> Utilisateur.</li>
+    <li><b>Scénario nominal :</b> Onglet <i>« Analyses »</i> → requête SQL avec <code>GROUP BY categorie_id</code>. Affichage de barres graphiques proportionnelles et calcul de l'économie réalisée par rapport au mois précédent.</li>
+  </ul>
+
+  <h3>UC6 : Changer la langue (Ressources qualifiées)</h3>
+  <ul>
+    <li><b>Acteur :</b> Utilisateur ou Administrateur.</li>
+    <li><b>Scénario nominal :</b> Dans <i>« Réglages »</i>, clic sur 🇫🇷 ou 🇸🇦 → mise à jour de la préférence dans SQLite et dans le Contexte → l'interface se traduit instantanément.</li>
+  </ul>
+
+  <h3>UC7 : Administrer les comptes (Espace Admin)</h3>
+  <ul>
+    <li><b>Acteur :</b> Administrateur uniquement.</li>
+    <li><b>Scénario nominal :</b> Clic sur le badge <i>« 👑 Admin »</i> → supervision de la liste des membres, de leurs dépenses totales et ajustement direct des budgets.</li>
+  </ul>
+
+  <h2>4. Conception de la Base de Données (Modèle Entité-Association)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Table SQLite</th>
+        <th>Colonnes Principales</th>
+        <th>Rôle & Relations</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>utilisateurs</b></td>
+        <td><code>id (PK)</code>, <code>nom</code>, <code>email (UNIQUE)</code>, <code>mot_de_passe</code>, <code>role</code>, <code>budget_mensuel</code>, <code>langue</code></td>
+        <td>Comptes avec distinction de rôle ('admin' ou 'utilisateur').</td>
+      </tr>
+      <tr>
+        <td><b>categories</b></td>
+        <td><code>id (PK)</code>, <code>nom</code>, <code>icone</code></td>
+        <td>Catégories de produits avec émoticônes associés (🍞, 🥤, 🧼...).</td>
+      </tr>
+      <tr>
+        <td><b>produits</b></td>
+        <td><code>id (PK)</code>, <code>nom</code>, <code>marque</code>, <code>unite</code>, <code>categorie_id (FK)</code>, <code>created_by (FK)</code></td>
+        <td>Catalogue des articles relié aux catégories et aux utilisateurs créateurs.</td>
+      </tr>
+      <tr>
+        <td><b>magasins</b></td>
+        <td><code>id (PK)</code>, <code>nom</code></td>
+        <td>Enseignes de distribution (Carrefour, Monoprix, Aziza, MG...).</td>
+      </tr>
+      <tr>
+        <td><b>achats</b></td>
+        <td><code>id (PK)</code>, <code>produit_id (FK)</code>, <code>utilisateur_id (FK)</code>, <code>magasin_id (FK)</code>, <code>prix_unitaire</code>, <code>quantite</code>, <code>prix_total</code>, <code>date_achat</code>, <code>mois</code></td>
+        <td>Table centrale des transactions. Le champ <code>mois</code> ("2026-11") permet le regroupement mensuel rapide.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>5. Conformité aux Critères Évalués</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Critère Évalué</th>
+        <th>Implémentation</th>
+        <th>Fichiers Sources Associés</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>2 types d'utilisateurs</b></td>
+        <td>Rôles <code>admin</code> et <code>utilisateur</code> avec contrôle d'accès sécurisé RBAC.</td>
+        <td><code>src/utils/auth.tsx</code>, <code>src/app/(admin)/_layout.tsx</code>, <code>src/app/(admin)/utilisateurs.tsx</code></td>
+      </tr>
+      <tr>
+        <td><b>Vues avec styles</b></td>
+        <td>Composants React Native stylisés avec <code>StyleSheet.create</code> (mise en page moderne et responsive).</td>
+        <td>Tous les fichiers sous <code>src/app/</code></td>
+      </tr>
+      <tr>
+        <td><b>Programmation événementielle</b></td>
+        <td><code>onPress</code> (boutons), <code>onChangeText</code> (saisie dynamique et filtrage temps réel), <code>useFocusEffect</code> (rechargement des vues).</td>
+        <td><code>nouvel-achat.tsx</code>, <code>produits.tsx</code>, <code>reglages.tsx</code></td>
+      </tr>
+      <tr>
+        <td><b>Bibliothèque de navigation externe</b></td>
+        <td><b>Expo Router</b> (basé sur React Navigation) avec Stack, Bottom Tabs, Modales natives et Routes dynamiques.</td>
+        <td><code>src/app/_layout.tsx</code>, <code>src/app/(tabs)/_layout.tsx</code>, <code>src/app/produit/[id].tsx</code></td>
+      </tr>
+      <tr>
+        <td><b>Ressources avec qualificateurs</b></td>
+        <td>Système multilingue <b>Français (fr.json)</b> et <b>Arabe (ar.json)</b> avec chargement dynamique selon la langue active.</td>
+        <td><code>src/i18n/fr.json</code>, <code>src/i18n/ar.json</code>, <code>src/utils/i18n.ts</code></td>
+      </tr>
+      <tr>
+        <td><b>Connexion Base de données</b></td>
+        <td>Base de données relationnelle locale <b>SQLite</b> (<code>expo-sqlite</code>) avec 5 tables créées au démarrage.</td>
+        <td><code>src/db/database.ts</code>, <code>src/db/queries.ts</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>6. Questions Fréquentes du Professeur & Réponses</h2>
+
+  <div class="qa-box">
+    <div class="qa-q">Q1 : Comment fonctionne la navigation dans votre application ?</div>
+    <div class="qa-a">
+      <b>R :</b> Nous utilisons <b>Expo Router</b>. La navigation est basée sur la structure des dossiers : <code>_layout.tsx</code> crée un Stack Navigator, <code>(tabs)</code> crée le Bottom Tab Bar à 4 onglets, les modales s'ouvrent avec <code>presentation: 'modal'</code>, et <code>produit/[id].tsx</code> gère les routes dynamiques en extrayant l'ID avec <code>useLocalSearchParams()</code>.
+    </div>
+  </div>
+
+  <div class="qa-box">
+    <div class="qa-q">Q2 : Où et comment sont stockées les données ?</div>
+    <div class="qa-a">
+      <b>R :</b> Les données sont stockées <b>localement sur l'appareil dans un fichier SQLite</b> (<code>masrouf.db</code>) via la bibliothèque officielle <code>expo-sqlite</code>. La méthode <code>initDatabase()</code> dans <code>database.ts</code> est exécutée au démarrage pour créer les 5 tables avec leurs clés étrangères si elles n'existent pas encore.
+    </div>
+  </div>
+
+  <div class="qa-box">
+    <div class="qa-q">Q3 : Où se trouvent les ressources avec qualificateurs ?</div>
+    <div class="qa-a">
+      <b>R :</b> Dans <code>src/i18n/fr.json</code> et <code>src/i18n/ar.json</code>. Le qualificateur est la langue (Français / Arabe). Notre hook <code>useTranslation()</code> charge le dictionnaire qualifié correspondant au profil de l'utilisateur, permettant un basculement instantané des libellés dans l'écran Réglages.
+    </div>
+  </div>
+
+  <div class="qa-box">
+    <div class="qa-q">Q4 : Comment montrez-vous la programmation événementielle ?</div>
+    <div class="qa-a">
+      <b>R :</b> Par exemple dans <code>produits.tsx</code>, l'événement <code>onChangeText</code> sur la barre de recherche filtre la liste des articles instantanément en mémoire. Dans <code>nouvel-achat.tsx</code>, chaque modification du prix ou de la quantité recalcule le total en direct à l'écran.
+    </div>
+  </div>
+
+</body>
+</html>
+
