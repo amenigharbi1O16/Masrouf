@@ -126,3 +126,4 @@ export function generateTemporaryPassword(longueur: number = 8): string {
 
   return tempPass;
 }
+

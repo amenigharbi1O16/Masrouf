@@ -83,3 +83,4 @@ export async function clearSessionUserId(): Promise<void> {
     console.error('Erreur lors de la suppression de la session sécurisée :', error);
   }
 }
+
