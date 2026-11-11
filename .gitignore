@@ -25,6 +25,7 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
 
 # macOS
 .DS_Store
@@ -41,3 +42,20 @@ example
 # generated native folders
 /ios
 /android
+
+# ============================================================
+# IDEs & ÉDITEURS (Fichiers de configuration locale)
+# ============================================================
+.vscode/
+.claude/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================
+# FICHIERS DE DOCUMENTATION / AGENTS / NOTES NON NÉCESSAIRES
+# ============================================================
+AGENTS.md
+RAPPORT_PROJET.md
+*.md
+!README.md
