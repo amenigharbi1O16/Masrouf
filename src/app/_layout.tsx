@@ -5,6 +5,7 @@
 //           1. Il initialise la base SQLite locale (initDatabase).
 //           2. Il injecte le contexte d'authentification (AuthProvider).
 //           3. Il configure la pile de navigation (Stack Navigator).
+//           4. Il redirige automatiquement vers /login si personne n'est connecté.
 //
 // VISUEL SUR L'ÉCRAN :
 //   Ne produit pas d'affichage direct par lui-même, mais gère
@@ -17,13 +18,54 @@
 // ============================================================
 
 import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 
 // Initialisation de la base de données SQLite locale
 import { initDatabase } from '../db/database';
 
 // Fournisseur du Contexte Global d'Authentification
-import { AuthProvider } from '../utils/auth';
+import { AuthProvider, useAuth } from '../utils/auth';
+
+// ------------------------------------------------------------
+// COMPOSANT INTERNE : NavigationGuard
+// RÔLE : Surveille l'état de connexion et redirige si nécessaire.
+//        Séparé du RootLayout pour pouvoir utiliser useAuth()
+//        APRÈS que AuthProvider soit déjà monté.
+//
+// LOGIQUE :
+//   - user === null et on n'est pas sur /login → redirect vers /login
+//   - user !== null et on est sur /login → redirect vers /(tabs)
+// ------------------------------------------------------------
+function NavigationGuard() {
+  // Récupère l'utilisateur connecté depuis le contexte Auth
+  const { user } = useAuth();
+
+  // useSegments() retourne les segments URL actuels
+  // Ex: sur /(tabs)/index → ['(tabs)', 'index']
+  // Ex: sur /login → ['login']
+  const segments = useSegments();
+
+  useEffect(() => {
+    // Détermine si l'écran actuel est l'écran de login
+    // segments[0] === 'login' signifie qu'on est sur /login
+    const estSurLogin = segments[0] === 'login';
+
+    if (!user && !estSurLogin) {
+      // Cas 1 : Personne n'est connecté et on n'est pas sur login
+      // → Redirection forcée vers l'écran de connexion
+      router.replace('/login');
+    } else if (user && estSurLogin) {
+      // Cas 2 : Utilisateur connecté mais toujours sur l'écran login
+      // → Redirection vers l'accueil (ne devrait pas arriver, mais sécurité)
+      router.replace('/(tabs)');
+    }
+    // Cas 3 : user === null et on est déjà sur login → rien à faire
+    // Cas 4 : user !== null et on n'est pas sur login → rien à faire
+  }, [user, segments]);
+
+  // Ce composant ne rend rien visuellement, il ne fait que surveiller
+  return null;
+}
 
 // ------------------------------------------------------------
 // COMPOSANT PRINCIPAL : RootLayout
@@ -45,6 +87,9 @@ export default function RootLayout() {
     // AuthProvider entoure toute l'application : tous les écrans
     // pourront accéder à l'utilisateur connecté via useAuth()
     <AuthProvider>
+      {/* NavigationGuard surveille user et redirige si besoin */}
+      <NavigationGuard />
+
       <Stack>
         {/* 1. Écran de connexion : premier écran affiché */}
         <Stack.Screen
