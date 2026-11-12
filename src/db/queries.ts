@@ -24,9 +24,12 @@ export type Utilisateur = {
   nom: string;
   email: string;
   password_hash: string;
+  salt: string;
   role: 'admin' | 'user';
   is_active: number;
   must_change_password: number;
+  onboarding_done: number;
+  hash_version: number;
   budget_mensuel: number;
   langue: string;
   created_at: string;
@@ -122,7 +125,7 @@ export type DepenseParCategorie = {
 // ------------------------------------------------------------
 export function getUserByEmail(email: string): Utilisateur | null {
   const row = db.getFirstSync<any>(
-    `SELECT id, name as nom, email, password_hash, role, is_active, must_change_password, budget_mensuel, langue, created_at
+    `SELECT id, name as nom, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel, langue, created_at
      FROM user
      WHERE email = ? COLLATE NOCASE`,
     [email.trim().toLowerCase()]
@@ -133,9 +136,12 @@ export function getUserByEmail(email: string): Utilisateur | null {
     nom: row.nom,
     email: row.email,
     password_hash: row.password_hash,
+    salt: row.salt ?? '',
     role: row.role,
     is_active: row.is_active,
     must_change_password: row.must_change_password,
+    onboarding_done: row.onboarding_done ?? 0,
+    hash_version: row.hash_version ?? 1,
     budget_mensuel: row.budget_mensuel ?? 0,
     langue: row.langue ?? 'fr',
     created_at: row.created_at,
@@ -147,7 +153,7 @@ export function getUserByEmail(email: string): Utilisateur | null {
 // ------------------------------------------------------------
 export function getUserById(id: number): Utilisateur | null {
   const row = db.getFirstSync<any>(
-    `SELECT id, name as nom, email, password_hash, role, is_active, must_change_password, budget_mensuel, langue, created_at
+    `SELECT id, name as nom, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel, langue, created_at
      FROM user
      WHERE id = ?`,
     [id]
@@ -158,9 +164,12 @@ export function getUserById(id: number): Utilisateur | null {
     nom: row.nom,
     email: row.email,
     password_hash: row.password_hash,
+    salt: row.salt ?? '',
     role: row.role,
     is_active: row.is_active,
     must_change_password: row.must_change_password,
+    onboarding_done: row.onboarding_done ?? 0,
+    hash_version: row.hash_version ?? 1,
     budget_mensuel: row.budget_mensuel ?? 0,
     langue: row.langue ?? 'fr',
     created_at: row.created_at,
@@ -169,18 +178,75 @@ export function getUserById(id: number): Utilisateur | null {
 
 // ------------------------------------------------------------
 // registerUser : Crée un compte utilisateur normal (rôle 'user' UNIQUEMENT)
+//                onboarding_done est à 0 pour déclencher l'assistant au premier accès
 // ------------------------------------------------------------
 export function registerUser(
   nom: string,
   email: string,
-  passwordHash: string
+  passwordHash: string,
+  salt: string = '',
+  hashVersion: number = 1
 ): number {
   const result = db.runSync(
-    `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, budget_mensuel, langue)
-     VALUES (?, ?, ?, '', 'user', 1, 0, 0, 'fr')`,
-    [nom.trim(), email.trim().toLowerCase(), passwordHash]
+    `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel, langue)
+     VALUES (?, ?, ?, ?, 'user', 1, 0, 0, ?, 0, 'fr')`,
+    [nom.trim(), email.trim().toLowerCase(), passwordHash, salt, hashVersion]
   );
   return result.lastInsertRowId;
+}
+
+// ------------------------------------------------------------
+// updateUserOnboarding : Marque l'onboarding comme complété (1)
+// ------------------------------------------------------------
+export function updateUserOnboarding(userId: number, done: boolean = true): void {
+  db.runSync(
+    `UPDATE user SET onboarding_done = ? WHERE id = ?`,
+    [done ? 1 : 0, userId]
+  );
+}
+
+// ------------------------------------------------------------
+// updateUserPasswordAndVersion : Met à niveau le mot de passe et sa version de hash
+// ------------------------------------------------------------
+export function updateUserPasswordAndVersion(
+  userId: number,
+  newPasswordHash: string,
+  newSalt: string,
+  newVersion: number = 2
+): void {
+  db.runSync(
+    `UPDATE user
+     SET password_hash = ?,
+         salt = ?,
+         hash_version = ?,
+         must_change_password = 0
+     WHERE id = ?`,
+    [newPasswordHash, newSalt, newVersion, userId]
+  );
+}
+
+// ------------------------------------------------------------
+// getUserCategories : Liste des IDs de catégories activées par l'utilisateur
+// ------------------------------------------------------------
+export function getUserCategories(userId: number): number[] {
+  const rows = db.getAllSync<{ category_id: number }>(
+    `SELECT category_id FROM user_category WHERE user_id = ? AND enabled = 1`,
+    [userId]
+  );
+  return rows.map((r) => r.category_id);
+}
+
+// ------------------------------------------------------------
+// setUserCategories : Remplace les catégories sélectionnées par l'utilisateur
+// ------------------------------------------------------------
+export function setUserCategories(userId: number, categoryIds: number[]): void {
+  db.runSync(`DELETE FROM user_category WHERE user_id = ?`, [userId]);
+  for (const catId of categoryIds) {
+    db.runSync(
+      `INSERT INTO user_category (user_id, category_id, enabled) VALUES (?, ?, 1)`,
+      [userId, catId]
+    );
+  }
 }
 
 // ------------------------------------------------------------
@@ -858,7 +924,7 @@ export function getAdminGlobalStats(): AdminGlobalStats {
 
 export function getAllUsersAdmin(): Utilisateur[] {
   const rows = db.getAllSync<any>(
-    `SELECT id, name as nom, email, password_hash, role, is_active, must_change_password, budget_mensuel, langue, created_at
+    `SELECT id, name as nom, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel, langue, created_at
      FROM user
      ORDER BY role DESC, name ASC`
   );
@@ -867,9 +933,12 @@ export function getAllUsersAdmin(): Utilisateur[] {
     nom: row.nom,
     email: row.email,
     password_hash: row.password_hash,
+    salt: row.salt ?? '',
     role: row.role,
     is_active: row.is_active,
     must_change_password: row.must_change_password,
+    onboarding_done: row.onboarding_done ?? 0,
+    hash_version: row.hash_version ?? 1,
     budget_mensuel: row.budget_mensuel ?? 0,
     langue: row.langue ?? 'fr',
     created_at: row.created_at,

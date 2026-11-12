@@ -257,6 +257,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         frais.role === prev.role &&
         frais.is_active === prev.is_active &&
         frais.must_change_password === prev.must_change_password &&
+        frais.onboarding_done === prev.onboarding_done &&
+        frais.hash_version === prev.hash_version &&
         frais.budget_mensuel === prev.budget_mensuel &&
         frais.langue === prev.langue
       ) {

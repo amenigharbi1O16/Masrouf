@@ -49,6 +49,8 @@ export function initDatabase(): void {
       role                 TEXT    NOT NULL DEFAULT 'user', -- 'admin' ou 'user'
       is_active            INTEGER NOT NULL DEFAULT 1,      -- 1 = actif, 0 = suspendu
       must_change_password INTEGER NOT NULL DEFAULT 0,      -- 1 = changement forcé
+      onboarding_done      INTEGER NOT NULL DEFAULT 0,      -- 1 = onboarding complété
+      hash_version         INTEGER NOT NULL DEFAULT 1,      -- 1 = sha256 simple, 2 = pbkdf2
       budget_mensuel       REAL    NOT NULL DEFAULT 0,
       langue               TEXT    NOT NULL DEFAULT 'fr',
       created_at           TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -187,6 +189,11 @@ export function initDatabase(): void {
   try { db.execSync(`ALTER TABLE user ADD COLUMN budget_mensuel REAL NOT NULL DEFAULT 0;`); } catch {}
   try { db.execSync(`ALTER TABLE user ADD COLUMN langue TEXT NOT NULL DEFAULT 'fr';`); } catch {}
   try { db.execSync(`ALTER TABLE user ADD COLUMN salt TEXT NOT NULL DEFAULT '';`); } catch {}
+  try { db.execSync(`ALTER TABLE user ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0;`); } catch {}
+  try { db.execSync(`ALTER TABLE user ADD COLUMN hash_version INTEGER NOT NULL DEFAULT 1;`); } catch {}
+
+  // Sauvegarde physique de précaution de la base masrouf.db
+  sauvegarderBaseDeDonnees();
 
   // --------------------------------------------------------
   // MIGRATION AUTOMATIQUE DEPUIS L'ANCIENNE BASE (S'IL Y EN A UNE)
@@ -201,6 +208,22 @@ export function initDatabase(): void {
   initialiserSettings();
   initialiserComptesDepart();
   creerVuesDeRetroCompatibilite();
+}
+
+// ------------------------------------------------------------
+// SAUVEGARDE : sauvegarderBaseDeDonnees
+// RÔLE : Crée une copie exacte et cohérente de masrouf.db (masrouf_backup_etape2.db)
+//        via la commande officielle SQLite VACUUM INTO.
+// ------------------------------------------------------------
+export function sauvegarderBaseDeDonnees(): void {
+  try {
+    // VACUUM INTO crée une sauvegarde transactionnelle sans verrouiller la base
+    db.execSync(`VACUUM INTO 'masrouf_backup_etape2.db';`);
+    console.log('[SQLite] Sauvegarde de masrouf.db créée : masrouf_backup_etape2.db');
+  } catch {
+    // Si la sauvegarde existe déjà sur le disque de l'appareil, VACUUM INTO lève une erreur normale
+    // On conserve la sauvegarde existante sans l'écraser.
+  }
 }
 
 // ------------------------------------------------------------
@@ -486,28 +509,51 @@ function initialiserSettings(): void {
 // INITIALISATION : initialiserComptesDepart
 // ------------------------------------------------------------
 function initialiserComptesDepart(): void {
-  // Administrateur (must_change_password = 1)
+  // Administrateur (must_change_password = 1, onboarding_done = 1, hash_version = 1)
   const adminExiste = db.getFirstSync<{ id: number }>(
     `SELECT id FROM user WHERE email = 'admin@masrouf.tn' COLLATE NOCASE`
   );
   if (!adminExiste) {
     db.runSync(
-      `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password)
-       VALUES (?, ?, ?, ?, 'admin', 1, 1)`,
+      `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version)
+       VALUES (?, ?, ?, ?, 'admin', 1, 1, 1, 1)`,
       ['Administrateur', 'admin@masrouf.tn', DEFAULT_ADMIN_HASH, DEFAULT_SALT]
+    );
+  } else {
+    // S'assure que l'administrateur existant a onboarding_done = 1 et hash_version = 1
+    db.runSync(
+      `UPDATE user SET onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'admin@masrouf.tn' COLLATE NOCASE`
     );
   }
 
-  // Utilisateur standard (must_change_password = 0)
+  // Utilisateur standard (must_change_password = 0, onboarding_done = 1, hash_version = 1)
+  let userIdTest = 0;
   const userExiste = db.getFirstSync<{ id: number }>(
     `SELECT id FROM user WHERE email = 'user@masrouf.tn' COLLATE NOCASE`
   );
   if (!userExiste) {
-    db.runSync(
-      `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password)
-       VALUES (?, ?, ?, ?, 'user', 1, 0)`,
+    const res = db.runSync(
+      `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel)
+       VALUES (?, ?, ?, ?, 'user', 1, 0, 1, 1, 1200)`,
       ['Ahmed Ben Ali', 'user@masrouf.tn', DEFAULT_USER_HASH, DEFAULT_SALT]
     );
+    userIdTest = res.lastInsertRowId;
+  } else {
+    userIdTest = userExiste.id;
+    // S'assure que l'utilisateur test existant conserve ses données avec onboarding_done = 1
+    db.runSync(
+      `UPDATE user SET onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'user@masrouf.tn' COLLATE NOCASE`
+    );
+  }
+
+  // Peuplement des catégories par défaut de l'utilisateur test dans user_category (évite un écran vide)
+  if (userIdTest > 0) {
+    db.execSync(`
+      INSERT OR IGNORE INTO user_category (user_id, category_id, enabled)
+      SELECT ${userIdTest}, id, 1
+      FROM category
+      WHERE is_default = 1;
+    `);
   }
 }
 
@@ -544,6 +590,8 @@ function creerVuesDeRetroCompatibilite(): void {
         role,
         is_active,
         must_change_password,
+        onboarding_done,
+        hash_version,
         budget_mensuel,
         langue,
         created_at
@@ -552,7 +600,7 @@ function creerVuesDeRetroCompatibilite(): void {
       CREATE TRIGGER IF NOT EXISTS trg_utilisateurs_insert
       INSTEAD OF INSERT ON utilisateurs
       BEGIN
-        INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, budget_mensuel, langue)
+        INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel, langue)
         VALUES (
           NEW.nom,
           NEW.email,
@@ -561,6 +609,8 @@ function creerVuesDeRetroCompatibilite(): void {
           COALESCE(NEW.role, 'user'),
           COALESCE(NEW.is_active, 1),
           COALESCE(NEW.must_change_password, 0),
+          COALESCE(NEW.onboarding_done, 0),
+          COALESCE(NEW.hash_version, 1),
           COALESCE(NEW.budget_mensuel, 0),
           COALESCE(NEW.langue, 'fr')
         );
@@ -576,6 +626,8 @@ function creerVuesDeRetroCompatibilite(): void {
           role = COALESCE(NEW.role, role),
           is_active = COALESCE(NEW.is_active, is_active),
           must_change_password = COALESCE(NEW.must_change_password, must_change_password),
+          onboarding_done = COALESCE(NEW.onboarding_done, onboarding_done),
+          hash_version = COALESCE(NEW.hash_version, hash_version),
           budget_mensuel = COALESCE(NEW.budget_mensuel, budget_mensuel),
           langue = COALESCE(NEW.langue, langue)
         WHERE id = OLD.id;

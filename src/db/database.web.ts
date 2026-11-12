@@ -26,8 +26,18 @@ export type UserRow = {
   role: 'admin' | 'user';
   is_active: number;
   must_change_password: number;
+  onboarding_done: number;
+  hash_version: number;
   budget_mensuel: number;
   langue: string;
+  created_at: string;
+};
+
+export type UserCategoryRow = {
+  id: number;
+  user_id: number;
+  category_id: number;
+  enabled: number;
   created_at: string;
 };
 
@@ -121,6 +131,8 @@ class WebDatabaseStore {
       role: 'admin',
       is_active: 1,
       must_change_password: 1,
+      onboarding_done: 1,
+      hash_version: 1,
       budget_mensuel: 0,
       langue: 'fr',
       created_at: '2026-11-01 10:00:00',
@@ -134,10 +146,31 @@ class WebDatabaseStore {
       role: 'user',
       is_active: 1,
       must_change_password: 0,
+      onboarding_done: 1,
+      hash_version: 1,
       budget_mensuel: 1200,
       langue: 'fr',
       created_at: '2026-11-02 14:30:00',
     },
+  ];
+
+  user_category: UserCategoryRow[] = [
+    { id: 1, user_id: 2, category_id: 1, enabled: 1, created_at: '2026-11-02' },
+    { id: 2, user_id: 2, category_id: 2, enabled: 1, created_at: '2026-11-02' },
+    { id: 3, user_id: 2, category_id: 3, enabled: 1, created_at: '2026-11-02' },
+    { id: 4, user_id: 2, category_id: 4, enabled: 1, created_at: '2026-11-02' },
+    { id: 5, user_id: 2, category_id: 5, enabled: 1, created_at: '2026-11-02' },
+    { id: 6, user_id: 2, category_id: 6, enabled: 1, created_at: '2026-11-02' },
+    { id: 7, user_id: 2, category_id: 7, enabled: 1, created_at: '2026-11-02' },
+    { id: 8, user_id: 2, category_id: 8, enabled: 1, created_at: '2026-11-02' },
+    { id: 9, user_id: 2, category_id: 9, enabled: 1, created_at: '2026-11-02' },
+    { id: 10, user_id: 2, category_id: 10, enabled: 1, created_at: '2026-11-02' },
+    { id: 11, user_id: 2, category_id: 11, enabled: 1, created_at: '2026-11-02' },
+    { id: 12, user_id: 2, category_id: 12, enabled: 1, created_at: '2026-11-02' },
+    { id: 13, user_id: 2, category_id: 13, enabled: 1, created_at: '2026-11-02' },
+    { id: 14, user_id: 2, category_id: 14, enabled: 1, created_at: '2026-11-02' },
+    { id: 15, user_id: 2, category_id: 15, enabled: 1, created_at: '2026-11-02' },
+    { id: 16, user_id: 2, category_id: 16, enabled: 1, created_at: '2026-11-02' },
   ];
 
   category: CategoryRow[] = [
@@ -202,7 +235,14 @@ class WebDatabaseStore {
         const d = window.localStorage.getItem('masrouf_web_v3');
         if (d) {
           const parsed = JSON.parse(d);
-          if (parsed.user) this.user = parsed.user;
+          if (parsed.user) {
+            this.user = parsed.user.map((u: any) => ({
+              ...u,
+              onboarding_done: u.onboarding_done ?? 1,
+              hash_version: u.hash_version ?? 1,
+            }));
+          }
+          if (parsed.user_category) this.user_category = parsed.user_category;
           if (parsed.category) this.category = parsed.category;
           if (parsed.product) this.product = parsed.product;
           if (parsed.purchase) this.purchase = parsed.purchase;
@@ -218,19 +258,22 @@ class WebDatabaseStore {
   sauvegarder() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(
-          'masrouf_web_v3',
-          JSON.stringify({
-            user: this.user,
-            category: this.category,
-            product: this.product,
-            purchase: this.purchase,
-            expense: this.expense,
-            month_budget: this.month_budget,
-            category_budget: this.category_budget,
-            settings: this.settings,
-          })
-        );
+        const snapshot = JSON.stringify({
+          user: this.user,
+          user_category: this.user_category,
+          category: this.category,
+          product: this.product,
+          purchase: this.purchase,
+          expense: this.expense,
+          month_budget: this.month_budget,
+          category_budget: this.category_budget,
+          settings: this.settings,
+        });
+        window.localStorage.setItem('masrouf_web_v3', snapshot);
+        // Sauvegarde de précaution si non existante
+        if (!window.localStorage.getItem('masrouf_web_v3_backup_etape2')) {
+          window.localStorage.setItem('masrouf_web_v3_backup_etape2', snapshot);
+        }
       }
     } catch {}
   }
@@ -246,19 +289,53 @@ export const db = {
 
     // INSERT INTO USER
     if (s.includes('INSERT INTO USER') || s.includes('INSERT INTO UTILISATEURS')) {
-      const [name, email, hash, salt, role, isActive, mustChange, budget, langue] = params;
+      let name = params[0];
+      let email = params[1];
+      let hash = params[2];
+      let salt = params[3] ?? DEFAULT_SALT;
+      let role: 'admin' | 'user' = 'user';
+      let isActive = 1;
+      let mustChange = 0;
+      let onboardingDone = 0;
+      let hashVersion = 1;
+      let budget = 0;
+      let langue = 'fr';
+
+      if (params.length === 5) {
+        // registerUser: [nom, email, passwordHash, salt, hashVersion]
+        hashVersion = params[4] ?? 1;
+        onboardingDone = 0;
+      } else if (params.length === 4) {
+        // initialiserComptesDepart
+        role = String(email).toLowerCase().includes('admin') ? 'admin' : 'user';
+        mustChange = role === 'admin' ? 1 : 0;
+        onboardingDone = 1;
+        hashVersion = 1;
+        budget = role === 'admin' ? 0 : 1200;
+      } else if (params.length >= 7) {
+        role = params[4] ?? 'user';
+        isActive = params[5] ?? 1;
+        mustChange = params[6] ?? 0;
+        onboardingDone = params[7] ?? 0;
+        hashVersion = params[8] ?? 1;
+        budget = params[9] ?? 0;
+        langue = params[10] ?? 'fr';
+      }
+
       const id = (store.user.length > 0 ? Math.max(...store.user.map((u) => u.id)) : 0) + 1;
       store.user.push({
         id,
         name,
         email,
         password_hash: hash,
-        salt: salt ?? DEFAULT_SALT,
-        role: role ?? 'user',
-        is_active: isActive ?? 1,
-        must_change_password: mustChange ?? 0,
-        budget_mensuel: budget ?? 0,
-        langue: langue ?? 'fr',
+        salt,
+        role,
+        is_active: isActive,
+        must_change_password: mustChange,
+        onboarding_done: onboardingDone,
+        hash_version: hashVersion,
+        budget_mensuel: budget,
+        langue,
         created_at: new Date().toISOString(),
       });
       store.sauvegarder();
@@ -267,7 +344,24 @@ export const db = {
 
     // UPDATE USER
     if (s.includes('UPDATE USER') || s.includes('UPDATE UTILISATEURS')) {
-      if (s.includes('PASSWORD_HASH = ?')) {
+      if (s.includes('ONBOARDING_DONE = ?')) {
+        const [done, id] = params;
+        const u = store.user.find((x) => x.id === id);
+        if (u) {
+          u.onboarding_done = Number(done);
+          store.sauvegarder();
+        }
+      } else if (s.includes('PASSWORD_HASH = ?') && s.includes('HASH_VERSION = ?')) {
+        const [hash, salt, hashVer, id] = params;
+        const u = store.user.find((x) => x.id === id);
+        if (u) {
+          u.password_hash = hash;
+          u.salt = salt;
+          u.hash_version = hashVer;
+          u.must_change_password = 0;
+          store.sauvegarder();
+        }
+      } else if (s.includes('PASSWORD_HASH = ?')) {
         const [hash, id] = params;
         const u = store.user.find((x) => x.id === id);
         if (u) {
@@ -298,6 +392,28 @@ export const db = {
         }
       }
       return { lastInsertRowId: 0, changes: 1 };
+    }
+
+    // USER_CATEGORY OPERATIONS
+    if (s.includes('DELETE FROM USER_CATEGORY')) {
+      const [userId] = params;
+      store.user_category = store.user_category.filter((uc) => uc.user_id !== userId);
+      store.sauvegarder();
+      return { lastInsertRowId: 0, changes: 1 };
+    }
+
+    if (s.includes('INSERT INTO USER_CATEGORY')) {
+      const [userId, catId, enabled] = params;
+      const id = (store.user_category.length > 0 ? Math.max(...store.user_category.map((uc) => uc.id)) : 0) + 1;
+      store.user_category.push({
+        id,
+        user_id: userId,
+        category_id: catId,
+        enabled: enabled ?? 1,
+        created_at: new Date().toISOString(),
+      });
+      store.sauvegarder();
+      return { lastInsertRowId: id, changes: 1 };
     }
 
     // DELETE FROM USER
@@ -369,8 +485,10 @@ export const db = {
       return {
         ...u,
         nom: u.name,
-        budget_mensuel: 0,
-        langue: 'fr',
+        onboarding_done: u.onboarding_done ?? 0,
+        hash_version: u.hash_version ?? 1,
+        budget_mensuel: u.budget_mensuel ?? 0,
+        langue: u.langue ?? 'fr',
       } as unknown as T;
     }
 
@@ -382,8 +500,10 @@ export const db = {
       return {
         ...u,
         nom: u.name,
-        budget_mensuel: 0,
-        langue: 'fr',
+        onboarding_done: u.onboarding_done ?? 0,
+        hash_version: u.hash_version ?? 1,
+        budget_mensuel: u.budget_mensuel ?? 0,
+        langue: u.langue ?? 'fr',
       } as unknown as T;
     }
 
@@ -404,6 +524,7 @@ export const db = {
   getAllSync: <T>(sql: string, params: any[] = []): T[] => {
     const s = sql.toUpperCase();
 
+    // CATEGORIES
     if (s.includes('FROM CATEGORY') || s.includes('FROM CATEGORIES')) {
       return store.category.map((c) => ({
         ...c,
@@ -416,15 +537,28 @@ export const db = {
       })) as unknown as T[];
     }
 
+    // USER CATEGORIES
+    if (s.includes('FROM USER_CATEGORY')) {
+      const [userId] = params;
+      const rows = store.user_category.filter(
+        (uc) => (userId === undefined || uc.user_id === userId) && uc.enabled === 1
+      );
+      return rows as unknown as T[];
+    }
+
+    // USERS
     if (s.includes('FROM USER') || s.includes('FROM UTILISATEURS')) {
       return store.user.map((u) => ({
         ...u,
         nom: u.name,
-        budget_mensuel: 0,
-        langue: 'fr',
+        onboarding_done: u.onboarding_done ?? 0,
+        hash_version: u.hash_version ?? 1,
+        budget_mensuel: u.budget_mensuel ?? 0,
+        langue: u.langue ?? 'fr',
       })) as unknown as T[];
     }
 
+    // PRODUCTS
     if (s.includes('FROM PRODUCT') || s.includes('FROM PRODUITS')) {
       return store.product.map((p) => {
         const cat = store.category.find((c) => c.id === p.category_id);
@@ -444,4 +578,22 @@ export const db = {
   },
 };
 
-export function initDatabase(): void {}
+// ------------------------------------------------------------
+// SAUVEGARDE : sauvegarderBaseDeDonnees (Web)
+// RÔLE : Snapshot de masrouf_web_v3 dans masrouf_web_v3_backup_etape2
+// ------------------------------------------------------------
+export function sauvegarderBaseDeDonnees(): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const data = window.localStorage.getItem('masrouf_web_v3');
+      if (data && !window.localStorage.getItem('masrouf_web_v3_backup_etape2')) {
+        window.localStorage.setItem('masrouf_web_v3_backup_etape2', data);
+        console.log('[Web] Sauvegarde masrouf_web_v3_backup_etape2 créée dans localStorage');
+      }
+    }
+  } catch {}
+}
+
+export function initDatabase(): void {
+  sauvegarderBaseDeDonnees();
+}
