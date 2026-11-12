@@ -13,10 +13,12 @@ import { useFocusEffect } from 'expo-router';
 // Fonctions SQLite
 import { getAdminGlobalStats, AdminGlobalStats } from '../../db/queries';
 
-// Internationalisation
+// Internationalisation et Authentification
+import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
 
 export default function AdminDashboardScreen() {
+  const { user } = useAuth();
   const { t } = useTranslation();
 
   const [stats, setStats] = useState<AdminGlobalStats>({
@@ -29,9 +31,9 @@ export default function AdminDashboardScreen() {
   });
 
   const rechargerStats = useCallback(() => {
-    const s = getAdminGlobalStats();
+    const s = getAdminGlobalStats(user?.id);
     setStats(s);
-  }, []);
+  }, [user?.id]);
 
   useFocusEffect(rechargerStats);
 

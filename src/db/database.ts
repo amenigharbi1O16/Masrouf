@@ -660,7 +660,7 @@ function creerVuesDeRetroCompatibilite(): void {
         INSERT INTO category (name_key, type, icon, default_percent, is_default, is_active, is_system, theme)
         VALUES (
           NEW.nom,
-          'product',
+          COALESCE(NEW.type, 'product'),
           COALESCE(NEW.icone, '📦'),
           COALESCE(NEW.pourcentage_defaut, 0),
           COALESCE(NEW.est_defaut, 0),
@@ -675,6 +675,7 @@ function creerVuesDeRetroCompatibilite(): void {
       BEGIN
         UPDATE category SET
           name_key = COALESCE(NEW.nom, name_key),
+          type = COALESCE(NEW.type, type),
           icon = COALESCE(NEW.icone, icon),
           default_percent = COALESCE(NEW.pourcentage_defaut, default_percent),
           is_active = COALESCE(NEW.est_visible, is_active)

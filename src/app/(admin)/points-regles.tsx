@@ -24,10 +24,12 @@ import {
   PointsSettings,
 } from '../../db/queries';
 
-// Internationalisation
+// Internationalisation et Authentification
+import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
 
 export default function AdminPointsReglesScreen() {
+  const { user } = useAuth();
   const { t } = useTranslation();
 
   const [ptsCategorie, setPtsCategorie] = useState('10');
@@ -79,7 +81,7 @@ export default function AdminPointsReglesScreen() {
       seuil_debutant: 0,
       seuil_econome: sEco,
       seuil_expert: sExp,
-    });
+    }, user?.id);
 
     setMessageSucces(t('succes_sauvegarde'));
     setTimeout(() => setMessageSucces(''), 3000);

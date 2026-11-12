@@ -32,6 +32,7 @@ import {
   copyPreviousMonthBudget,
   canDecreaseBudget,
   reassignerDepensesCategorieVersAutres,
+  addUserCustomCategory,
   Categorie,
   EnveloppeBudget,
 } from '../db/queries';
@@ -62,6 +63,12 @@ export default function BudgetMoisScreen() {
   const [enveloppes, setEnveloppes] = useState<EnveloppeItem[]>([]);
   const [categoriesDisponibles, setCategoriesDisponibles] = useState<Categorie[]>([]);
   const [modalAjoutVisible, setModalAjoutVisible] = useState<boolean>(false);
+
+  // Formulaire d'ajout de catégorie personnalisée
+  const [afficherFormPerso, setAfficherFormPerso] = useState<boolean>(false);
+  const [persoNom, setPersoNom] = useState<string>('');
+  const [persoIcone, setPersoIcone] = useState<string>('🏷️');
+  const [persoType, setPersoType] = useState<'product' | 'expense'>('product');
 
   // ----------------------------------------------------------
   // CHARGEMENT INITIAL DU BUDGET DU MOIS
@@ -194,6 +201,35 @@ export default function BudgetMoisScreen() {
 
     setEnveloppes((prev) => [...prev, nouvelle]);
     setModalAjoutVisible(false);
+  }
+
+  // ----------------------------------------------------------
+  // CREER UNE CATEGORIE PERSONNALISEE (AVEC SELECTEUR TYPE PRODUIT / DEPENSE)
+  // ----------------------------------------------------------
+  function handleCreerCategoriePerso() {
+    if (!user) return;
+    const nomClean = persoNom.trim();
+    if (!nomClean) {
+      Alert.alert('Erreur', 'Veuillez saisir un nom pour votre catégorie.');
+      return;
+    }
+    const newCatId = addUserCustomCategory(
+      user.id,
+      nomClean,
+      persoIcone.trim() || '🏷️',
+      persoType,
+      'Perso'
+    );
+    const updatedCats = getAllCategories(true);
+    setCategoriesDisponibles(updatedCats);
+    const nouvelleCat = updatedCats.find((c) => c.id === newCatId);
+    if (nouvelleCat) {
+      handleAjouterCategorie(nouvelleCat);
+    }
+    setPersoNom('');
+    setPersoIcone('🏷️');
+    setPersoType('product');
+    setAfficherFormPerso(false);
   }
 
   // ----------------------------------------------------------
@@ -376,28 +412,107 @@ export default function BudgetMoisScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{t('ajouter_categorie')}</Text>
-            <ScrollView style={{ maxHeight: 350 }}>
-              {categoriesDisponibles
-                .filter((c) => !enveloppes.some((e) => e.categorie_id === c.id))
-                .map((c) => (
+
+            {/* BOUTON BASCULE : CREER NOUVELLE CATEGORIE PERSO */}
+            <TouchableOpacity
+              style={styles.togglePersoBtn}
+              onPress={() => setAfficherFormPerso(!afficherFormPerso)}
+            >
+              <Text style={styles.togglePersoBtnText}>
+                {afficherFormPerso ? '← Choisir parmi les catégories existantes' : '+ Créer une catégorie personnalisée'}
+              </Text>
+            </TouchableOpacity>
+
+            {afficherFormPerso ? (
+              <View style={styles.persoForm}>
+                <Text style={styles.persoLabel}>Nom de la catégorie *</Text>
+                <TextInput
+                  style={styles.persoInput}
+                  placeholder="Ex: Animaux, Jardinage..."
+                  value={persoNom}
+                  onChangeText={setPersoNom}
+                />
+
+                <Text style={styles.persoLabel}>Type de catégorie *</Text>
+                <View style={styles.persoTypeRow}>
                   <TouchableOpacity
-                    key={c.id}
-                    style={styles.catOptionItem}
-                    onPress={() => handleAjouterCategorie(c)}
+                    style={[
+                      styles.persoTypeBtn,
+                      persoType === 'product' && styles.persoTypeBtnActive,
+                    ]}
+                    onPress={() => setPersoType('product')}
                   >
-                    <Text style={{ fontSize: 22, marginRight: 10 }}>{c.icone}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.catOptionName}>{c.nom}</Text>
-                      <Text style={styles.catOptionTheme}>Thème : {c.theme}</Text>
-                    </View>
-                    <Text style={styles.catOptionAdd}>+ Ajouter</Text>
+                    <Text
+                      style={[
+                        styles.persoTypeText,
+                        persoType === 'product' && styles.persoTypeTextActive,
+                      ]}
+                    >
+                      🛒 Produit (Supermarché)
+                    </Text>
                   </TouchableOpacity>
-                ))}
-            </ScrollView>
+                  <TouchableOpacity
+                    style={[
+                      styles.persoTypeBtn,
+                      persoType === 'expense' && styles.persoTypeBtnActive,
+                    ]}
+                    onPress={() => setPersoType('expense')}
+                  >
+                    <Text
+                      style={[
+                        styles.persoTypeText,
+                        persoType === 'expense' && styles.persoTypeTextActive,
+                      ]}
+                    >
+                      🧾 Dépense (Fixe / Facture)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.persoLabel}>Icône (Emoji)</Text>
+                <TextInput
+                  style={styles.persoInput}
+                  placeholder="Ex: 🐱, 🪴"
+                  value={persoIcone}
+                  onChangeText={setPersoIcone}
+                />
+
+                <TouchableOpacity
+                  style={styles.persoSubmitBtn}
+                  onPress={handleCreerCategoriePerso}
+                >
+                  <Text style={styles.persoSubmitBtnText}>+ Créer et ajouter à l'enveloppe</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 350 }}>
+                {categoriesDisponibles
+                  .filter((c) => !enveloppes.some((e) => e.categorie_id === c.id))
+                  .map((c) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={styles.catOptionItem}
+                      onPress={() => handleAjouterCategorie(c)}
+                    >
+                      <Text style={{ fontSize: 22, marginRight: 10 }}>{c.icone}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.catOptionName}>{c.nom}</Text>
+                        <Text style={styles.catOptionTheme}>
+                          Thème : {c.theme} • {c.type === 'expense' ? '🧾 Dépense' : '🛒 Produit'}
+                        </Text>
+                      </View>
+                      <Text style={styles.catOptionAdd}>+ Ajouter</Text>
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+            )}
 
             <TouchableOpacity
               style={styles.modalCloseBtn}
-              onPress={() => setModalAjoutVisible(false)}
+              onPress={() => {
+                setModalAjoutVisible(false);
+                setAfficherFormPerso(false);
+              }}
             >
               <Text style={styles.modalCloseBtnText}>{t('fermer')}</Text>
             </TouchableOpacity>
@@ -643,6 +758,78 @@ const styles = StyleSheet.create({
   },
   modalCloseBtnText: {
     color: '#64748B',
+    fontWeight: '700',
+  },
+  togglePersoBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 8,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  togglePersoBtnText: {
+    color: '#4F46E5',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  persoForm: {
+    paddingVertical: 6,
+  },
+  persoLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  persoInput: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+  },
+  persoTypeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 4,
+  },
+  persoTypeBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+  },
+  persoTypeBtnActive: {
+    borderColor: '#4F46E5',
+    backgroundColor: '#EEF2FF',
+  },
+  persoTypeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  persoTypeTextActive: {
+    color: '#4F46E5',
+    fontWeight: '700',
+  },
+  persoSubmitBtn: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  persoSubmitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: '700',
   },
 });

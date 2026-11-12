@@ -32,10 +32,12 @@ import {
   Categorie,
 } from '../../db/queries';
 
-// Internationalisation
+// Internationalisation et Authentification
+import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
 
 export default function AdminCategoriesScreen() {
+  const { user: adminConnecte } = useAuth();
   const { t } = useTranslation();
 
   const [categories, setCategories] = useState<Categorie[]>([]);
@@ -45,6 +47,7 @@ export default function AdminCategoriesScreen() {
   const [nouveauNom, setNouveauNom] = useState('');
   const [nouvelleIcone, setNouvelleIcone] = useState('📦');
   const [nouveauTheme, setNouveauTheme] = useState('Divers');
+  const [nouveauType, setNouveauType] = useState<'product' | 'expense'>('product');
 
   // Catégorie en cours d'édition de pourcentage
   const [categorieEnEdition, setCategorieEnEdition] = useState<Categorie | null>(null);
@@ -84,9 +87,17 @@ export default function AdminCategoriesScreen() {
       return;
     }
 
-    addCategoryAdmin(nomClean, nouvelleIcone.trim() || '📦', 0, nouveauTheme);
+    addCategoryAdmin(
+      nomClean,
+      nouvelleIcone.trim() || '📦',
+      0,
+      nouveauTheme,
+      nouveauType,
+      adminConnecte?.id
+    );
     setNouveauNom('');
     setNouvelleIcone('📦');
+    setNouveauType('product');
     setModalVisible(false);
     recharger();
     Alert.alert('Succès', 'Nouvelle catégorie créée.');
@@ -107,7 +118,9 @@ export default function AdminCategoriesScreen() {
       c.nom,
       c.icone,
       c.pourcentage_defaut,
-      nouvelleVisibilite
+      nouvelleVisibilite,
+      c.type,
+      adminConnecte?.id
     );
     recharger();
   }
@@ -142,7 +155,9 @@ export default function AdminCategoriesScreen() {
       categorieEnEdition.nom,
       categorieEnEdition.icone,
       val,
-      categorieEnEdition.est_visible === 1
+      categorieEnEdition.est_visible === 1,
+      categorieEnEdition.type,
+      adminConnecte?.id
     );
 
     setCategorieEnEdition(null);
@@ -190,6 +205,14 @@ export default function AdminCategoriesScreen() {
               <View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={styles.catName}>{c.nom}</Text>
+                  <Text
+                    style={[
+                      styles.typeBadge,
+                      c.type === 'expense' ? styles.typeBadgeExpense : styles.typeBadgeProduct,
+                    ]}
+                  >
+                    {c.type === 'expense' ? 'Dépense' : 'Produit'}
+                  </Text>
                   {c.est_systeme === 1 ? (
                     <Text style={styles.sysTag}>Système</Text>
                   ) : null}
@@ -251,6 +274,42 @@ export default function AdminCategoriesScreen() {
               value={nouveauNom}
               onChangeText={setNouveauNom}
             />
+
+            <Text style={styles.label}>Type de catégorie *</Text>
+            <View style={styles.typeSelectorRow}>
+              <TouchableOpacity
+                style={[
+                  styles.typeOptionBtn,
+                  nouveauType === 'product' && styles.typeOptionBtnActive,
+                ]}
+                onPress={() => setNouveauType('product')}
+              >
+                <Text
+                  style={[
+                    styles.typeOptionText,
+                    nouveauType === 'product' && styles.typeOptionTextActive,
+                  ]}
+                >
+                  🛒 Produit (Supermarché)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.typeOptionBtn,
+                  nouveauType === 'expense' && styles.typeOptionBtnActive,
+                ]}
+                onPress={() => setNouveauType('expense')}
+              >
+                <Text
+                  style={[
+                    styles.typeOptionText,
+                    nouveauType === 'expense' && styles.typeOptionTextActive,
+                  ]}
+                >
+                  🧾 Dépense (Fixe / Facture)
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <Text style={styles.label}>Icône (Emoji)</Text>
             <TextInput
@@ -503,6 +562,50 @@ const styles = StyleSheet.create({
   },
   confirmBtnText: {
     color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  typeBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  typeBadgeProduct: {
+    backgroundColor: '#E0F2FE',
+    color: '#0369A1',
+  },
+  typeBadgeExpense: {
+    backgroundColor: '#FEF3C7',
+    color: '#B45309',
+  },
+  typeSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 4,
+  },
+  typeOptionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+  },
+  typeOptionBtnActive: {
+    borderColor: '#7E22CE',
+    backgroundColor: '#F3E8FF',
+  },
+  typeOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  typeOptionTextActive: {
+    color: '#7E22CE',
     fontWeight: '700',
   },
 });

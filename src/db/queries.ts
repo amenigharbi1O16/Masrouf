@@ -38,6 +38,7 @@ export type Utilisateur = {
 export type Categorie = {
   id: number;
   nom: string;
+  type: 'product' | 'expense';
   icone: string;
   pourcentage_defaut: number;
   est_defaut: number;
@@ -266,12 +267,35 @@ export function updateUserPassword(
 }
 
 // ------------------------------------------------------------
+// VERIFICATION DE SECURITE : verifierPrivilegeAdmin
+// RÔLE : Empêche toute élévation de privilèges ou exécution illégitime.
+//        Si un adminUserId est transmis, vérifie dans SQLite qu'il est bien
+//        un administrateur actif.
+// ------------------------------------------------------------
+export function verifierPrivilegeAdmin(adminUserId?: number): void {
+  if (adminUserId !== undefined && adminUserId !== null) {
+    const admin = getUserById(adminUserId);
+    if (!admin || admin.role !== 'admin' || admin.is_active !== 1) {
+      throw new Error(`Accès refusé : l'utilisateur ID ${adminUserId} n'est pas un administrateur actif.`);
+    }
+    return;
+  }
+  // Si adminUserId n'est pas spécifié, on s'assure qu'au moins 1 admin actif existe
+  const nbAdmins = countActiveAdmins();
+  if (nbAdmins === 0) {
+    throw new Error('Accès refusé : aucun administrateur actif configuré.');
+  }
+}
+
+// ------------------------------------------------------------
 // updateUserActiveStatus : Active ou suspend l'accès d'un compte
 // ------------------------------------------------------------
 export function updateUserActiveStatus(
   userId: number,
-  isActive: boolean
+  isActive: boolean,
+  adminUserId?: number
 ): void {
+  verifierPrivilegeAdmin(adminUserId);
   db.runSync(
     `UPDATE user SET is_active = ? WHERE id = ?`,
     [isActive ? 1 : 0, userId]
@@ -283,8 +307,10 @@ export function updateUserActiveStatus(
 // ------------------------------------------------------------
 export function resetUserPassword(
   userId: number,
-  tempPasswordHash: string
+  tempPasswordHash: string,
+  adminUserId?: number
 ): void {
+  verifierPrivilegeAdmin(adminUserId);
   db.runSync(
     `UPDATE user
      SET password_hash = ?,
@@ -297,7 +323,8 @@ export function resetUserPassword(
 // ------------------------------------------------------------
 // deleteUserAndData : Supprime un utilisateur et l'ensemble de ses données
 // ------------------------------------------------------------
-export function deleteUserAndData(userId: number): void {
+export function deleteUserAndData(userId: number, adminUserId?: number): void {
+  verifierPrivilegeAdmin(adminUserId);
   // Les contraintes ON DELETE CASCADE suppriment automatiquement
   // produits, achats, budgets et logs rattachés à cet utilisateur
   db.runSync(`DELETE FROM user WHERE id = ?`, [userId]);
@@ -760,7 +787,11 @@ export function getPointsSettings(): PointsSettings {
   );
 }
 
-export function updatePointsSettings(settings: PointsSettings): void {
+export function updatePointsSettings(
+  settings: PointsSettings,
+  adminUserId?: number
+): void {
+  verifierPrivilegeAdmin(adminUserId);
   db.runSync(
     `UPDATE reglages_points
      SET points_categorie_respectee = ?,
@@ -888,7 +919,8 @@ export function logAlerte(
 // SECTION G — SUPERVISION ADMINISTRATEUR (Totaux anonymes UNIQUEMENT)
 // ============================================================
 
-export function getAdminGlobalStats(): AdminGlobalStats {
+export function getAdminGlobalStats(adminUserId?: number): AdminGlobalStats {
+  verifierPrivilegeAdmin(adminUserId);
   const usersCount = db.getFirstSync<{ total: number; actifs: number }>(`
     SELECT
       COUNT(*) as total,
@@ -922,7 +954,8 @@ export function getAdminGlobalStats(): AdminGlobalStats {
   };
 }
 
-export function getAllUsersAdmin(): Utilisateur[] {
+export function getAllUsersAdmin(adminUserId?: number): Utilisateur[] {
+  verifierPrivilegeAdmin(adminUserId);
   const rows = db.getAllSync<any>(
     `SELECT id, name as nom, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel, langue, created_at
      FROM user
@@ -945,11 +978,19 @@ export function getAllUsersAdmin(): Utilisateur[] {
   }));
 }
 
-export function addCategoryAdmin(nom: string, icone: string, pct: number, theme: string): number {
+export function addCategoryAdmin(
+  nom: string,
+  icone: string,
+  pct: number,
+  theme: string,
+  type: 'product' | 'expense' = 'product',
+  adminUserId?: number
+): number {
+  verifierPrivilegeAdmin(adminUserId);
   const res = db.runSync(
-    `INSERT INTO categories (nom, icone, pourcentage_defaut, est_defaut, est_visible, est_systeme, theme)
-     VALUES (?, ?, ?, 0, 1, 0, ?)`,
-    [nom.trim(), icone.trim() || '📦', pct, theme.trim() || 'Divers']
+    `INSERT INTO category (name_key, type, icon, default_percent, is_default, is_active, is_system, theme)
+     VALUES (?, ?, ?, ?, 0, 1, 0, ?)`,
+    [nom.trim(), type, icone.trim() || '📦', pct, theme.trim() || 'Divers']
   );
   return res.lastInsertRowId;
 }
@@ -959,14 +1000,43 @@ export function updateCategoryAdmin(
   nom: string,
   icone: string,
   pct: number,
-  isVisible: boolean
+  isVisible: boolean,
+  type: 'product' | 'expense' = 'product',
+  adminUserId?: number
 ): void {
+  verifierPrivilegeAdmin(adminUserId);
   db.runSync(
-    `UPDATE categories
-     SET nom = ?, icone = ?, pourcentage_defaut = ?, est_visible = ?
+    `UPDATE category
+     SET name_key = ?, type = ?, icon = ?, default_percent = ?, is_active = ?
      WHERE id = ?`,
-    [nom.trim(), icone.trim(), pct, isVisible ? 1 : 0, id]
+    [nom.trim(), type, icone.trim(), pct, isVisible ? 1 : 0, id]
   );
+}
+
+// ------------------------------------------------------------
+// addUserCustomCategory : Permet à un utilisateur de créer sa propre catégorie
+//                         avec le type 'product' ou 'expense'
+// ------------------------------------------------------------
+export function addUserCustomCategory(
+  userId: number,
+  nom: string,
+  icone: string,
+  type: 'product' | 'expense' = 'product',
+  theme: string = 'Personnalisé'
+): number {
+  const nomClean = nom.trim();
+  const res = db.runSync(
+    `INSERT INTO category (name_key, type, icon, default_percent, is_default, is_active, is_system, theme)
+     VALUES (?, ?, ?, 0, 0, 1, 0, ?)`,
+    [nomClean, type, icone.trim() || '🏷️', theme.trim() || 'Personnalisé']
+  );
+  const newCatId = res.lastInsertRowId;
+  // Active immédiatement la catégorie pour cet utilisateur
+  db.runSync(
+    `INSERT OR IGNORE INTO user_category (user_id, category_id, enabled) VALUES (?, ?, 1)`,
+    [userId, newCatId]
+  );
+  return newCatId;
 }
 
 export function updateBudget(utilisateurId: number, budget: number): void {

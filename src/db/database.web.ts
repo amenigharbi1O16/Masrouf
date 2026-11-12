@@ -416,6 +416,63 @@ export const db = {
       return { lastInsertRowId: id, changes: 1 };
     }
 
+    // INSERT INTO CATEGORY
+    if (s.includes('INSERT INTO CATEGORY') || s.includes('INSERT INTO CATEGORIES')) {
+      const [nom, typeOrIcon, iconOrPct, pctOrTheme, theme] = params;
+      let nameKey = nom;
+      let catType: 'product' | 'expense' = 'product';
+      let icon = '📦';
+      let defPct = 0;
+      let th = 'Divers';
+
+      if (params.length === 5) {
+        catType = typeOrIcon === 'expense' ? 'expense' : 'product';
+        icon = iconOrPct || '📦';
+        defPct = pctOrTheme || 0;
+        th = theme || 'Divers';
+      } else {
+        icon = typeOrIcon || '📦';
+        defPct = iconOrPct || 0;
+        th = pctOrTheme || 'Divers';
+      }
+
+      const id = (store.category.length > 0 ? Math.max(...store.category.map((c) => c.id)) : 0) + 1;
+      store.category.push({
+        id,
+        name_key: nameKey,
+        type: catType,
+        icon,
+        default_percent: defPct,
+        is_default: 0,
+        is_active: 1,
+        is_system: 0,
+        theme: th,
+      });
+      store.sauvegarder();
+      return { lastInsertRowId: id, changes: 1 };
+    }
+
+    // UPDATE CATEGORY
+    if (s.includes('UPDATE CATEGORY') || s.includes('UPDATE CATEGORIES')) {
+      const id = params[params.length - 1];
+      const cat = store.category.find((c) => c.id === id);
+      if (cat) {
+        cat.name_key = params[0];
+        if (params.length >= 6) {
+          cat.type = params[1] === 'expense' ? 'expense' : 'product';
+          cat.icon = params[2];
+          cat.default_percent = params[3];
+          cat.is_active = params[4];
+        } else {
+          cat.icon = params[1];
+          cat.default_percent = params[2];
+          cat.is_active = params[3];
+        }
+        store.sauvegarder();
+      }
+      return { lastInsertRowId: 0, changes: 1 };
+    }
+
     // DELETE FROM USER
     if (s.includes('DELETE FROM USER')) {
       const [id] = params;

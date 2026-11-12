@@ -48,9 +48,9 @@ export default function AdminUtilisateursScreen() {
   const [utilisateurs, setUtilisateurs] = useState<Utilisateur[]>([]);
 
   const recharger = useCallback(() => {
-    const list = getAllUsersAdmin();
+    const list = getAllUsersAdmin(adminConnecte?.id);
     setUtilisateurs(list);
-  }, []);
+  }, [adminConnecte?.id]);
 
   useFocusEffect(recharger);
 
@@ -74,7 +74,7 @@ export default function AdminUtilisateursScreen() {
     }
 
     const nouveauStatut = u.is_active === 1 ? false : true;
-    updateUserActiveStatus(u.id, nouveauStatut);
+    updateUserActiveStatus(u.id, nouveauStatut, adminConnecte.id);
     recharger();
 
     Alert.alert(
@@ -90,7 +90,7 @@ export default function AdminUtilisateursScreen() {
     const mdpTemporaire = generateTemporaryPassword(8);
     const hash = await createPasswordHash(mdpTemporaire);
 
-    resetUserPassword(u.id, hash);
+    resetUserPassword(u.id, hash, adminConnecte?.id);
     recharger();
 
     Alert.alert(
@@ -127,7 +127,7 @@ export default function AdminUtilisateursScreen() {
           text: t('supprimer_compte'),
           style: 'destructive',
           onPress: () => {
-            deleteUserAndData(u.id);
+            deleteUserAndData(u.id, adminConnecte.id);
             recharger();
             Alert.alert('Compte supprimé', `Le compte ${u.email} a été supprimé.`);
           },
