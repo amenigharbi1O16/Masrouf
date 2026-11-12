@@ -36,6 +36,7 @@ function NavigationGuard() {
     const estSurLogin = premierSegment === 'login';
     const estSurInscription = premierSegment === 'inscription';
     const estSurChangerMdp = premierSegment === 'changer-mot-de-passe';
+    const estSurOnboarding = premierSegment === 'onboarding';
     const estSurTabs = premierSegment === '(tabs)';
     const estSurAdmin = premierSegment === '(admin)';
 
@@ -57,8 +58,16 @@ function NavigationGuard() {
 
     // CAS 3 : UTILISATEUR NORMAL (rôle 'user')
     if (user.role === 'user') {
-      // Bloque l'accès à l'espace admin et aux pages d'auth
-      if (estSurAdmin || estSurLogin || estSurInscription || estSurChangerMdp) {
+      // 3a. Onboarding non complété -> redirection forcée vers l'assistant
+      if ((user.onboarding_done ?? 0) === 0) {
+        if (!estSurOnboarding) {
+          router.replace('/onboarding' as any);
+        }
+        return;
+      }
+
+      // 3b. Onboarding déjà complété -> Bloque l'accès à l'espace admin, onboarding et pages d'auth
+      if (estSurAdmin || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
         router.replace('/(tabs)');
       }
       return;
@@ -67,7 +76,7 @@ function NavigationGuard() {
     // CAS 4 : ADMINISTRATEUR (rôle 'admin')
     if (user.role === 'admin') {
       // Bloque l'accès aux onglets utilisateurs et aux pages d'auth
-      if (estSurTabs || estSurLogin || estSurInscription || estSurChangerMdp) {
+      if (estSurTabs || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
         router.replace('/(admin)/dashboard' as any);
       }
       return;
@@ -107,6 +116,7 @@ export default function RootLayout() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="inscription" options={{ headerShown: false }} />
         <Stack.Screen name="changer-mot-de-passe" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
 
         {/* Espace Utilisateur (Tabs) */}
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
