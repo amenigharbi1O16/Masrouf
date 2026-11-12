@@ -30,10 +30,12 @@ import { router, useFocusEffect } from 'expo-router';
 // Fonctions SQLite pour charger les produits réels
 import { getAllProduits, Produit } from '../../db/queries';
 
-// Système de traduction
+// Système de traduction et Authentification
+import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
 
 export default function ProduitsScreen() {
+  const { user } = useAuth();
   // Récupération de la fonction de traduction 't'
   const { t } = useTranslation();
 
@@ -50,9 +52,9 @@ export default function ProduitsScreen() {
   useFocusEffect(
     useCallback(() => {
       // Exécute la requête SELECT dans la base SQLite locale
-      const donnees = getAllProduits();
+      const donnees = getAllProduits(user?.id);
       setProduits(donnees);
-    }, [])
+    }, [user?.id])
   );
 
   // ----------------------------------------------------------

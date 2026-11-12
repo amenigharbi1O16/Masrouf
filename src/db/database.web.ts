@@ -473,6 +473,15 @@ export const db = {
       return { lastInsertRowId: 0, changes: 1 };
     }
 
+    // DELETE FROM PRODUCT
+    if (s.includes('DELETE FROM PRODUCT')) {
+      const [id] = params;
+      store.product = store.product.filter((p) => p.id !== id);
+      store.purchase = store.purchase.filter((p) => p.product_id !== id);
+      store.sauvegarder();
+      return { lastInsertRowId: 0, changes: 1 };
+    }
+
     // DELETE FROM USER
     if (s.includes('DELETE FROM USER')) {
       const [id] = params;

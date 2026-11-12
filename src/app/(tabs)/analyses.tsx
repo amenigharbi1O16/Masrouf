@@ -28,7 +28,10 @@ import {
   getTotalMois,
   getTotalMoisPrecedent,
   getDepensesParCategorie,
+  getTotalPoints,
+  getPointsSettings,
   DepenseParCategorie,
+  PointsSettings,
 } from '../../db/queries';
 
 // Contexte et internationalisation
@@ -49,6 +52,8 @@ export default function AnalysesScreen() {
   const [totalMois, setTotalMois] = useState<number>(0);
   const [totalPrecedent, setTotalPrecedent] = useState<number>(0);
   const [categories, setCategories] = useState<DepenseParCategorie[]>([]);
+  const [pointsTotal, setPointsTotal] = useState<number>(0);
+  const [pointsSettings, setPointsSettings] = useState<PointsSettings | null>(null);
 
   // Palette de couleurs pour différencier les catégories dans les barres
   const couleurs = ['#2563EB', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
@@ -70,15 +75,44 @@ export default function AnalysesScreen() {
         // 3. Répartition des dépenses groupées par catégorie
         const catData = getDepensesParCategorie(user.id, moisCourant);
         setCategories(catData);
+
+        // 4. Points et Gamification
+        const pts = getTotalPoints(user.id);
+        setPointsTotal(pts);
+        const s = getPointsSettings();
+        setPointsSettings(s);
       }
     }, [user, moisCourant])
   );
 
   // ----------------------------------------------------------
-  // CALCULS STATISTIQUES COMPARATIFS
+  // CALCULS STATISTIQUES COMPARATIFS ET NIVEAUX
   // ----------------------------------------------------------
   const difference = totalMois - totalPrecedent;
   const aEconomise = difference <= 0;
+
+  const seuilEco = pointsSettings?.seuil_econome ?? 100;
+  const seuilExp = pointsSettings?.seuil_expert ?? 300;
+
+  let niveauNom = t('niveau_debutant') ?? 'Débutant';
+  let niveauIcone = '🌱';
+  let progressionPct = 0;
+  let messageProchainNiveau = '';
+
+  if (pointsTotal >= seuilExp) {
+    niveauNom = t('niveau_expert') ?? 'Expert';
+    niveauIcone = '🏆';
+    progressionPct = 100;
+    messageProchainNiveau = 'Félicitations ! Vous avez atteint le rang suprême d\'Expert budgétaire.';
+  } else if (pointsTotal >= seuilEco) {
+    niveauNom = t('niveau_econome') ?? 'Économe';
+    niveauIcone = '💰';
+    progressionPct = Math.min(100, Math.round(((pointsTotal - seuilEco) / (seuilExp - seuilEco)) * 100));
+    messageProchainNiveau = `Plus que ${seuilExp - pointsTotal} points pour atteindre le rang Expert !`;
+  } else {
+    progressionPct = Math.min(100, Math.round((pointsTotal / seuilEco) * 100));
+    messageProchainNiveau = `Plus que ${seuilEco - pointsTotal} points pour débloquer le rang Économe !`;
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
@@ -186,6 +220,36 @@ export default function AnalysesScreen() {
             Les comparaisons apparaîtront dès le deuxième mois d'utilisation.
           </Text>
         )}
+      </View>
+
+      {/* ==================================================== */}
+      {/* CARTE 4 : PERFORMANCE ET GAMIFICATION                */}
+      {/* ==================================================== */}
+      <View style={styles.card}>
+        <View style={styles.gamificationHeader}>
+          <Text style={styles.cardTitle}>🎯 Progression & Niveau</Text>
+          <View style={styles.badgePill}>
+            <Text style={{ fontSize: 16 }}>{niveauIcone}</Text>
+            <Text style={styles.badgePillText}>{niveauNom}</Text>
+          </View>
+        </View>
+
+        <View style={styles.pointsRow}>
+          <Text style={styles.pointsBig}>{pointsTotal}</Text>
+          <Text style={styles.pointsUnit}>{t('points') ?? 'points'}</Text>
+        </View>
+
+        {/* Barre de progression vers le niveau supérieur */}
+        <View style={styles.levelProgressTrack}>
+          <View
+            style={[
+              styles.levelProgressFill,
+              { width: `${progressionPct}%` },
+            ]}
+          />
+        </View>
+
+        <Text style={styles.nextLevelNotice}>{messageProchainNiveau}</Text>
       </View>
     </ScrollView>
   );
@@ -335,5 +399,61 @@ const styles = StyleSheet.create({
     color: '#991B1B',
     fontWeight: '700',
     fontSize: 13,
+  },
+  gamificationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  badgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgePillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  pointsRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    marginVertical: 6,
+  },
+  pointsBig: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  pointsUnit: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  levelProgressTrack: {
+    height: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  levelProgressFill: {
+    height: '100%',
+    backgroundColor: '#2563EB',
+    borderRadius: 4,
+  },
+  nextLevelNotice: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 16,
   },
 });

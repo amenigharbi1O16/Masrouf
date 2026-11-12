@@ -17,7 +17,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 // Fonctions SQLite
 import {
@@ -25,6 +25,9 @@ import {
   getAllMagasins,
   getAllCategories,
   insertAchat,
+  getEnveloppesBudget,
+  hasAlerteBeenShown,
+  logAlerte,
   Produit,
   Magasin,
   Categorie,
@@ -37,6 +40,7 @@ import { useTranslation } from '../utils/i18n';
 export default function NouvelAchatScreen() {
   const { user } = useAuth();
   const { t } = useTranslation();
+  const { produitId } = useLocalSearchParams<{ produitId?: string }>();
 
   // Listes de référence chargées depuis SQLite
   const [produits, setProduits] = useState<Produit[]>([]);
@@ -66,7 +70,16 @@ export default function NouvelAchatScreen() {
 
     if (m.length > 0) setMagasinIdChoisi(m[0].id);
     if (c.length > 0) setCategorieIdChoisie(c[0].id);
-  }, [user]);
+
+    // Pré-sélectionne le produit si passé en paramètre URL (ex: depuis la fiche produit)
+    if (produitId) {
+      const prod = p.find((item) => item.id === Number(produitId));
+      if (prod) {
+        setProduitChoisi(prod);
+        setModeSaisie('produit');
+      }
+    }
+  }, [user, produitId]);
 
   const pUnit = parseFloat(prixUnitaire) || 0;
   const qte = parseFloat(quantite) || 0;
@@ -121,6 +134,37 @@ export default function NouvelAchatScreen() {
       mois: mois,
       notes: notes.trim(),
     });
+
+    // --------------------------------------------------------
+    // CONTRÔLE BUDGÉTAIRE ET DÉTECTION DES SEUILS D'ALERTE
+    // --------------------------------------------------------
+    if (catId) {
+      const envs = getEnveloppesBudget(user.id, mois);
+      const envModifiee = envs.find((e) => e.categorie_id === catId);
+      if (envModifiee) {
+        if (envModifiee.pourcentage_consomme >= 100) {
+          if (!hasAlerteBeenShown(user.id, mois, catId, 100)) {
+            logAlerte(user.id, mois, catId, 100);
+            Alert.alert(
+              t('alerte_100_titre'),
+              `${t('alerte_100_msg')} ${envModifiee.categorie_nom} (${envModifiee.montant_depense.toFixed(2)} / ${envModifiee.montant_alloue.toFixed(2)} TND).`,
+              [{ text: 'OK', onPress: () => router.back() }]
+            );
+            return;
+          }
+        } else if (envModifiee.pourcentage_consomme >= 80) {
+          if (!hasAlerteBeenShown(user.id, mois, catId, 80)) {
+            logAlerte(user.id, mois, catId, 80);
+            Alert.alert(
+              t('alerte_80_titre'),
+              `${t('alerte_80_msg')} ${envModifiee.categorie_nom} (${envModifiee.montant_depense.toFixed(2)} / ${envModifiee.montant_alloue.toFixed(2)} TND).`,
+              [{ text: 'OK', onPress: () => router.back() }]
+            );
+            return;
+          }
+        }
+      }
+    }
 
     router.back();
   }

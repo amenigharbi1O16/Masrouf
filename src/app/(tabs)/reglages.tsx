@@ -28,7 +28,12 @@ import {
 import { router } from 'expo-router';
 
 // Fonctions SQLite
-import { updateLangue } from '../../db/queries';
+import {
+  updateBudget,
+  updateLangue,
+  getTotalPoints,
+  getPointsSettings,
+} from '../../db/queries';
 
 // Contexte et internationalisation
 import { useAuth } from '../../utils/auth';
@@ -38,9 +43,46 @@ export default function ReglagesScreen() {
   const { user, updateUser, changePassword, logout } = useAuth();
   const { t, langue, changerLangue } = useTranslation();
 
+  const [budgetInput, setBudgetInput] = useState('');
+  const [messageBudget, setMessageBudget] = useState('');
+  const [pointsTotal, setPointsTotal] = useState<number>(0);
+  const [niveauBadge, setNiveauBadge] = useState<string>('🌱 Débutant');
+
   const [nouveauMdp, setNouveauMdp] = useState('');
   const [confirmationMdp, setConfirmationMdp] = useState('');
   const [messageSucces, setMessageSucces] = useState('');
+
+  React.useEffect(() => {
+    if (user) {
+      setBudgetInput(user.budget_mensuel > 0 ? String(user.budget_mensuel) : '');
+      const pts = getTotalPoints(user.id);
+      setPointsTotal(pts);
+      const s = getPointsSettings();
+      if (pts >= s.seuil_expert) {
+        setNiveauBadge(`🏆 ${t('niveau_expert') ?? 'Expert'}`);
+      } else if (pts >= s.seuil_econome) {
+        setNiveauBadge(`💰 ${t('niveau_econome') ?? 'Économe'}`);
+      } else {
+        setNiveauBadge(`🌱 ${t('niveau_debutant') ?? 'Débutant'}`);
+      }
+    }
+  }, [user, t]);
+
+  // ----------------------------------------------------------
+  // MODIFICATION DU BUDGET MENSUEL GLOBAL
+  // ----------------------------------------------------------
+  function handleSauvegarderBudget() {
+    if (!user) return;
+    const montant = parseFloat(budgetInput);
+    if (isNaN(montant) || montant <= 0) {
+      Alert.alert('Erreur', 'Veuillez saisir un montant de budget valide.');
+      return;
+    }
+    updateBudget(user.id, montant);
+    updateUser({ budget_mensuel: montant });
+    setMessageBudget('Budget mensuel mis à jour avec succès !');
+    setTimeout(() => setMessageBudget(''), 3000);
+  }
 
   // ----------------------------------------------------------
   // CHANGEMENT DE MOT DE PASSE UTILISATEUR
@@ -78,6 +120,30 @@ export default function ReglagesScreen() {
       {/* SECTION 1 : GESTION DES ENVELOPPES DU BUDGET */}
       <Text style={styles.sectionTitle}>{t('budget_enveloppes')}</Text>
       <View style={styles.card}>
+        <Text style={styles.label}>{t('fixer_budget')} (TND) :</Text>
+        <TextInput
+          style={styles.input}
+          keyboardType="numeric"
+          placeholder="Ex: 800"
+          placeholderTextColor="#94A3B8"
+          value={budgetInput}
+          onChangeText={setBudgetInput}
+        />
+        {messageBudget ? (
+          <View style={styles.successBox}>
+            <Text style={styles.successText}>✅ {messageBudget}</Text>
+          </View>
+        ) : null}
+        <TouchableOpacity
+          style={styles.savePasswordBtn}
+          onPress={handleSauvegarderBudget}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.savePasswordBtnText}>{t('sauvegarder')}</Text>
+        </TouchableOpacity>
+
+        <View style={{ height: 1, backgroundColor: '#E2E8F0', marginVertical: 14 }} />
+
         <Text style={styles.label}>
           Configurez vos enveloppes « Masrouf [Catégorie] » et vos pourcentages :
         </Text>
@@ -212,6 +278,14 @@ export default function ReglagesScreen() {
             <Text style={styles.profileEmail}>{user?.email}</Text>
             <Text style={styles.profileRole}>Rôle : Utilisateur Personnel</Text>
           </View>
+        </View>
+
+        {/* Badge de Gamification & Points */}
+        <View style={styles.profileGamificationBox}>
+          <Text style={styles.profileBadgeText}>{niveauBadge}</Text>
+          <Text style={styles.profilePointsText}>
+            {pointsTotal} {t('points') ?? 'points'}
+          </Text>
         </View>
 
         <TouchableOpacity
@@ -387,5 +461,27 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     fontWeight: '700',
     fontSize: 13,
+  },
+  profileGamificationBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 14,
+  },
+  profileBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  profilePointsText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#2563EB',
   },
 });

@@ -35,6 +35,7 @@ import {
   getTotalMois,
   getRecentAchats,
   getEnveloppesBudget,
+  getMonthlyBudget,
   getNonBudgetedDepenses,
   getTotalPoints,
   getPointsSettings,
@@ -64,6 +65,7 @@ export default function HomeScreen() {
   const [nonBudgetise, setNonBudgetise] = useState<number>(0);
   const [totalPoints, setTotalPoints] = useState<number>(0);
   const [niveauLabel, setNiveauLabel] = useState<string>('Débutant');
+  const [budgetTotalMois, setBudgetTotalMois] = useState<number>(0);
 
   // ----------------------------------------------------------
   // CHARGEMENT ET RECHARGEMENT DES DONNÉES
@@ -88,6 +90,11 @@ export default function HomeScreen() {
     const total = getTotalMois(user.id, moisCourant);
     setTotalDepense(total);
     setAchatsRecents(getRecentAchats(user.id, moisCourant));
+
+    // 2b. Budget total du mois (synchronisé avec les enveloppes ou les réglages)
+    const mb = getMonthlyBudget(user.id, moisCourant);
+    const bTot = (user.budget_mensuel && user.budget_mensuel > 0) ? user.budget_mensuel : (mb?.montant_total ?? 0);
+    setBudgetTotalMois(bTot);
 
     // 3. Enveloppes du mois
     const envs = getEnveloppesBudget(user.id, moisCourant);
@@ -135,7 +142,7 @@ export default function HomeScreen() {
 
   useFocusEffect(rechargerDonnees);
 
-  const budgetTotal = user?.budget_mensuel ?? 0;
+  const budgetTotal = budgetTotalMois > 0 ? budgetTotalMois : (user?.budget_mensuel ?? 0);
   const ratioGlobal = budgetTotal > 0 ? (totalDepense / budgetTotal) * 100 : 0;
   const largeurBarreGlobale = Math.min(ratioGlobal, 100);
 

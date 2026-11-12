@@ -547,6 +547,53 @@ export function resetUserPassword(
     return result.lastInsertRowId;
   }
 
+  // ------------------------------------------------------------
+  // deleteProduit : Supprime un produit du catalogue.
+  // Paramètre mode :
+  //   - 'reassign' (défaut) : Transforme les achats existants en dépenses directes
+  //     pour conserver l'historique financier et ne pas fausser le budget du mois.
+  //   - 'cascade' : Supprime définitivement le produit et tous les tickets rattachés.
+  // ------------------------------------------------------------
+  export function deleteProduit(
+    produitId: number,
+    mode: 'reassign' | 'cascade' = 'reassign'
+  ): void {
+    const p = getProduitById(produitId);
+    if (!p) return;
+
+    if (mode === 'reassign') {
+      const catAutres = db.getFirstSync<{ id: number }>(
+        `SELECT id FROM category WHERE name_key = 'Autres' OR is_system = 1 LIMIT 1`
+      );
+      const catFallbackId = p.categorie_id || (catAutres?.id ?? 9);
+
+      // Convertit les achats de ce produit en dépenses directes
+      const achatsExistants = db.getAllSync<any>(
+        `SELECT * FROM purchase WHERE product_id = ?`,
+        [produitId]
+      );
+
+      for (const a of achatsExistants) {
+        db.runSync(
+          `INSERT INTO expense (user_id, category_id, amount, label, date, month, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            a.user_id,
+            catFallbackId,
+            a.price * a.quantity,
+            `${p.nom} (produit supprimé)`,
+            a.date,
+            a.month,
+            a.notes ?? '',
+          ]
+        );
+      }
+    }
+
+    // Supprime le produit dans SQLite (les lignes purchase restantes sont supprimées par cascade)
+    db.runSync(`DELETE FROM product WHERE id = ?`, [produitId]);
+  }
+
   // ============================================================
   // SECTION D — CATEGORIES ET MAGASINS
   // ============================================================

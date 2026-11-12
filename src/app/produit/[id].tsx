@@ -22,6 +22,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 
@@ -29,6 +30,7 @@ import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import {
   getProduitById,
   getAchatsByProduit,
+  deleteProduit,
   Produit,
   Achat,
 } from '../../db/queries';
@@ -85,6 +87,38 @@ export default function FicheProduitScreen() {
     // Calcul de la moyenne des prix unitaires
     const somme = historique.reduce((sum, a) => sum + a.prix_unitaire, 0);
     prixMoyen = somme / historique.length;
+  }
+
+  // ----------------------------------------------------------
+  // SUPPRESSION DU PRODUIT AVEC GESTION DES ACHATS ASSOCIES
+  // ----------------------------------------------------------
+  function handleSupprimerProduit() {
+    if (!produit) return;
+
+    Alert.alert(
+      'Supprimer ce produit',
+      `Que souhaitez-vous faire des ${historique.length} achat(s) associés à « ${produit.nom} » ?`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Conserver les dépenses (Recommandé)',
+          onPress: () => {
+            deleteProduit(produit.id, 'reassign');
+            Alert.alert('Succès', 'Produit supprimé. Les dépenses ont été conservées dans le budget.');
+            router.back();
+          },
+        },
+        {
+          text: 'Tout supprimer',
+          style: 'destructive',
+          onPress: () => {
+            deleteProduit(produit.id, 'cascade');
+            Alert.alert('Supprimé', 'Le produit et son historique ont été définitivement effacés.');
+            router.back();
+          },
+        },
+      ]
+    );
   }
 
   if (!produit) {
@@ -178,6 +212,32 @@ export default function FicheProduitScreen() {
           </View>
         ))
       )}
+
+      {/* ==================================================== */}
+      {/* SECTION 4 : ACTIONS SUR LE PRODUIT                   */}
+      {/* ==================================================== */}
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity
+          style={styles.addPurchaseBtn}
+          onPress={() =>
+            router.push({
+              pathname: '/nouvel-achat',
+              params: { produitId: String(produit.id) },
+            })
+          }
+          activeOpacity={0.8}
+        >
+          <Text style={styles.addPurchaseBtnText}>➕ {t('ajouter_achat')}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.deleteProductBtn}
+          onPress={handleSupprimerProduit}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.deleteProductBtnText}>🗑️ Supprimer le produit</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* ==================================================== */}
       {/* BOUTON RETOUR                                        */}
@@ -373,5 +433,37 @@ const styles = StyleSheet.create({
     color: '#334155',
     fontWeight: '700',
     fontSize: 14,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  addPurchaseBtn: {
+    flex: 1,
+    backgroundColor: '#2563EB',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  addPurchaseBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  deleteProductBtn: {
+    flex: 1,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  deleteProductBtnText: {
+    color: '#DC2626',
+    fontWeight: '700',
+    fontSize: 13,
   },
 });

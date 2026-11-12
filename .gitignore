@@ -60,3 +60,4 @@ RAPPORT_PROJET.md
 *.md
 !README.md
 !docs/EXPLICATIONS.md
+!docs/SCHEMA.md
