@@ -36,7 +36,7 @@ import { useTranslation, Langue } from '../../utils/i18n';
 
 export default function ReglagesScreen() {
   const { user, updateUser, changePassword, logout } = useAuth();
-  const { t, langue } = useTranslation();
+  const { t, langue, changerLangue } = useTranslation();
 
   const [nouveauMdp, setNouveauMdp] = useState('');
   const [confirmationMdp, setConfirmationMdp] = useState('');
@@ -66,11 +66,10 @@ export default function ReglagesScreen() {
   }
 
   // ----------------------------------------------------------
-  // BASCULE DE LANGUE
+  // BASCULE DE LANGUE (FR, AR, EN)
   // ----------------------------------------------------------
   function handleChangerLangue(nouvelleLangue: Langue) {
-    if (!user) return;
-    updateLangue(user.id, nouvelleLangue);
+    changerLangue(nouvelleLangue);
     updateUser({ langue: nouvelleLangue });
   }
 
@@ -129,8 +128,8 @@ export default function ReglagesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* SECTION 3 : LANGUE */}
-      <Text style={styles.sectionTitle}>{t('langue')} / اللغة</Text>
+      {/* SECTION 3 : LANGUE (FR / AR / EN) */}
+      <Text style={styles.sectionTitle}>{t('langue')} / Language / اللغة</Text>
       <View style={styles.card}>
         <View style={styles.languageRow}>
           <TouchableOpacity
@@ -164,6 +163,23 @@ export default function ReglagesScreen() {
               ]}
             >
               🇸🇦 عربي
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.langBtn,
+              langue === 'en' ? styles.langBtnActive : styles.langBtnInactive,
+            ]}
+            onPress={() => handleChangerLangue('en')}
+          >
+            <Text
+              style={[
+                styles.langBtnText,
+                langue === 'en' && styles.langBtnTextActive,
+              ]}
+            >
+              🇬🇧 English
             </Text>
           </TouchableOpacity>
         </View>

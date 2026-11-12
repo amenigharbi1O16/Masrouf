@@ -1,92 +1,164 @@
 // ============================================================
 // FICHIER : src/utils/i18n.ts
-// RÔLE    : Système de traduction (internationalisation) de l'app.
-//           Charge le bon fichier JSON selon la langue choisie
-//           par l'utilisateur (français ou arabe).
+// RÔLE    : Système complet de traduction et d'internationalisation.
+//           Supporte 3 langues : Français (FR), Arabe (AR), Anglais (EN).
 //
-// CONCEPT "RESSOURCES AVEC QUALIFICATEURS" :
-//   fr.json = ressource qualifiée pour la langue FRANÇAISE
-//   ar.json = ressource qualifiée pour la langue ARABE
-//   On charge la bonne ressource selon le qualificateur "langue".
+// CONCEPTS CLÉS :
+//   1. Ressources avec qualificatifs :
+//      - fr.json : ressource qualifiée pour le Français (langue de secours par défaut)
+//      - ar.json : ressource qualifiée pour l'Arabe (RTL - droite à gauche)
+//      - en.json : ressource qualifiée pour l'Anglais (LTR - gauche à droite)
 //
-// UTILISATION DANS LES ÉCRANS :
-//   const { t } = useTranslation();
-//   <Text>{t('budget_du_mois')}</Text>
-//   → Affiche "Budget du mois" si langue = 'fr'
-//   → Affiche "ميزانية الشهر"  si langue = 'ar'
+//   2. Langue de secours stricte (Fallback) :
+//      Si une clé de traduction est absente dans la langue choisie (ex: anglais ou arabe),
+//      le système affiche TOUJOURS la traduction française correspondante,
+//      jamais une clé brute ou un texte vide.
+//
+//   3. Persistance de la langue :
+//      - Utilisateur connecté : enregistrée dans la table SQLite 'user' (colonne langue).
+//      - Avant connexion : enregistrée dans le stockage persistant (SecureStore / localStorage).
+//
+//   4. Gestion du sens de lecture :
+//      - 'ar' => RTL (Right-To-Left via I18nManager.forceRTL)
+//      - 'fr' et 'en' => LTR (Left-To-Right)
 // ============================================================
 
-// Importation des deux fichiers de ressources (qualifiés par langue)
-// Chaque fichier JSON est un objet clé → valeur traduite
+import { useState, useEffect } from 'react';
+import { I18nManager, Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+
+// Importation des 3 fichiers de ressources de traduction
 import fr from '../i18n/fr.json';
 import ar from '../i18n/ar.json';
+import en from '../i18n/en.json';
 
-// ----------------------------------------------------------------
-// TYPE : définit les langues supportées par l'application
-// 'fr' = Français  |  'ar' = Arabe
-// ----------------------------------------------------------------
-export type Langue = 'fr' | 'ar';
+// Contexte et fonctions de base de données
+import { useAuth } from './auth';
+import { updateLangue } from '../db/queries';
 
-// ----------------------------------------------------------------
-// DICTIONNAIRE : contient TOUTES les traductions
-// Structure : { 'fr': { clé: 'valeur en français', ... },
-//              'ar': { clé: 'valeur en arabe', ... } }
-// ----------------------------------------------------------------
-const traductions: Record<Langue, Record<string, string>> = { fr, ar };
+// ------------------------------------------------------------
+// TYPE : Langues supportées par Masrouf
+// ------------------------------------------------------------
+export type Langue = 'fr' | 'ar' | 'en';
 
-// ----------------------------------------------------------------
-// FONCTION translate()
-// RÔLE : Reçoit une clé et une langue, retourne le texte traduit.
-//
-// Paramètres :
-//   cle    = la clé dans le fichier JSON (ex: 'budget_du_mois')
-//   langue = 'fr' ou 'ar'
-//
-// Retourne :
-//   Le texte traduit OU la clé elle-même si la traduction manque
-//   (comportement de secours pour éviter les écrans vides)
-// ----------------------------------------------------------------
+const PRE_LOGIN_LANG_KEY = 'masrouf_langue_pre_login';
+
+// Dictionnaire complet des traductions qualifiées
+const traductions: Record<Langue, Record<string, string>> = { fr, ar, en };
+
+// ------------------------------------------------------------
+// FONCTION : translate
+// RÔLE : Traduit une clé avec langue de secours française garantie.
+// ------------------------------------------------------------
 export function translate(cle: string, langue: Langue): string {
-  // On accède au dictionnaire de la langue choisie
-  // puis on cherche la traduction pour cette clé
-  return traductions[langue]?.[cle] ?? cle;
-  //                            ^^ ?? = "si null/undefined, utilise la valeur de droite"
-  //                                     ici : retourne la clé elle-même comme secours
+  // 1. Recherche dans la langue demandée
+  const texte = traductions[langue]?.[cle];
+  if (texte && texte.trim().length > 0) {
+    return texte;
+  }
+
+  // 2. Repli garanti sur le français
+  const repliFrancais = traductions['fr']?.[cle];
+  if (repliFrancais && repliFrancais.trim().length > 0) {
+    return repliFrancais;
+  }
+
+  // 3. Dernier recours si même le français n'a pas la clé
+  return cle;
 }
 
-// ----------------------------------------------------------------
-// HOOK useTranslation()
-// RÔLE : Un hook React pratique qui lit la langue de l'utilisateur
-//        depuis le contexte Auth et retourne une fonction t().
-//
-// UTILISATION DANS LES ÉCRANS :
-//   const { t, langue } = useTranslation();
-//   <Text>{t('accueil')}</Text>
-//
-// NOTE : Ce hook est défini ICI mais il importe useAuth()
-//        (défini dans auth.ts). React permet cette organisation.
-// ----------------------------------------------------------------
-import { useAuth } from './auth';  // importe le contexte d'authentification
+// ------------------------------------------------------------
+// FONCTION : appliquerDirectionLangue
+// RÔLE : Configure la direction du texte (RTL pour l'arabe, LTR sinon)
+// ------------------------------------------------------------
+export function appliquerDirectionLangue(langue: Langue): void {
+  const isRTL = langue === 'ar';
+  try {
+    if (I18nManager.isRTL !== isRTL) {
+      I18nManager.allowRTL(isRTL);
+      I18nManager.forceRTL(isRTL);
+    }
+  } catch (e) {
+    console.warn('[i18n] Ajustement RTL non supporté sur cette plateforme :', e);
+  }
+}
 
-// Le hook retourne un objet avec :
-//   t()    = fonction de traduction liée à la langue de l'utilisateur
-//   langue = la langue actuelle ('fr' ou 'ar')
+// ------------------------------------------------------------
+// FONCTION : getLanguePreLogin / setLanguePreLogin
+// RÔLE : Mémorisation de la langue avant toute connexion d'un utilisateur
+// ------------------------------------------------------------
+export async function getLanguePreLogin(): Promise<Langue> {
+  try {
+    let val: string | null = null;
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        val = window.localStorage.getItem(PRE_LOGIN_LANG_KEY);
+      }
+    } else {
+      val = await SecureStore.getItemAsync(PRE_LOGIN_LANG_KEY);
+    }
+    if (val === 'fr' || val === 'ar' || val === 'en') {
+      return val;
+    }
+  } catch {}
+  return 'fr';
+}
+
+export async function setLanguePreLogin(langue: Langue): Promise<void> {
+  try {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(PRE_LOGIN_LANG_KEY, langue);
+      }
+    } else {
+      await SecureStore.setItemAsync(PRE_LOGIN_LANG_KEY, langue);
+    }
+  } catch {}
+}
+
+// ------------------------------------------------------------
+// HOOK : useTranslation
+// RÔLE : Fournit t(), la langue active, le booléen isRTL et la fonction
+//        changerLangue() avec synchronisation instantanée SQLite / stockage.
+// ------------------------------------------------------------
 export function useTranslation() {
-  // Récupère l'utilisateur connecté depuis le contexte Auth
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const [langueLocale, setLangueLocale] = useState<Langue>('fr');
 
-  // Détermine la langue : celle de l'utilisateur OU 'fr' par défaut
-  // L'opérateur 'as Langue' indique à TypeScript le type attendu
-  const langue = (user?.langue ?? 'fr') as Langue;
+  useEffect(() => {
+    if (user?.langue) {
+      const l = (user.langue === 'ar' || user.langue === 'en') ? user.langue : 'fr';
+      setLangueLocale(l);
+      appliquerDirectionLangue(l);
+    } else {
+      getLanguePreLogin().then((l) => {
+        setLangueLocale(l);
+        appliquerDirectionLangue(l);
+      });
+    }
+  }, [user?.langue]);
 
-  // Retourne un objet pratique
+  const langueActive: Langue = (
+    user?.langue && (user.langue === 'ar' || user.langue === 'en' || user.langue === 'fr')
+      ? user.langue
+      : langueLocale
+  ) as Langue;
+
+  const changerLangue = async (nouvelleLangue: Langue) => {
+    appliquerDirectionLangue(nouvelleLangue);
+    await setLanguePreLogin(nouvelleLangue);
+    setLangueLocale(nouvelleLangue);
+
+    if (user) {
+      updateLangue(user.id, nouvelleLangue);
+      await refreshUser();
+    }
+  };
+
   return {
-    // t() = raccourci pour translate() pré-configuré avec la langue
-    t: (cle: string) => translate(cle, langue),
-    // langue = exposée pour d'autres besoins (ex: ajuster textAlign en arabe)
-    langue,
-    // isRTL = true si la langue s'écrit de droite à gauche (l'arabe)
-    isRTL: langue === 'ar',
+    t: (cle: string) => translate(cle, langueActive),
+    langue: langueActive,
+    isRTL: langueActive === 'ar',
+    changerLangue,
   };
 }
-

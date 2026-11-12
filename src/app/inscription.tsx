@@ -26,7 +26,7 @@ import { useTranslation } from '../utils/i18n';
 
 export default function InscriptionScreen() {
   const { register } = useAuth();
-  const { t } = useTranslation();
+  const { t, langue, changerLangue } = useTranslation();
 
   const [nom, setNom] = useState('');
   const [email, setEmail] = useState('');
@@ -84,6 +84,49 @@ export default function InscriptionScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* LOGO */}
         <View style={styles.headerBox}>
+          {/* SELECTEUR DE LANGUE RAPIDE (FR / AR / EN) */}
+          <View style={styles.langSwitchRow}>
+            <TouchableOpacity
+              style={[styles.langChip, langue === 'fr' && styles.langChipActive]}
+              onPress={() => changerLangue('fr')}
+            >
+              <Text
+                style={[
+                  styles.langChipText,
+                  langue === 'fr' && styles.langChipTextActive,
+                ]}
+              >
+                FR
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.langChip, langue === 'ar' && styles.langChipActive]}
+              onPress={() => changerLangue('ar')}
+            >
+              <Text
+                style={[
+                  styles.langChipText,
+                  langue === 'ar' && styles.langChipTextActive,
+                ]}
+              >
+                عربي
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.langChip, langue === 'en' && styles.langChipActive]}
+              onPress={() => changerLangue('en')}
+            >
+              <Text
+                style={[
+                  styles.langChipText,
+                  langue === 'en' && styles.langChipTextActive,
+                ]}
+              >
+                EN
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.logoIcon}>📝</Text>
           <Text style={styles.appTitle}>{t('inscription')}</Text>
           <Text style={styles.appSubtitle}>Rejoignez Masrouf pour maîtriser votre budget</Text>
@@ -195,6 +238,36 @@ const styles = StyleSheet.create({
   headerBox: {
     alignItems: 'center',
     marginBottom: 20,
+  },
+  langSwitchRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+    backgroundColor: '#F1F5F9',
+    padding: 4,
+    borderRadius: 20,
+  },
+  langChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 16,
+  },
+  langChipActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  langChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  langChipTextActive: {
+    color: '#2563EB',
+    fontWeight: '800',
   },
   logoIcon: {
     fontSize: 48,

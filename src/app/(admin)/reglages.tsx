@@ -24,7 +24,7 @@ import { updateLangue } from '../../db/queries';
 
 export default function AdminReglagesScreen() {
   const { user, updateUser, changePassword, logout } = useAuth();
-  const { t, langue } = useTranslation();
+  const { t, langue, changerLangue } = useTranslation();
 
   const [nouveauMdp, setNouveauMdp] = useState('');
   const [confirmationMdp, setConfirmationMdp] = useState('');
@@ -54,11 +54,10 @@ export default function AdminReglagesScreen() {
   }
 
   // ----------------------------------------------------------
-  // CHANGEMENT DE LANGUE
+  // CHANGEMENT DE LANGUE (FR / AR / EN)
   // ----------------------------------------------------------
   function handleChangerLangue(nouvelleLangue: Langue) {
-    if (!user) return;
-    updateLangue(user.id, nouvelleLangue);
+    changerLangue(nouvelleLangue);
     updateUser({ langue: nouvelleLangue });
   }
 
@@ -112,8 +111,8 @@ export default function AdminReglagesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* SECTION 3 : LANGUE DE L'INTERFACE */}
-      <Text style={styles.sectionTitle}>{t('langue')} / اللغة</Text>
+      {/* SECTION 3 : LANGUE DE L'INTERFACE (FR / AR / EN) */}
+      <Text style={styles.sectionTitle}>{t('langue')} / Language / اللغة</Text>
       <View style={styles.card}>
         <View style={styles.langRow}>
           <TouchableOpacity
@@ -147,6 +146,23 @@ export default function AdminReglagesScreen() {
               ]}
             >
               🇸🇦 عربي
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.langBtn,
+              langue === 'en' ? styles.langBtnActive : styles.langBtnInactive,
+            ]}
+            onPress={() => handleChangerLangue('en')}
+          >
+            <Text
+              style={[
+                styles.langBtnText,
+                langue === 'en' && styles.langBtnTextActive,
+              ]}
+            >
+              🇬🇧 English
             </Text>
           </TouchableOpacity>
         </View>
