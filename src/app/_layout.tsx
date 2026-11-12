@@ -58,30 +58,30 @@ function NavigationGuard() {
 
     // CAS 3 : UTILISATEUR NORMAL (rôle 'user')
     if (user.role === 'user') {
-      // 3a. Onboarding non complété -> redirection forcée vers l'assistant
-      if ((user.onboarding_done ?? 0) === 0) {
-        if (!estSurOnboarding) {
-          router.replace('/onboarding' as any);
+        // 3a. Onboarding non complété -> redirection forcée vers l'assistant
+        if ((user.onboarding_done ?? 0) === 0) {
+          if (!estSurOnboarding) {
+            router.replace('/onboarding' as any);
+          }
+          return;
+        }
+
+        // 3b. Onboarding déjà complété -> Bloque l'accès à l'espace admin, onboarding et pages d'auth
+        if (estSurAdmin || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
+          router.replace('/(tabs)');
         }
         return;
       }
 
-      // 3b. Onboarding déjà complété -> Bloque l'accès à l'espace admin, onboarding et pages d'auth
-      if (estSurAdmin || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
-        router.replace('/(tabs)');
-      }
-      return;
-    }
-
-    // CAS 4 : ADMINISTRATEUR (rôle 'admin')
-    if (user.role === 'admin') {
-      // Bloque l'accès aux onglets utilisateurs et aux pages d'auth
-      if (estSurTabs || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
-        router.replace('/(admin)/dashboard' as any);
-      }
-      return;
-    }
-  }, [user, isLoading, segments]);
+      // CAS 4 : ADMINISTRATEUR (rôle 'admin')
+      if (user.role === 'admin') {
+        // Bloque l'accès aux onglets utilisateurs et aux pages d'auth
+          if (estSurTabs || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
+            router.replace('/(admin)/dashboard' as any);
+          }
+          return;
+        }
+      }, [user, isLoading, segments]);
 
   // Écran d'attente lors de la restauration de la session matérielle
   if (isLoading) {

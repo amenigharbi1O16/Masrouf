@@ -50,192 +50,192 @@ export default function AdminUtilisateursScreen() {
   const recharger = useCallback(() => {
     const list = getAllUsersAdmin(adminConnecte?.id);
     setUtilisateurs(list);
-  }, [adminConnecte?.id]);
+}, [adminConnecte?.id]);
 
-  useFocusEffect(recharger);
+useFocusEffect(recharger);
 
-  // ----------------------------------------------------------
-  // ACTION 1 : ACTIVER / SUSPENDRE
-  // ----------------------------------------------------------
-  function handleBasculerStatut(u: Utilisateur) {
-    if (!adminConnecte) return;
+// ----------------------------------------------------------
+// ACTION 1 : ACTIVER / SUSPENDRE
+// ----------------------------------------------------------
+function handleBasculerStatut(u: Utilisateur) {
+  if (!adminConnecte) return;
 
-    if (u.id === adminConnecte.id) {
-      Alert.alert('Action refusée', t('impossible_action_soi_meme'));
-      return;
-    }
-
-    if (u.role === 'admin' && u.is_active === 1) {
-      const nbAdminsActifs = countActiveAdmins();
-      if (nbAdminsActifs <= 1) {
-        Alert.alert('Action refusée', t('au_moins_un_admin'));
-        return;
-      }
-    }
-
-    const nouveauStatut = u.is_active === 1 ? false : true;
-    updateUserActiveStatus(u.id, nouveauStatut, adminConnecte.id);
-    recharger();
-
-    Alert.alert(
-      'Statut mis à jour',
-      `Le compte ${u.email} est désormais ${nouveauStatut ? 'Actif' : 'Suspendu'}.`
-    );
+  if (u.id === adminConnecte.id) {
+    Alert.alert('Action refusée', t('impossible_action_soi_meme'));
+    return;
   }
 
-  // ----------------------------------------------------------
-  // ACTION 2 : REINITIALISER LE MOT DE PASSE
-  // ----------------------------------------------------------
-  async function handleReinitialiserMdp(u: Utilisateur) {
-    const mdpTemporaire = generateTemporaryPassword(8);
-    const hash = await createPasswordHash(mdpTemporaire);
-
-    resetUserPassword(u.id, hash, adminConnecte?.id);
-    recharger();
-
-    Alert.alert(
-      t('mdp_temporaire_titre'),
-      `${t('mdp_temporaire_msg')}\n\n🔑 ${mdpTemporaire}\n\n(L'utilisateur sera forcé de le remplacer dès sa prochaine connexion).`
-    );
-  }
-
-  // ----------------------------------------------------------
-  // ACTION 3 : SUPPRIMER DEFINITIVEMENT LE COMPTE
-  // ----------------------------------------------------------
-  function handleSupprimer(u: Utilisateur) {
-    if (!adminConnecte) return;
-
-    if (u.id === adminConnecte.id) {
-      Alert.alert('Action refusée', t('impossible_action_soi_meme'));
+  if (u.role === 'admin' && u.is_active === 1) {
+    const nbAdminsActifs = countActiveAdmins();
+    if (nbAdminsActifs <= 1) {
+      Alert.alert('Action refusée', t('au_moins_un_admin'));
       return;
     }
+  }
 
-    if (u.role === 'admin') {
-      const nbAdminsActifs = countActiveAdmins();
-      if (nbAdminsActifs <= 1) {
-        Alert.alert('Action refusée', t('au_moins_un_admin'));
-        return;
-      }
+  const nouveauStatut = u.is_active === 1 ? false : true;
+  updateUserActiveStatus(u.id, nouveauStatut, adminConnecte.id);
+  recharger();
+
+  Alert.alert(
+    'Statut mis à jour',
+    `Le compte ${u.email} est désormais ${nouveauStatut ? 'Actif' : 'Suspendu'}.`
+  );
+}
+
+// ----------------------------------------------------------
+// ACTION 2 : REINITIALISER LE MOT DE PASSE
+// ----------------------------------------------------------
+async function handleReinitialiserMdp(u: Utilisateur) {
+  const mdpTemporaire = generateTemporaryPassword(8);
+  const hash = await createPasswordHash(mdpTemporaire);
+
+  resetUserPassword(u.id, hash, adminConnecte?.id);
+  recharger();
+
+  Alert.alert(
+    t('mdp_temporaire_titre'),
+    `${t('mdp_temporaire_msg')}\n\n🔑 ${mdpTemporaire}\n\n(L'utilisateur sera forcé de le remplacer dès sa prochaine connexion).`
+  );
+}
+
+// ----------------------------------------------------------
+// ACTION 3 : SUPPRIMER DEFINITIVEMENT LE COMPTE
+// ----------------------------------------------------------
+function handleSupprimer(u: Utilisateur) {
+  if (!adminConnecte) return;
+
+  if (u.id === adminConnecte.id) {
+    Alert.alert('Action refusée', t('impossible_action_soi_meme'));
+    return;
+  }
+
+  if (u.role === 'admin') {
+    const nbAdminsActifs = countActiveAdmins();
+    if (nbAdminsActifs <= 1) {
+      Alert.alert('Action refusée', t('au_moins_un_admin'));
+      return;
     }
+  }
 
-    Alert.alert(
-      t('supprimer_compte'),
-      `${t('confirmer_suppression')}\n\nUtilisateur : ${u.nom} (${u.email})\nToutes ses données (achats, budgets, points) seront définitivement effacées.`,
-      [
-        { text: t('fermer'), style: 'cancel' },
-        {
-          text: t('supprimer_compte'),
-          style: 'destructive',
-          onPress: () => {
-            deleteUserAndData(u.id, adminConnecte.id);
-            recharger();
-            Alert.alert('Compte supprimé', `Le compte ${u.email} a été supprimé.`);
-          },
+  Alert.alert(
+    t('supprimer_compte'),
+    `${t('confirmer_suppression')}\n\nUtilisateur : ${u.nom} (${u.email})\nToutes ses données (achats, budgets, points) seront définitivement effacées.`,
+    [
+      { text: t('fermer'), style: 'cancel' },
+      {
+        text: t('supprimer_compte'),
+        style: 'destructive',
+        onPress: () => {
+          deleteUserAndData(u.id, adminConnecte.id);
+          recharger();
+          Alert.alert('Compte supprimé', `Le compte ${u.email} a été supprimé.`);
         },
-      ]
-    );
-  }
+      },
+    ]
+  );
+}
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      <Text style={styles.pageTitle}>{t('utilisateurs_admin')} ({utilisateurs.length})</Text>
+return (
+  <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <Text style={styles.pageTitle}>{t('utilisateurs_admin')} ({utilisateurs.length})</Text>
 
-      {utilisateurs.map((u) => {
-        const estMoi = u.id === adminConnecte?.id;
-        const estActif = u.is_active === 1;
+    {utilisateurs.map((u) => {
+      const estMoi = u.id === adminConnecte?.id;
+      const estActif = u.is_active === 1;
 
-        return (
-          <View key={u.id} style={styles.userCard}>
-            {/* EN-TETE CARTE */}
-            <View style={styles.userCardHeader}>
-              <View style={{ flex: 1 }}>
-                <View style={styles.nameRow}>
-                  <Text style={styles.userName}>{u.nom}</Text>
-                  {estMoi ? <Text style={styles.meBadge}>(Vous)</Text> : null}
-                </View>
-                <Text style={styles.userEmail}>{u.email}</Text>
-                <Text style={styles.userDate}>Créé le : {u.created_at?.split(' ')[0]}</Text>
+      return (
+        <View key={u.id} style={styles.userCard}>
+          {/* EN-TETE CARTE */}
+          <View style={styles.userCardHeader}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.nameRow}>
+                <Text style={styles.userName}>{u.nom}</Text>
+                {estMoi ? <Text style={styles.meBadge}>(Vous)</Text> : null}
               </View>
-
-              {/* BADGES ROLE ET STATUT */}
-              <View style={styles.badgeColumn}>
-                <View
-                  style={[
-                    styles.roleBadge,
-                    u.role === 'admin' ? styles.roleAdmin : styles.roleUser,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.roleBadgeText,
-                      u.role === 'admin' ? styles.roleAdminText : styles.roleUserText,
-                    ]}
-                  >
-                    {u.role === 'admin' ? '👑 Admin' : '👤 User'}
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.statusBadge,
-                    estActif ? styles.statusActive : styles.statusSuspended,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusBadgeText,
-                      estActif ? styles.statusActiveText : styles.statusSuspendedText,
-                    ]}
-                  >
-                    {estActif ? '🟢 Actif' : '🔴 Suspendu'}
-                  </Text>
-                </View>
-              </View>
+              <Text style={styles.userEmail}>{u.email}</Text>
+              <Text style={styles.userDate}>Créé le : {u.created_at?.split(' ')[0]}</Text>
             </View>
 
-            {/* BOUTONS D'ACTION */}
-            {!estMoi ? (
-              <View style={styles.actionsRow}>
-                {/* 1. Activer / Suspendre */}
-                <TouchableOpacity
+            {/* BADGES ROLE ET STATUT */}
+            <View style={styles.badgeColumn}>
+              <View
+                style={[
+                  styles.roleBadge,
+                  u.role === 'admin' ? styles.roleAdmin : styles.roleUser,
+                ]}
+              >
+                <Text
                   style={[
-                    styles.actionBtn,
-                    estActif ? styles.actionBtnSuspend : styles.actionBtnActivate,
+                    styles.roleBadgeText,
+                    u.role === 'admin' ? styles.roleAdminText : styles.roleUserText,
                   ]}
-                  onPress={() => handleBasculerStatut(u)}
                 >
-                  <Text
-                    style={[
-                      styles.actionBtnText,
-                      estActif ? styles.textSuspend : styles.textActivate,
-                    ]}
-                  >
-                    {estActif ? 'Suspendre' : 'Activer'}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* 2. Reset mot de passe */}
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnReset]}
-                  onPress={() => handleReinitialiserMdp(u)}
-                >
-                  <Text style={styles.textReset}>Reset MDP</Text>
-                </TouchableOpacity>
-
-                {/* 3. Supprimer */}
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnDelete]}
-                  onPress={() => handleSupprimer(u)}
-                >
-                  <Text style={styles.textDelete}>Supprimer</Text>
-                </TouchableOpacity>
+                  {u.role === 'admin' ? '👑 Admin' : '👤 User'}
+                </Text>
               </View>
-            ) : null}
+
+              <View
+                style={[
+                  styles.statusBadge,
+                  estActif ? styles.statusActive : styles.statusSuspended,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusBadgeText,
+                    estActif ? styles.statusActiveText : styles.statusSuspendedText,
+                  ]}
+                >
+                  {estActif ? '🟢 Actif' : '🔴 Suspendu'}
+                </Text>
+              </View>
+            </View>
           </View>
-        );
-      })}
-    </ScrollView>
-  );
+
+          {/* BOUTONS D'ACTION */}
+          {!estMoi ? (
+            <View style={styles.actionsRow}>
+              {/* 1. Activer / Suspendre */}
+              <TouchableOpacity
+                style={[
+                  styles.actionBtn,
+                  estActif ? styles.actionBtnSuspend : styles.actionBtnActivate,
+                ]}
+                onPress={() => handleBasculerStatut(u)}
+              >
+                <Text
+                  style={[
+                    styles.actionBtnText,
+                    estActif ? styles.textSuspend : styles.textActivate,
+                  ]}
+                >
+                  {estActif ? 'Suspendre' : 'Activer'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* 2. Reset mot de passe */}
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnReset]}
+                onPress={() => handleReinitialiserMdp(u)}
+              >
+                <Text style={styles.textReset}>Reset MDP</Text>
+              </TouchableOpacity>
+
+              {/* 3. Supprimer */}
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnDelete]}
+                onPress={() => handleSupprimer(u)}
+              >
+                <Text style={styles.textDelete}>Supprimer</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+      );
+    })}
+  </ScrollView>
+);
 }
 
 const styles = StyleSheet.create({

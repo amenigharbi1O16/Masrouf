@@ -413,10 +413,10 @@ export default function BudgetMoisScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{t('ajouter_categorie')}</Text>
 
-            {/* BOUTON BASCULE : CREER NOUVELLE CATEGORIE PERSO */}
-            <TouchableOpacity
-              style={styles.togglePersoBtn}
-              onPress={() => setAfficherFormPerso(!afficherFormPerso)}
+                  {/* BOUTON BASCULE : CREER NOUVELLE CATEGORIE PERSO */ }
+                  < TouchableOpacity
+              style = { styles.togglePersoBtn }
+              onPress = {() => setAfficherFormPerso(!afficherFormPerso)}
             >
               <Text style={styles.togglePersoBtnText}>
                 {afficherFormPerso ? '← Choisir parmi les catégories existantes' : '+ Créer une catégorie personnalisée'}
@@ -484,42 +484,42 @@ export default function BudgetMoisScreen() {
                   <Text style={styles.persoSubmitBtnText}>+ Créer et ajouter à l'enveloppe</Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <ScrollView style={{ maxHeight: 350 }}>
-                {categoriesDisponibles
-                  .filter((c) => !enveloppes.some((e) => e.categorie_id === c.id))
-                  .map((c) => (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={styles.catOptionItem}
-                      onPress={() => handleAjouterCategorie(c)}
-                    >
-                      <Text style={{ fontSize: 22, marginRight: 10 }}>{c.icone}</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.catOptionName}>{c.nom}</Text>
-                        <Text style={styles.catOptionTheme}>
-                          Thème : {c.theme} • {c.type === 'expense' ? '🧾 Dépense' : '🛒 Produit'}
-                        </Text>
-                      </View>
-                      <Text style={styles.catOptionAdd}>+ Ajouter</Text>
-                    </TouchableOpacity>
-                  ))}
-              </ScrollView>
+          ) : (
+          <ScrollView style={{ maxHeight: 350 }}>
+            {categoriesDisponibles
+              .filter((c) => !enveloppes.some((e) => e.categorie_id === c.id))
+              .map((c) => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.catOptionItem}
+                  onPress={() => handleAjouterCategorie(c)}
+                >
+                  <Text style={{ fontSize: 22, marginRight: 10 }}>{c.icone}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.catOptionName}>{c.nom}</Text>
+                    <Text style={styles.catOptionTheme}>
+                      Thème : {c.theme} • {c.type === 'expense' ? '🧾 Dépense' : '🛒 Produit'}
+                    </Text>
+                  </View>
+                  <Text style={styles.catOptionAdd}>+ Ajouter</Text>
+                </TouchableOpacity>
+              ))}
+          </ScrollView>
             )}
 
-            <TouchableOpacity
-              style={styles.modalCloseBtn}
-              onPress={() => {
-                setModalAjoutVisible(false);
-                setAfficherFormPerso(false);
-              }}
-            >
-              <Text style={styles.modalCloseBtnText}>{t('fermer')}</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.modalCloseBtn}
+            onPress={() => {
+              setModalAjoutVisible(false);
+              setAfficherFormPerso(false);
+            }}
+          >
+            <Text style={styles.modalCloseBtnText}>{t('fermer')}</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
-    </ScrollView>
+      </View>
+    </Modal>
+    </ScrollView >
   );
 }
 

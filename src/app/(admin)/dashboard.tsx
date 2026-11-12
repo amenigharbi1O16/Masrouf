@@ -33,64 +33,64 @@ export default function AdminDashboardScreen() {
   const rechargerStats = useCallback(() => {
     const s = getAdminGlobalStats(user?.id);
     setStats(s);
-  }, [user?.id]);
+}, [user?.id]);
 
-  useFocusEffect(rechargerStats);
+useFocusEffect(rechargerStats);
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* BANDEAU CONFIDENTIALITE & VIE PRIVEE */}
-      <View style={styles.privacyBanner}>
-        <Text style={styles.privacyIcon}>🔒</Text>
-        <Text style={styles.privacyText}>{t('confidentialite_respectee')}</Text>
+return (
+  <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    {/* BANDEAU CONFIDENTIALITE & VIE PRIVEE */}
+    <View style={styles.privacyBanner}>
+      <Text style={styles.privacyIcon}>🔒</Text>
+      <Text style={styles.privacyText}>{t('confidentialite_respectee')}</Text>
+    </View>
+
+    <Text style={styles.sectionTitle}>{t('stats_globales_anonymes')}</Text>
+
+    {/* GRILLE DES METRIQUES */}
+    <View style={styles.grid}>
+      {/* CARTE 1 : Utilisateurs */}
+      <View style={styles.card}>
+        <Text style={styles.cardIcon}>👥</Text>
+        <Text style={styles.cardNumber}>{stats.nbUtilisateurs}</Text>
+        <Text style={styles.cardLabel}>{t('comptes_actifs')}</Text>
+        <Text style={styles.cardSub}>({stats.nbUtilisateursActifs} actifs)</Text>
       </View>
 
-      <Text style={styles.sectionTitle}>{t('stats_globales_anonymes')}</Text>
-
-      {/* GRILLE DES METRIQUES */}
-      <View style={styles.grid}>
-        {/* CARTE 1 : Utilisateurs */}
-        <View style={styles.card}>
-          <Text style={styles.cardIcon}>👥</Text>
-          <Text style={styles.cardNumber}>{stats.nbUtilisateurs}</Text>
-          <Text style={styles.cardLabel}>{t('comptes_actifs')}</Text>
-          <Text style={styles.cardSub}>({stats.nbUtilisateursActifs} actifs)</Text>
-        </View>
-
-        {/* CARTE 2 : Produits */}
-        <View style={styles.card}>
-          <Text style={styles.cardIcon}>📦</Text>
-          <Text style={styles.cardNumber}>{stats.nbProduits}</Text>
-          <Text style={styles.cardLabel}>{t('articles_catalogue')}</Text>
-        </View>
-
-        {/* CARTE 3 : Transactions */}
-        <View style={styles.card}>
-          <Text style={styles.cardIcon}>🧾</Text>
-          <Text style={styles.cardNumber}>{stats.nbAchats}</Text>
-          <Text style={styles.cardLabel}>{t('transactions_totales')}</Text>
-        </View>
-
-        {/* CARTE 4 : Volume Total TND */}
-        <View style={styles.card}>
-          <Text style={styles.cardIcon}>💰</Text>
-          <Text style={styles.cardNumber}>
-            {stats.volumeTotalTND.toFixed(2)}
-          </Text>
-          <Text style={styles.cardLabel}>{t('volume_total')} (TND)</Text>
-        </View>
+      {/* CARTE 2 : Produits */}
+      <View style={styles.card}>
+        <Text style={styles.cardIcon}>📦</Text>
+        <Text style={styles.cardNumber}>{stats.nbProduits}</Text>
+        <Text style={styles.cardLabel}>{t('articles_catalogue')}</Text>
       </View>
 
-      {/* CARTE PLEINE LARGEUR : Catégorie la plus sollicitée */}
-      <View style={styles.fullCard}>
-        <Text style={styles.fullCardLabel}>🏆 {t('top_categorie')}</Text>
-        <Text style={styles.fullCardValue}>{stats.topCategorieNom}</Text>
-        <Text style={styles.fullCardSub}>
-          Catégorie enregistrant le plus grand nombre de transactions dans l'application.
+      {/* CARTE 3 : Transactions */}
+      <View style={styles.card}>
+        <Text style={styles.cardIcon}>🧾</Text>
+        <Text style={styles.cardNumber}>{stats.nbAchats}</Text>
+        <Text style={styles.cardLabel}>{t('transactions_totales')}</Text>
+      </View>
+
+      {/* CARTE 4 : Volume Total TND */}
+      <View style={styles.card}>
+        <Text style={styles.cardIcon}>💰</Text>
+        <Text style={styles.cardNumber}>
+          {stats.volumeTotalTND.toFixed(2)}
         </Text>
+        <Text style={styles.cardLabel}>{t('volume_total')} (TND)</Text>
       </View>
-    </ScrollView>
-  );
+    </View>
+
+    {/* CARTE PLEINE LARGEUR : Catégorie la plus sollicitée */}
+    <View style={styles.fullCard}>
+      <Text style={styles.fullCardLabel}>🏆 {t('top_categorie')}</Text>
+      <Text style={styles.fullCardValue}>{stats.topCategorieNom}</Text>
+      <Text style={styles.fullCardSub}>
+        Catégorie enregistrant le plus grand nombre de transactions dans l'application.
+      </Text>
+    </View>
+  </ScrollView>
+);
 }
 
 const styles = StyleSheet.create({

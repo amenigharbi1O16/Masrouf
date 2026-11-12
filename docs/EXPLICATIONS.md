@@ -184,3 +184,4 @@ Un sélecteur à 3 boutons (`🇫🇷 FR` / `🇸🇦 عربي` / `🇬🇧 EN`)
 
 ### Q4 : Que se passe-t-il si une traduction manque en anglais ou en arabe ?
 > **Réponse :** Notre système implémente le patron "Fallback". La fonction `translate()` vérifie d'abord la clé dans la langue active, et si elle est absente ou vide, elle extrait la valeur du fichier `fr.json`. L'écran reste toujours lisible et compréhensible.
+

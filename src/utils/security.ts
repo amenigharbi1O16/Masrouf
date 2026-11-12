@@ -53,113 +53,113 @@ export function generateSalt(): string {
 // FONCTION : hashPasswordV1 (Historique SHA-256 simple)
 // RÔLE : Calcul rapide d'empreinte SHA-256 pour vérifier les anciens comptes.
 // ------------------------------------------------------------
-export async function hashPasswordV1(password: string, salt: string): Promise<string> {
-  const saltedString = `${password}:${salt}`;
+  export async function hashPasswordV1(password: string, salt: string): Promise<string> {
+    const saltedString = `${password}:${salt}`;
   return await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    saltedString
-  );
-}
-
-// ------------------------------------------------------------
-// FONCTION : hashPasswordV2 (PBKDF2-HMAC-SHA256 - 10 000 itérations)
-// RÔLE : Hachage fort résistant aux attaques par force brute sur GPU/ASIC.
-// ------------------------------------------------------------
-export function hashPasswordV2(password: string, salt: string): string {
-  const t0 = performance.now();
-  // Calcul PBKDF2 avec SHA-256, 10 000 itérations et clé de 32 octets (256 bits)
-  const derivedBytes = pbkdf2(sha256, password, salt, {
-    c: PBKDF2_ITERATIONS,
-    dkLen: PBKDF2_KEY_LENGTH,
-  });
-  const t1 = performance.now();
-  const duree = (t1 - t0).toFixed(2);
-  console.log(`[Sécurité PBKDF2] Hash calculé en ${duree} ms (${PBKDF2_ITERATIONS} itérations)`);
-  return bytesToHex(derivedBytes);
-}
-
-// ------------------------------------------------------------
-// FONCTION : mesurerTempsPBKDF2
-// RÔLE : Mesure le temps réel d'exécution de PBKDF2 (10 000 itérations)
-//        directement sur l'appareil pour le rapporter au professeur/utilisateur.
-// ------------------------------------------------------------
-export function mesurerTempsPBKDF2(): number {
-  const t0 = performance.now();
-  pbkdf2(sha256, 'benchmark_test_password', 'benchmark_test_salt_16bytes', {
-    c: PBKDF2_ITERATIONS,
-    dkLen: PBKDF2_KEY_LENGTH,
-  });
-  const t1 = performance.now();
-  const dureeMs = Math.round((t1 - t0) * 100) / 100;
-  console.log(`[Benchmark PBKDF2] 10 000 itérations exécutées en ${dureeMs} ms sur cet appareil`);
-  return dureeMs;
-}
-
-// ------------------------------------------------------------
-// FONCTION : createPasswordHash
-// RÔLE : Génère un nouveau sel aléatoire et calcule le hash (v2 par défaut).
-// RETOUR : "sel:hash"
-// ------------------------------------------------------------
-export async function createPasswordHash(
-  password: string,
-  version: number = 2
-): Promise<string> {
-  const salt = generateSalt();
-  let hash = '';
-
-  if (version === 1) {
-    hash = await hashPasswordV1(password, salt);
-  } else {
-    hash = hashPasswordV2(password, salt);
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      saltedString
+    );
   }
 
-  return `${salt}:${hash}`;
-}
+  // ------------------------------------------------------------
+  // FONCTION : hashPasswordV2 (PBKDF2-HMAC-SHA256 - 10 000 itérations)
+  // RÔLE : Hachage fort résistant aux attaques par force brute sur GPU/ASIC.
+  // ------------------------------------------------------------
+  export function hashPasswordV2(password: string, salt: string): string {
+    const t0 = performance.now();
+    // Calcul PBKDF2 avec SHA-256, 10 000 itérations et clé de 32 octets (256 bits)
+    const derivedBytes = pbkdf2(sha256, password, salt, {
+      c: PBKDF2_ITERATIONS,
+      dkLen: PBKDF2_KEY_LENGTH,
+    });
+    const t1 = performance.now();
+    const duree = (t1 - t0).toFixed(2);
+    console.log(`[Sécurité PBKDF2] Hash calculé en ${duree} ms (${PBKDF2_ITERATIONS} itérations)`);
+    return bytesToHex(derivedBytes);
+  }
 
-// ------------------------------------------------------------
-// FONCTION : verifyPassword
-// RÔLE : Vérifie un mot de passe en clair selon sa version d'enregistrement.
-//        - Si version 1 : vérifie en SHA-256 simple.
-//        - Si version 2 : vérifie en PBKDF2 (10 000 itérations).
-// ------------------------------------------------------------
-export async function verifyPassword(
-  password: string,
+  // ------------------------------------------------------------
+  // FONCTION : mesurerTempsPBKDF2
+  // RÔLE : Mesure le temps réel d'exécution de PBKDF2 (10 000 itérations)
+  //        directement sur l'appareil pour le rapporter au professeur/utilisateur.
+  // ------------------------------------------------------------
+  export function mesurerTempsPBKDF2(): number {
+    const t0 = performance.now();
+    pbkdf2(sha256, 'benchmark_test_password', 'benchmark_test_salt_16bytes', {
+      c: PBKDF2_ITERATIONS,
+      dkLen: PBKDF2_KEY_LENGTH,
+    });
+    const t1 = performance.now();
+    const dureeMs = Math.round((t1 - t0) * 100) / 100;
+    console.log(`[Benchmark PBKDF2] 10 000 itérations exécutées en ${dureeMs} ms sur cet appareil`);
+    return dureeMs;
+  }
+
+  // ------------------------------------------------------------
+  // FONCTION : createPasswordHash
+  // RÔLE : Génère un nouveau sel aléatoire et calcule le hash (v2 par défaut).
+  // RETOUR : "sel:hash"
+  // ------------------------------------------------------------
+    export async function createPasswordHash(
+      password: string,
+      version: number = 2
+    ): Promise<string> {
+      const salt = generateSalt();
+      let hash = '';
+
+      if (version === 1) {
+        hash = await hashPasswordV1(password, salt);
+      } else {
+        hash = hashPasswordV2(password, salt);
+      }
+
+      return `${salt}:${hash}`;
+    }
+
+    // ------------------------------------------------------------
+    // FONCTION : verifyPassword
+    // RÔLE : Vérifie un mot de passe en clair selon sa version d'enregistrement.
+    //        - Si version 1 : vérifie en SHA-256 simple.
+    //        - Si version 2 : vérifie en PBKDF2 (10 000 itérations).
+    // ------------------------------------------------------------
+    export async function verifyPassword(
+      password: string,
   storedHashWithSalt: string,
-  version: number = 1
-): Promise<boolean> {
-  if (!storedHashWithSalt || !storedHashWithSalt.includes(':')) {
-    return false;
-  }
+      version: number = 1
+    ): Promise<boolean> {
+      if (!storedHashWithSalt || !storedHashWithSalt.includes(':')) {
+        return false;
+      }
 
-  const [salt, expectedHash] = storedHashWithSalt.split(':');
-  if (!salt || !expectedHash) {
-    return false;
-  }
+      const [salt, expectedHash] = storedHashWithSalt.split(':');
+      if (!salt || !expectedHash) {
+        return false;
+      }
 
-  let computedHash = '';
-  if (version === 1) {
-    computedHash = await hashPasswordV1(password, salt);
-  } else {
-    computedHash = hashPasswordV2(password, salt);
-  }
+      let computedHash = '';
+      if (version === 1) {
+        computedHash = await hashPasswordV1(password, salt);
+      } else {
+        computedHash = hashPasswordV2(password, salt);
+      }
 
-  return computedHash.toLowerCase() === expectedHash.toLowerCase();
-}
+      return computedHash.toLowerCase() === expectedHash.toLowerCase();
+    }
 
-// ------------------------------------------------------------
-// FONCTION : generateTemporaryPassword
-// RÔLE : Génère un mot de passe temporaire aléatoire (ex: "K8m#P2w9")
-//        lorsqu'un administrateur réinitialise le compte d'un utilisateur.
-// ------------------------------------------------------------
-export function generateTemporaryPassword(longueur: number = 8): string {
-  const caracteres = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
-  let tempPass = '';
-  const randomValues = Crypto.getRandomValues(new Uint8Array(longueur));
+    // ------------------------------------------------------------
+    // FONCTION : generateTemporaryPassword
+    // RÔLE : Génère un mot de passe temporaire aléatoire (ex: "K8m#P2w9")
+    //        lorsqu'un administrateur réinitialise le compte d'un utilisateur.
+    // ------------------------------------------------------------
+    export function generateTemporaryPassword(longueur: number = 8): string {
+      const caracteres = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
+      let tempPass = '';
+      const randomValues = Crypto.getRandomValues(new Uint8Array(longueur));
 
-  for (let i = 0; i < longueur; i++) {
-    const index = randomValues[i] % caracteres.length;
-    tempPass += caracteres.charAt(index);
-  }
+      for (let i = 0; i < longueur; i++) {
+        const index = randomValues[i] % caracteres.length;
+        tempPass += caracteres.charAt(index);
+      }
 
-  return tempPass;
-}
+      return tempPass;
+    }

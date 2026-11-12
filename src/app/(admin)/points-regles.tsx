@@ -81,85 +81,85 @@ export default function AdminPointsReglesScreen() {
       seuil_debutant: 0,
       seuil_econome: sEco,
       seuil_expert: sExp,
-    }, user?.id);
+  }, user?.id);
 
-    setMessageSucces(t('succes_sauvegarde'));
-    setTimeout(() => setMessageSucces(''), 3000);
-  }
+  setMessageSucces(t('succes_sauvegarde'));
+  setTimeout(() => setMessageSucces(''), 3000);
+}
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      <Text style={styles.pageTitle}>{t('regles_points_admin')}</Text>
+return (
+  <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <Text style={styles.pageTitle}>{t('regles_points_admin')}</Text>
 
-      {/* SECTION 1 : ATTRIBUTION DES POINTS */}
-      <View style={styles.card}>
-        <Text style={styles.cardHeader}>🎁 Attribution des points de fin de mois</Text>
+    {/* SECTION 1 : ATTRIBUTION DES POINTS */}
+    <View style={styles.card}>
+      <Text style={styles.cardHeader}>🎁 Attribution des points de fin de mois</Text>
 
-        <Text style={styles.label}>{t('points_par_categorie')}</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={ptsCategorie}
-          onChangeText={setPtsCategorie}
-        />
+      <Text style={styles.label}>{t('points_par_categorie')}</Text>
+      <TextInput
+        style={styles.input}
+        keyboardType="numeric"
+        value={ptsCategorie}
+        onChangeText={setPtsCategorie}
+      />
 
-        <Text style={styles.label}>{t('bonus_mois_parfait')}</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={ptsBonusMois}
-          onChangeText={setPtsBonusMois}
-        />
+      <Text style={styles.label}>{t('bonus_mois_parfait')}</Text>
+      <TextInput
+        style={styles.input}
+        keyboardType="numeric"
+        value={ptsBonusMois}
+        onChangeText={setPtsBonusMois}
+      />
 
-        <Text style={styles.label}>{t('bonus_serie')}</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={ptsBonusSerie}
-          onChangeText={setPtsBonusSerie}
-        />
+      <Text style={styles.label}>{t('bonus_serie')}</Text>
+      <TextInput
+        style={styles.input}
+        keyboardType="numeric"
+        value={ptsBonusSerie}
+        onChangeText={setPtsBonusSerie}
+      />
+    </View>
+
+    {/* SECTION 2 : SEUILS DE NIVEAUX */}
+    <View style={styles.card}>
+      <Text style={styles.cardHeader}>🏆 {t('seuils_niveaux')}</Text>
+
+      <Text style={styles.label}>Niveau Débutant</Text>
+      <TextInput style={[styles.input, styles.inputDisabled]} editable={false} value="0 point" />
+
+      <Text style={styles.label}>Seuil Niveau Économe (points requis)</Text>
+      <TextInput
+        style={styles.input}
+        keyboardType="numeric"
+        value={seuilEconome}
+        onChangeText={setSeuilEconome}
+      />
+
+      <Text style={styles.label}>Seuil Niveau Expert (points requis)</Text>
+      <TextInput
+        style={styles.input}
+        keyboardType="numeric"
+        value={seuilExpert}
+        onChangeText={setSeuilExpert}
+      />
+    </View>
+
+    {messageSucces ? (
+      <View style={styles.successBox}>
+        <Text style={styles.successText}>✅ {messageSucces}</Text>
       </View>
+    ) : null}
 
-      {/* SECTION 2 : SEUILS DE NIVEAUX */}
-      <View style={styles.card}>
-        <Text style={styles.cardHeader}>🏆 {t('seuils_niveaux')}</Text>
-
-        <Text style={styles.label}>Niveau Débutant</Text>
-        <TextInput style={[styles.input, styles.inputDisabled]} editable={false} value="0 point" />
-
-        <Text style={styles.label}>Seuil Niveau Économe (points requis)</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={seuilEconome}
-          onChangeText={setSeuilEconome}
-        />
-
-        <Text style={styles.label}>Seuil Niveau Expert (points requis)</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={seuilExpert}
-          onChangeText={setSeuilExpert}
-        />
-      </View>
-
-      {messageSucces ? (
-        <View style={styles.successBox}>
-          <Text style={styles.successText}>✅ {messageSucces}</Text>
-        </View>
-      ) : null}
-
-      {/* BOUTON D'ENREGISTREMENT */}
-      <TouchableOpacity
-        style={styles.saveBtn}
-        onPress={handleSauvegarder}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.saveBtnText}>{t('sauvegarder')}</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
+    {/* BOUTON D'ENREGISTREMENT */}
+    <TouchableOpacity
+      style={styles.saveBtn}
+      onPress={handleSauvegarder}
+      activeOpacity={0.8}
+    >
+      <Text style={styles.saveBtnText}>{t('sauvegarder')}</Text>
+    </TouchableOpacity>
+  </ScrollView>
+);
 }
 
 const styles = StyleSheet.create({

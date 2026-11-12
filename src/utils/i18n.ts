@@ -100,7 +100,7 @@ export async function getLanguePreLogin(): Promise<Langue> {
     if (val === 'fr' || val === 'ar' || val === 'en') {
       return val;
     }
-  } catch {}
+  } catch { }
   return 'fr';
 }
 
@@ -113,7 +113,7 @@ export async function setLanguePreLogin(langue: Langue): Promise<void> {
     } else {
       await SecureStore.setItemAsync(PRE_LOGIN_LANG_KEY, langue);
     }
-  } catch {}
+  } catch { }
 }
 
 // ------------------------------------------------------------

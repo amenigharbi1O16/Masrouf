@@ -234,12 +234,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser((prev) =>
         prev
           ? {
-              ...prev,
-              password_hash: nouveauHash,
-              salt: sel,
-              hash_version: 2,
-              must_change_password: 0,
-            }
+            ...prev,
+            password_hash: nouveauHash,
+            salt: sel,
+            hash_version: 2,
+            must_change_password: 0,
+          }
           : null
       );
 
