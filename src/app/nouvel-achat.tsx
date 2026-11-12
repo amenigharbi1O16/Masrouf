@@ -1,10 +1,23 @@
 // ============================================================
 // FICHIER : src/app/nouvel-achat.tsx
-// RÔLE    : Fenêtre modale pour enregistrer une nouvelle dépense.
-//           Supporte :
-//           1. Achat d'un produit du catalogue (avec prix et quantité).
-//           2. Dépense directe sans produit (ex: Facture STEG, Transport).
-//           3. Déduction immédiate de l'enveloppe budgétaire correspondante.
+// RÔLE    : Écran d'enregistrement d'un achat de produit ou d'une dépense simple.
+//           Conforme aux designs Figma 16 (Achat produit) & 17 (Dépense simple).
+//
+// VISUEL SUR L'ÉCRAN :
+//   • Header : ‹ retour + "Ajouter un achat / une dépense" + icône profil
+//   • Sélecteur de mode ergonomique : [ Achat produit ]  [ Dépense simple ]
+//   • Mode Achat produit (Figma 16) :
+//       - Label "ENREGISTRER L'ACHAT D'UN PRODUIT"
+//       - Carte aperçu produit mint : icône + nom + marque · catégorie · unité
+//       - Champs : Produit, Prix total DT, Quantité, Unité, Magasin, Date
+//       - Ligne "Prix unitaire calculé   X DT / unité"
+//       - Bouton primary "Enregistrer l'achat" + secondary "Annuler"
+//   • Mode Dépense simple (Figma 17) :
+//       - Label "AUCUN PRODUIT NÉCESSAIRE"
+//       - Titre "Gardez vos essentiels en vue."
+//       - Champs : Montant DT, Description, Catégorie, Date
+//       - Bannière mint d'impact budgétaire
+//       - Bouton primary "Enregistrer la dépense" + secondary "Annuler"
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
@@ -16,6 +29,7 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  Modal,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
@@ -25,548 +39,789 @@ import {
   getAllMagasins,
   getAllCategories,
   insertAchat,
+  findOrCreateMagasin,
   getEnveloppesBudget,
-  hasAlerteBeenShown,
-  logAlerte,
   Produit,
   Magasin,
   Categorie,
+  EnveloppeBudget,
 } from '../db/queries';
 
-// Contexte et internationalisation
+// Design System & Contexte
+import { Theme } from '../constants/theme';
 import { useAuth } from '../utils/auth';
 import { useTranslation } from '../utils/i18n';
+import AppHeader from '../components/AppHeader';
+
+const MOIS_ABR = [
+  'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
+];
 
 export default function NouvelAchatScreen() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  const { produitId } = useLocalSearchParams<{ produitId?: string }>();
+  const params = useLocalSearchParams<{ produitId?: string; mode?: string }>();
 
-  // Listes de référence chargées depuis SQLite
+  const aujourdhui = new Date();
+  const dateFormatee = `${aujourdhui.getDate()} ${MOIS_ABR[aujourdhui.getMonth()]} ${aujourdhui.getFullYear()}`;
+  const moisCle = `${aujourdhui.getFullYear()}-${String(aujourdhui.getMonth() + 1).padStart(2, '0')}`;
+
+  // Mode actif : 'produit' (Figma 16) ou 'direct' (Figma 17)
+  const [mode, setMode] = useState<'produit' | 'direct'>(
+    params.mode === 'direct' ? 'direct' : 'produit'
+  );
+
+  // Données de référence SQLite
   const [produits, setProduits] = useState<Produit[]>([]);
   const [magasins, setMagasins] = useState<Magasin[]>([]);
   const [categories, setCategories] = useState<Categorie[]>([]);
+  const [enveloppes, setEnveloppes] = useState<EnveloppeBudget[]>([]);
 
-  // Mode de saisie : 'produit' ou 'direct'
-  const [modeSaisie, setModeSaisie] = useState<'produit' | 'direct'>('produit');
-
-  // Champs du formulaire
+  // Champs de saisie MODE PRODUIT
   const [produitChoisi, setProduitChoisi] = useState<Produit | null>(null);
-  const [categorieIdChoisie, setCategorieIdChoisie] = useState<number | null>(null);
-  const [titreDirect, setTitreDirect] = useState<string>('');
-  const [magasinIdChoisi, setMagasinIdChoisi] = useState<number | null>(null);
-  const [prixUnitaire, setPrixUnitaire] = useState<string>('');
+  const [prixTotal, setPrixTotal] = useState<string>('');
   const [quantite, setQuantite] = useState<string>('1');
-  const [notes, setNotes] = useState<string>('');
-  const [rechercheProduit, setRechercheProduit] = useState<string>('');
+  const [unite, setUnite] = useState<string>('');
+  const [magasinNom, setMagasinNom] = useState<string>('');
+  const [dateAchat, setDateAchat] = useState<string>(dateFormatee);
+
+  // Champs de saisie MODE DÉPENSE DIRECTE
+  const [montantDirect, setMontantDirect] = useState<string>('');
+  const [descriptionDirecte, setDescriptionDirecte] = useState<string>('');
+  const [categorieDirecte, setCategorieDirecte] = useState<Categorie | null>(null);
+
+  // Modales
+  const [modalProdVisible, setModalProdVisible] = useState<boolean>(false);
+  const [modalCatVisible, setModalCatVisible] = useState<boolean>(false);
+  const [rechercheProd, setRechercheProd] = useState<string>('');
 
   useEffect(() => {
-    const p = getAllProduits(user?.id);
+    if (!user) return;
+    const p = getAllProduits(user.id);
     const m = getAllMagasins();
     const c = getAllCategories(true);
+    const envs = getEnveloppesBudget(user.id, moisCle);
+
     setProduits(p);
     setMagasins(m);
     setCategories(c);
+    setEnveloppes(envs);
 
-    if (m.length > 0) setMagasinIdChoisi(m[0].id);
-    if (c.length > 0) setCategorieIdChoisie(c[0].id);
-
-    // Pré-sélectionne le produit si passé en paramètre URL (ex: depuis la fiche produit)
-    if (produitId) {
-      const prod = p.find((item) => item.id === Number(produitId));
-      if (prod) {
-        setProduitChoisi(prod);
-        setModeSaisie('produit');
+    if (params.produitId) {
+      const trouvé = p.find((item) => item.id === Number(params.produitId));
+      if (trouvé) {
+        setProduitChoisi(trouvé);
+        setUnite(trouvé.unite);
+        setMode('produit');
       }
+    } else if (p.length > 0) {
+      setProduitChoisi(p[0]);
+      setUnite(p[0].unite);
     }
-  }, [user, produitId]);
 
-  const pUnit = parseFloat(prixUnitaire) || 0;
-  const qte = parseFloat(quantite) || 0;
-  const totalCalcule = pUnit * qte;
+    // Catégorie directe par défaut (type 'expense')
+    const catDepense = c.filter((x) => x.type === 'expense');
+    if (catDepense.length > 0) {
+      setCategorieDirecte(catDepense[0]);
+    } else if (c.length > 0) {
+      setCategorieDirecte(c[0]);
+    }
+  }, [user, params.produitId, params.mode]);
 
+  // Calcul du prix unitaire en direct
+  const prixNum = parseFloat(prixTotal.replace(',', '.')) || 0;
+  const qteNum = parseFloat(quantite.replace(',', '.')) || 1;
+  const prixUnitaireCalcule = qteNum > 0 ? (prixNum / qteNum).toFixed(3) : '0.000';
+
+  // Recherche de produits dans la modale
   const produitsFiltres = produits.filter((p) =>
-    p.nom.toLowerCase().includes(rechercheProduit.toLowerCase())
+    p.nom.toLowerCase().includes(rechercheProd.toLowerCase()) ||
+    p.marque.toLowerCase().includes(rechercheProd.toLowerCase())
   );
 
+  // Enveloppe budgétaire correspondante pour la dépense directe
+  const enveloppeActive = categorieDirecte
+    ? enveloppes.find((e) => e.categorie_id === categorieDirecte.id)
+    : null;
+
+  // ----------------------------------------------------------
+  // VALIDATION ET ENREGISTREMENT
+  // ----------------------------------------------------------
   function handleEnregistrer() {
     if (!user) return;
 
-    if (modeSaisie === 'produit' && !produitChoisi) {
-      Alert.alert('Attention', 'Veuillez sélectionner un produit dans la liste.');
-      return;
-    }
-
-    if (modeSaisie === 'direct' && !titreDirect.trim()) {
-      Alert.alert('Attention', 'Veuillez donner un libellé à votre dépense.');
-      return;
-    }
-
-    if (pUnit <= 0) {
-      Alert.alert('Attention', 'Veuillez saisir un montant ou prix unitaire valide.');
-      return;
-    }
-
-    if (qte <= 0) {
-      Alert.alert('Attention', 'La quantité doit être supérieure à 0.');
-      return;
-    }
-
-    const maintenant = new Date();
-    const mois = `${maintenant.getFullYear()}-${String(
-      maintenant.getMonth() + 1
-    ).padStart(2, '0')}`;
-
-    const catId =
-      modeSaisie === 'produit'
-        ? produitChoisi?.categorie_id ?? null
-        : categorieIdChoisie;
-
-    insertAchat({
-      produit_id: modeSaisie === 'produit' ? (produitChoisi?.id ?? null) : null,
-      utilisateur_id: user.id,
-      magasin_id: magasinIdChoisi,
-      categorie_id: catId,
-      titre: modeSaisie === 'direct' ? titreDirect.trim() : (produitChoisi?.nom ?? ''),
-      prix_unitaire: pUnit,
-      quantite: qte,
-      prix_total: totalCalcule,
-      mois: mois,
-      notes: notes.trim(),
-    });
-
-    // --------------------------------------------------------
-    // CONTRÔLE BUDGÉTAIRE ET DÉTECTION DES SEUILS D'ALERTE
-    // --------------------------------------------------------
-    if (catId) {
-      const envs = getEnveloppesBudget(user.id, mois);
-      const envModifiee = envs.find((e) => e.categorie_id === catId);
-      if (envModifiee) {
-        if (envModifiee.pourcentage_consomme >= 100) {
-          if (!hasAlerteBeenShown(user.id, mois, catId, 100)) {
-            logAlerte(user.id, mois, catId, 100);
-            Alert.alert(
-              t('alerte_100_titre'),
-              `${t('alerte_100_msg')} ${envModifiee.categorie_nom} (${envModifiee.montant_depense.toFixed(2)} / ${envModifiee.montant_alloue.toFixed(2)} TND).`,
-              [{ text: 'OK', onPress: () => router.back() }]
-            );
-            return;
-          }
-        } else if (envModifiee.pourcentage_consomme >= 80) {
-          if (!hasAlerteBeenShown(user.id, mois, catId, 80)) {
-            logAlerte(user.id, mois, catId, 80);
-            Alert.alert(
-              t('alerte_80_titre'),
-              `${t('alerte_80_msg')} ${envModifiee.categorie_nom} (${envModifiee.montant_depense.toFixed(2)} / ${envModifiee.montant_alloue.toFixed(2)} TND).`,
-              [{ text: 'OK', onPress: () => router.back() }]
-            );
-            return;
-          }
-        }
+    if (mode === 'produit') {
+      if (!produitChoisi) {
+        Alert.alert(t('erreur') ?? 'Attention', 'Veuillez choisir un produit.');
+        return;
       }
+      if (prixNum <= 0) {
+        Alert.alert(t('erreur') ?? 'Attention', 'Veuillez saisir un prix valide.');
+        return;
+      }
+
+      let magId: number | null = null;
+      if (magasinNom.trim()) {
+        magId = findOrCreateMagasin(magasinNom.trim());
+      }
+
+      insertAchat({
+        produit_id: produitChoisi.id,
+        utilisateur_id: user.id,
+        magasin_id: magId,
+        categorie_id: produitChoisi.categorie_id,
+        prix_unitaire: prixNum / qteNum,
+        quantite: qteNum,
+        prix_total: prixNum,
+        mois: moisCle,
+        notes: `Achat de ${produitChoisi.nom}`,
+      });
+    } else {
+      const montantNum = parseFloat(montantDirect.replace(',', '.')) || 0;
+      if (montantNum <= 0) {
+        Alert.alert(t('erreur') ?? 'Attention', 'Veuillez saisir un montant valide.');
+        return;
+      }
+      if (!descriptionDirecte.trim()) {
+        Alert.alert(t('erreur') ?? 'Attention', 'Veuillez renseigner une description.');
+        return;
+      }
+
+      insertAchat({
+        produit_id: null,
+        utilisateur_id: user.id,
+        magasin_id: null,
+        categorie_id: categorieDirecte ? categorieDirecte.id : null,
+        titre: descriptionDirecte.trim(),
+        prix_unitaire: montantNum,
+        quantite: 1,
+        prix_total: montantNum,
+        mois: moisCle,
+        notes: descriptionDirecte.trim(),
+      });
     }
 
     router.back();
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* SÉLECTEUR DE MODE (Avec produit ou dépense directe) */}
-      <View style={styles.modeToggleRow}>
-        <TouchableOpacity
-          style={[
-            styles.modeToggleBtn,
-            modeSaisie === 'produit' && styles.modeToggleActive,
-          ]}
-          onPress={() => setModeSaisie('produit')}
-        >
-          <Text
-            style={[
-              styles.modeToggleText,
-              modeSaisie === 'produit' && styles.modeToggleTextActive,
-            ]}
+    <View style={styles.container}>
+      {/* Header avec action retour */}
+      <AppHeader
+        titre={mode === 'produit' ? 'Ajouter un achat' : 'Ajouter une dépense'}
+        onMenuPress={() => router.back()}
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Toggle Mode Achat produit vs Dépense simple */}
+        <View style={styles.modeToggle}>
+          <TouchableOpacity
+            style={[styles.toggleBtn, mode === 'produit' && styles.toggleBtnActive]}
+            onPress={() => setMode('produit')}
           >
-            📦 Article du catalogue
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.modeToggleBtn,
-            modeSaisie === 'direct' && styles.modeToggleActive,
-          ]}
-          onPress={() => setModeSaisie('direct')}
-        >
-          <Text
-            style={[
-              styles.modeToggleText,
-              modeSaisie === 'direct' && styles.modeToggleTextActive,
-            ]}
-          >
-            ⚡ Dépense directe
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* MODE 1 : PRODUIT */}
-      {modeSaisie === 'produit' ? (
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>1. Sélectionner un produit *</Text>
-
-          {produitChoisi ? (
-            <View style={styles.selectedProductCard}>
-              <Text style={{ fontSize: 26, marginRight: 10 }}>
-                {produitChoisi.categorie_icone}
-              </Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.selectedProductName}>{produitChoisi.nom}</Text>
-                <Text style={styles.selectedProductSub}>
-                  {produitChoisi.marque} • Unité : {produitChoisi.unite}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setProduitChoisi(null)}>
-                <Text style={styles.changeLink}>Changer</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <TextInput
-                style={styles.searchInput}
-                placeholder={t('rechercher_produit')}
-                placeholderTextColor="#94A3B8"
-                value={rechercheProduit}
-                onChangeText={setRechercheProduit}
-              />
-              <ScrollView style={{ maxHeight: 160 }} nestedScrollEnabled>
-                {produitsFiltres.map((p) => (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={styles.productListItem}
-                    onPress={() => setProduitChoisi(p)}
-                  >
-                    <Text style={{ fontSize: 20, marginRight: 8 }}>
-                      {p.categorie_icone}
-                    </Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.productListName}>{p.nom}</Text>
-                      <Text style={styles.productListCat}>
-                        {p.categorie_nom} • {p.marque}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </>
-          )}
-        </View>
-      ) : (
-        /* MODE 2 : DÉPENSE DIRECTE */
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>1. Libellé de la dépense *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ex: Facture électricité, Taxi centre-ville..."
-            value={titreDirect}
-            onChangeText={setTitreDirect}
-          />
-
-          <Text style={[styles.sectionLabel, { marginTop: 12 }]}>
-            Catégorie rattachée *
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.catChipsRow}>
-              {categories.map((c) => {
-                const estChoisi = c.id === categorieIdChoisie;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.catChip, estChoisi && styles.catChipActive]}
-                    onPress={() => setCategorieIdChoisie(c.id)}
-                  >
-                    <Text style={{ fontSize: 16 }}>{c.icone}</Text>
-                    <Text
-                      style={[
-                        styles.catChipText,
-                        estChoisi && styles.catChipTextActive,
-                      ]}
-                    >
-                      {c.nom}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </ScrollView>
-        </View>
-      )}
-
-      {/* MAGASIN / ENSEIGNE */}
-      <View style={styles.card}>
-        <Text style={styles.sectionLabel}>2. Enseigne / Magasin</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.catChipsRow}>
-            {magasins.map((m) => {
-              const estChoisi = m.id === magasinIdChoisi;
-              return (
-                <TouchableOpacity
-                  key={m.id}
-                  style={[styles.catChip, estChoisi && styles.catChipActive]}
-                  onPress={() => setMagasinIdChoisi(m.id)}
-                >
-                  <Text
-                    style={[
-                      styles.catChipText,
-                      estChoisi && styles.catChipTextActive,
-                    ]}
-                  >
-                    🏪 {m.nom}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </ScrollView>
-      </View>
-
-      {/* MONTANT ET QUANTITÉ */}
-      <View style={styles.card}>
-        <Text style={styles.sectionLabel}>3. Montant & Quantité</Text>
-        <View style={styles.row}>
-          <View style={{ flex: 2 }}>
-            <Text style={styles.inputLabel}>
-              {modeSaisie === 'produit' ? t('prix_unitaire') : 'Montant (TND)'} *
+            <Text style={[styles.toggleText, mode === 'produit' && styles.toggleTextActive]}>
+              Achat produit
             </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: 2.850"
-              keyboardType="numeric"
-              value={prixUnitaire}
-              onChangeText={setPrixUnitaire}
-            />
-          </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleBtn, mode === 'direct' && styles.toggleBtnActive]}
+            onPress={() => setMode('direct')}
+          >
+            <Text style={[styles.toggleText, mode === 'direct' && styles.toggleTextActive]}>
+              Dépense simple
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-          {modeSaisie === 'produit' ? (
-            <View style={{ flex: 1 }}>
-              <Text style={styles.inputLabel}>{t('quantite')} *</Text>
+        {mode === 'produit' ? (
+          /* ==================================================== */
+          /* DESIGN FIGMA 16 : AJOUTER UN ACHAT DE PRODUIT        */
+          /* ==================================================== */
+          <View>
+            <Text style={styles.sectionLabel}>
+              ENREGISTRER L'ACHAT D'UN PRODUIT
+            </Text>
+
+            {/* Carte aperçu produit sélectionné (Figma 16 top card) */}
+            {produitChoisi && (
+              <TouchableOpacity
+                style={styles.previewCard}
+                onPress={() => setModalProdVisible(true)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarIcon}>
+                    {produitChoisi.categorie_icone || '🛍️'}
+                  </Text>
+                </View>
+                <View style={styles.previewInfo}>
+                  <Text style={styles.previewName}>{produitChoisi.nom}</Text>
+                  <Text style={styles.previewSub}>
+                    {produitChoisi.marque ? `${produitChoisi.marque} · ` : ''}
+                    {produitChoisi.categorie_nom} · {produitChoisi.unite}
+                  </Text>
+                </View>
+                <Text style={styles.chevronSmall}>▾</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Champ Produit */}
+            <TouchableOpacity
+              style={styles.inputCard}
+              onPress={() => setModalProdVisible(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.inputLabel}>Produit</Text>
+              <Text style={styles.fieldValue}>
+                {produitChoisi ? produitChoisi.nom : 'Choisir un produit...'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Prix total · DT */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Prix total · DT</Text>
               <TextInput
-                style={styles.input}
+                style={styles.textInput}
+                placeholder="Ex: 14.500"
+                placeholderTextColor={Theme.colors.muted}
+                keyboardType="decimal-pad"
+                value={prixTotal}
+                onChangeText={setPrixTotal}
+              />
+            </View>
+
+            {/* Quantité */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Quantité</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="1"
+                placeholderTextColor={Theme.colors.muted}
                 keyboardType="numeric"
                 value={quantite}
                 onChangeText={setQuantite}
               />
             </View>
-          ) : null}
-        </View>
 
-        {/* TOTAL CALCULÉ */}
-        <View style={styles.totalBox}>
-          <Text style={styles.totalLabel}>{t('total')} à déduire :</Text>
-          <Text style={styles.totalAmount}>
-            {totalCalcule.toFixed(3)} <Text style={{ fontSize: 14 }}>TND</Text>
-          </Text>
-        </View>
+            {/* Unité */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Unité</Text>
+              <TextInput
+                style={styles.textInput}
+                value={unite}
+                onChangeText={setUnite}
+                placeholder="L, kg, pièce..."
+                placeholderTextColor={Theme.colors.muted}
+              />
+            </View>
 
-        {/* NOTES */}
-        <Text style={[styles.inputLabel, { marginTop: 12 }]}>Notes (facultatif)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Ex: Promotion spéciale..."
-          value={notes}
-          onChangeText={setNotes}
-        />
-      </View>
+            {/* Magasin */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Magasin</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Ex: Monoprix, Carrefour, Épicerie..."
+                placeholderTextColor={Theme.colors.muted}
+                value={magasinNom}
+                onChangeText={setMagasinNom}
+              />
+            </View>
 
-      {/* BOUTON ENREGISTRER */}
-      <TouchableOpacity
-        style={styles.submitBtn}
-        onPress={handleEnregistrer}
-        activeOpacity={0.8}
+            {/* Date */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Date</Text>
+              <TextInput
+                style={styles.textInput}
+                value={dateAchat}
+                onChangeText={setDateAchat}
+              />
+            </View>
+
+            {/* Ligne Prix unitaire calculé (Figma 16) */}
+            <View style={styles.unitPriceRow}>
+              <Text style={styles.unitPriceLabel}>Prix unitaire calculé</Text>
+              <Text style={styles.unitPriceValue}>
+                {prixUnitaireCalcule} DT / {unite || 'unité'}
+              </Text>
+            </View>
+
+            <Text style={styles.hintText}>
+              Prix unitaire = prix total ÷ quantité. Comparez au précédent achat avant de valider.
+            </Text>
+
+            {/* Boutons d'action */}
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={handleEnregistrer}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryBtnText}>
+                {prixNum > 0 ? 'Enregistrer l\'achat' : 'Comparer le prix'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => router.back()}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.secondaryBtnText}>
+                {t('annuler') ?? 'Annuler'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          /* ==================================================== */
+          /* DESIGN FIGMA 17 : AJOUTER UNE DÉPENSE SIMPLE         */
+          /* ==================================================== */
+          <View>
+            <Text style={styles.sectionLabel}>
+              AUCUN PRODUIT NÉCESSAIRE
+            </Text>
+            <Text style={styles.screenTitle}>
+              Gardez vos essentiels en vue.
+            </Text>
+
+            {/* Montant · DT */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Montant · DT</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Ex: 35.000"
+                placeholderTextColor={Theme.colors.muted}
+                keyboardType="decimal-pad"
+                value={montantDirect}
+                onChangeText={setMontantDirect}
+              />
+            </View>
+
+            {/* Description */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Description</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Ex: Abonnement mensuel de bus, Facture..."
+                placeholderTextColor={Theme.colors.muted}
+                value={descriptionDirecte}
+                onChangeText={setDescriptionDirecte}
+              />
+            </View>
+
+            {/* Catégorie de dépense */}
+            <TouchableOpacity
+              style={styles.inputCard}
+              onPress={() => setModalCatVisible(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.inputLabel}>Catégorie de dépense</Text>
+              <View style={styles.catSelectedRow}>
+                <Text style={styles.fieldValue}>
+                  {categorieDirecte ? `${categorieDirecte.icone} ${categorieDirecte.nom}` : 'Sélectionner...'}
+                </Text>
+                <Text style={styles.chevronSmall}>▾</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Date */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Date</Text>
+              <TextInput
+                style={styles.textInput}
+                value={dateAchat}
+                onChangeText={setDateAchat}
+              />
+            </View>
+
+            {/* Liste de catégories sous forme de note (Figma 17) */}
+            <Text style={styles.catsListNote}>
+              Transport · Factures · Éducation · Loisirs · Enfants · Aide familiale · Épargne · Dons · Frais bancaires · Autres
+            </Text>
+
+            {/* Bannière mint budgétaire après validation (Figma 17) */}
+            {enveloppeActive && (
+              <View style={styles.mintBanner}>
+                <View style={styles.bannerHeaderRow}>
+                  <Text style={styles.checkIcon}>✓</Text>
+                  <Text style={styles.bannerTitle}>
+                    Budget {categorieDirecte?.nom.toLowerCase()} après validation
+                  </Text>
+                </View>
+                <Text style={styles.bannerSub}>
+                  {(enveloppeActive.montant_depense + (parseFloat(montantDirect) || 0)).toFixed(3)} / {enveloppeActive.montant_alloue.toFixed(3)} DT · reste {Math.max(0, enveloppeActive.montant_alloue - (enveloppeActive.montant_depense + (parseFloat(montantDirect) || 0))).toFixed(3)} DT
+                </Text>
+              </View>
+            )}
+
+            {/* Boutons d'action */}
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={handleEnregistrer}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryBtnText}>
+                Enregistrer la dépense
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => router.back()}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.secondaryBtnText}>
+                {t('annuler') ?? 'Annuler'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* MODALE CHOIX PRODUIT */}
+      <Modal
+        visible={modalProdVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalProdVisible(false)}
       >
-        <Text style={styles.submitBtnText}>✓ {t('enregistrer')}</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Sélectionner un produit</Text>
+            <TextInput
+              style={styles.searchModalInput}
+              placeholder="Rechercher par nom..."
+              placeholderTextColor={Theme.colors.muted}
+              value={rechercheProd}
+              onChangeText={setRechercheProd}
+            />
+            <ScrollView style={{ maxHeight: 300 }}>
+              {produitsFiltres.map((p) => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={styles.modalItem}
+                  onPress={() => {
+                    setProduitChoisi(p);
+                    setUnite(p.unite);
+                    setModalProdVisible(false);
+                  }}
+                >
+                  <Text style={styles.modalItemIcon}>{p.categorie_icone}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalItemName}>{p.nom}</Text>
+                    <Text style={styles.modalItemSub}>{p.marque} · {p.categorie_nom}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODALE CHOIX CATÉGORIE DÉPENSE */}
+      <Modal
+        visible={modalCatVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalCatVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setModalCatVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Choisir une catégorie</Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {categories.map((c) => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.modalItem}
+                  onPress={() => {
+                    setCategorieDirecte(c);
+                    setModalCatVisible(false);
+                  }}
+                >
+                  <Text style={styles.modalItemIcon}>{c.icone}</Text>
+                  <Text style={styles.modalItemName}>{c.nom}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   );
 }
 
+// ------------------------------------------------------------
+// STYLES — Design Figma 16 & 17
+// ------------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Theme.colors.warm,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 36,
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 48,
   },
-  modeToggleRow: {
+
+  // Toggle de mode
+  modeToggle: {
     flexDirection: 'row',
-    backgroundColor: '#E2E8F0',
-    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: Theme.radius.full,
     padding: 4,
-    marginBottom: 14,
+    marginBottom: 20,
   },
-  modeToggleBtn: {
+  toggleBtn: {
     flex: 1,
     paddingVertical: 10,
+    borderRadius: Theme.radius.full,
     alignItems: 'center',
-    borderRadius: 10,
   },
-  modeToggleActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
+  toggleBtnActive: {
+    backgroundColor: Theme.colors.forest,
   },
-  modeToggleText: {
-    fontSize: 12,
+  toggleText: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#64748B',
+    color: Theme.colors.muted,
   },
-  modeToggleTextActive: {
-    color: '#2563EB',
+  toggleTextActive: {
+    color: Theme.colors.white,
     fontWeight: '700',
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 12,
-  },
+
+  // Label section uppercase
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#334155',
+    color: Theme.colors.muted,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
     marginBottom: 8,
+  },
+  screenTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+    marginBottom: 20,
+  },
+
+  // Carte aperçu produit (Figma 16)
+  previewCard: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    ...Theme.shadows.card,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: Theme.colors.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  avatarIcon: {
+    fontSize: 22,
+  },
+  previewInfo: {
+    flex: 1,
+  },
+  previewName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Theme.colors.ink,
+  },
+  previewSub: {
+    fontSize: 13,
+    color: Theme.colors.muted,
+  },
+  chevronSmall: {
+    fontSize: 16,
+    color: Theme.colors.muted,
+  },
+
+  // Carte de champ de saisie
+  inputCard: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 10,
+    ...Theme.shadows.card,
   },
   inputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
+    fontSize: 11,
+    color: Theme.colors.muted,
     marginBottom: 4,
   },
-  input: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    padding: 10,
+  textInput: {
     fontSize: 15,
-    color: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  searchInput: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    marginBottom: 8,
-  },
-  productListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  productListName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  productListCat: {
-    fontSize: 11,
-    color: '#64748B',
-  },
-  selectedProductCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    borderRadius: 10,
-    padding: 10,
-  },
-  selectedProductName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1D4ED8',
-  },
-  selectedProductSub: {
-    fontSize: 11,
-    color: '#3B82F6',
-  },
-  changeLink: {
-    color: '#2563EB',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  catChipsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  catChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  catChipActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#2563EB',
-  },
-  catChipText: {
-    fontSize: 12,
+    color: Theme.colors.ink,
     fontWeight: '600',
-    color: '#64748B',
+    padding: 0,
   },
-  catChipTextActive: {
-    color: '#2563EB',
-    fontWeight: '700',
+  fieldValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Theme.colors.ink,
   },
-  row: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  totalBox: {
-    marginTop: 12,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 12,
+  catSelectedRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
-  totalLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  totalAmount: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#059669',
-  },
-  submitBtn: {
-    backgroundColor: '#059669',
-    borderRadius: 12,
-    paddingVertical: 14,
+
+  // Prix unitaire calculé (Figma 16)
+  unitPriceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 6,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: Theme.colors.border,
+    marginTop: 8,
   },
-  submitBtnText: {
-    color: '#FFFFFF',
+  unitPriceLabel: {
+    fontSize: 14,
+    color: Theme.colors.muted,
+  },
+  unitPriceValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+  },
+  hintText: {
+    fontSize: 12,
+    color: Theme.colors.muted,
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  catsListNote: {
+    fontSize: 12,
+    color: Theme.colors.muted,
+    lineHeight: 18,
+    marginTop: 6,
+    marginBottom: 16,
+  },
+
+  // Bannière mint d'impact budgétaire (Figma 17)
+  mintBanner: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: Theme.radius.lg,
+    padding: 16,
+    marginBottom: 20,
+  },
+  bannerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  checkIcon: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Theme.colors.deepGreen,
+  },
+  bannerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Theme.colors.deepGreen,
+  },
+  bannerSub: {
+    fontSize: 13,
+    color: Theme.colors.forest,
+  },
+
+  // Boutons
+  primaryBtn: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: Theme.radius.full,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    ...Theme.shadows.button,
+  },
+  primaryBtnText: {
+    color: Theme.colors.white,
     fontSize: 15,
     fontWeight: '700',
+  },
+  secondaryBtn: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: Theme.radius.full,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryBtnText: {
+    color: Theme.colors.deepGreen,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  // Modales
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
+    padding: 20,
+    ...Theme.shadows.card,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+    marginBottom: 14,
+  },
+  searchModalInput: {
+    backgroundColor: Theme.colors.warm,
+    borderRadius: Theme.radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    marginBottom: 12,
+    color: Theme.colors.ink,
+  },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Theme.colors.border,
+  },
+  modalItemIcon: {
+    fontSize: 20,
+  },
+  modalItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Theme.colors.ink,
+  },
+  modalItemSub: {
+    fontSize: 12,
+    color: Theme.colors.muted,
   },
 });

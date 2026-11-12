@@ -1,315 +1,300 @@
 // ============================================================
 // FICHIER : src/app/(admin)/reglages.tsx
-// RÔLE    : Écran des réglages du profil Administrateur.
-//           1. Modification de mot de passe administrateur.
-//           2. Bascule de langue (FR / AR) avec impact instantané.
-//           3. Déconnexion sécurisée de la session administrateur.
+// RÔLE    : Paramètres de l'administrateur — Design Figma 43.
+//
+// CE QUI EST AFFICHÉ SUR L'ÉCRAN (Design Figma 43 · FR · Admin Settings) :
+//   • Header : ☰ hamburger + "Paramètres admin" + profil
+//   • Label "ADMINISTRATEUR" (muted, uppercase)
+//   • Carte blanche "Langue" :
+//       - Label "Langue"
+//       - "Anglais · Français · العربية" (cliquables)
+//   • Carte blanche "Devise" :
+//       - Label "Devise"
+//       - "Dinar tunisien · DT"
+//   • Titre de section "Limites d'accès"
+//   • Bannière Mint de sécurité :
+//       - "✓ Finances privées inaccessibles"
+//       - "Seules les statistiques globales anonymes sont disponibles."
+//   • Ligne d'information : "Rôle                     Administrateur"
+//   • Ligne d'information : "Version de l'application  1.0.0"
+//   • Bouton secondary mint : "Changer le mot de passe"
+//   • Bouton secondary mint : "Se déconnecter"
 // ============================================================
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Alert,
 } from 'react-native';
+import { router } from 'expo-router';
 
-// Contexte et internationalisation
+// Design System & Contexte
+import { Theme } from '../../constants/theme';
 import { useAuth } from '../../utils/auth';
 import { useTranslation, Langue } from '../../utils/i18n';
-import { updateLangue } from '../../db/queries';
+import { useAdminDrawer } from './_layout';
+import AppHeader from '../../components/AppHeader';
 
 export default function AdminReglagesScreen() {
-  const { user, updateUser, changePassword, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { t, langue, changerLangue } = useTranslation();
+  const { ouvrirDrawer } = useAdminDrawer();
 
-  const [nouveauMdp, setNouveauMdp] = useState('');
-  const [confirmationMdp, setConfirmationMdp] = useState('');
-  const [messageSucces, setMessageSucces] = useState('');
-
-  // ----------------------------------------------------------
-  // CHANGEMENT DE MOT DE PASSE ADMIN
-  // ----------------------------------------------------------
-  async function handleChangerMdp() {
-    if (nouveauMdp.length < 6) {
-      Alert.alert('Erreur', t('erreur_mdp_trop_court'));
-      return;
-    }
-
-    if (nouveauMdp !== confirmationMdp) {
-      Alert.alert('Erreur', t('erreur_confirmation_mdp'));
-      return;
-    }
-
-    const res = await changePassword(nouveauMdp);
-    if (res.success) {
-      setNouveauMdp('');
-      setConfirmationMdp('');
-      setMessageSucces('Mot de passe administrateur mis à jour !');
-      setTimeout(() => setMessageSucces(''), 3000);
-    }
-  }
-
-  // ----------------------------------------------------------
-  // CHANGEMENT DE LANGUE (FR / AR / EN)
-  // ----------------------------------------------------------
-  function handleChangerLangue(nouvelleLangue: Langue) {
-    changerLangue(nouvelleLangue);
-    updateUser({ langue: nouvelleLangue });
+  function handleLogout() {
+    Alert.alert(
+      t('se_deconnecter') ?? 'Se déconnecter',
+      'Êtes-vous sûr de vouloir vous déconnecter de la session administrateur ?',
+      [
+        { text: t('annuler') ?? 'Annuler', style: 'cancel' },
+        {
+          text: t('se_deconnecter') ?? 'Se déconnecter',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            router.replace('/login');
+          },
+        },
+      ]
+    );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* SECTION 1 : PROFIL ADMINISTRATEUR */}
-      <View style={styles.card}>
-        <View style={styles.profileHeader}>
-          <Text style={styles.avatar}>👑</Text>
-          <View>
-            <Text style={styles.adminName}>{user?.nom}</Text>
-            <Text style={styles.adminEmail}>{user?.email}</Text>
-            <Text style={styles.adminRole}>Rôle : Administrateur Système</Text>
+    <View style={styles.container}>
+      {/* Header */}
+      <AppHeader
+        titre="Paramètres admin"
+        onMenuPress={ouvrirDrawer}
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Label uppercase */}
+        <Text style={styles.sectionLabel}>ADMINISTRATEUR</Text>
+
+        {/* CARTE : LANGUE (Figma 43) */}
+        <View style={styles.card}>
+          <Text style={styles.fieldLabel}>{t('langue') ?? 'Langue'}</Text>
+          <View style={styles.langRow}>
+            <TouchableOpacity onPress={() => changerLangue('en')}>
+              <Text style={[styles.langText, langue === 'en' && styles.langActive]}>
+                Anglais
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.langSep}>·</Text>
+            <TouchableOpacity onPress={() => changerLangue('fr')}>
+              <Text style={[styles.langText, langue === 'fr' && styles.langActive]}>
+                Français
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.langSep}>·</Text>
+            <TouchableOpacity onPress={() => changerLangue('ar')}>
+              <Text style={[styles.langText, langue === 'ar' && styles.langActive]}>
+                العربية
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </View>
 
-      {/* SECTION 2 : CHANGER MON MOT DE PASSE */}
-      <Text style={styles.sectionTitle}>{t('changer_mot_de_passe')}</Text>
-      <View style={styles.card}>
-        <Text style={styles.label}>{t('nouveau_mot_de_passe')} (min. 6 caractères)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="••••••••"
-          secureTextEntry
-          value={nouveauMdp}
-          onChangeText={setNouveauMdp}
-        />
+        {/* CARTE : DEVISE (Figma 43) */}
+        <View style={styles.card}>
+          <Text style={styles.fieldLabel}>{t('devise') ?? 'Devise'}</Text>
+          <Text style={styles.fieldValue}>Dinar tunisien · DT</Text>
+        </View>
 
-        <Text style={styles.label}>{t('confirmer_mot_de_passe')}</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="••••••••"
-          secureTextEntry
-          value={confirmationMdp}
-          onChangeText={setConfirmationMdp}
-        />
+        {/* SECTION LIMITES D'ACCÈS */}
+        <Text style={styles.sectionTitle}>Limites d'accès</Text>
 
-        {messageSucces ? (
-          <View style={styles.successBox}>
-            <Text style={styles.successText}>✅ {messageSucces}</Text>
+        {/* Bannière Mint de sécurité */}
+        <View style={styles.mintBanner}>
+          <View style={styles.bannerHeaderRow}>
+            <Text style={styles.checkIcon}>✓</Text>
+            <Text style={styles.bannerTitle}>
+              Finances privées inaccessibles
+            </Text>
           </View>
-        ) : null}
+          <Text style={styles.bannerSub}>
+            Seules les statistiques globales anonymes sont disponibles.
+          </Text>
+        </View>
 
+        {/* Lignes d'informations */}
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Rôle</Text>
+          <Text style={styles.infoValue}>Administrateur</Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Version de l'application</Text>
+          <Text style={styles.infoValue}>1.0.0</Text>
+        </View>
+
+        {/* BOUTON SECONDARY MINT : CHANGER LE MOT DE PASSE */}
         <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={handleChangerMdp}
+          style={styles.secondaryBtn}
+          onPress={() => router.push('/changer-mot-de-passe')}
           activeOpacity={0.8}
         >
-          <Text style={styles.actionBtnText}>{t('sauvegarder')}</Text>
+          <Text style={styles.secondaryBtnText}>
+            {t('changer_mot_de_passe') ?? 'Changer le mot de passe'}
+          </Text>
         </TouchableOpacity>
-      </View>
 
-      {/* SECTION 3 : LANGUE DE L'INTERFACE (FR / AR / EN) */}
-      <Text style={styles.sectionTitle}>{t('langue')} / Language / اللغة</Text>
-      <View style={styles.card}>
-        <View style={styles.langRow}>
-          <TouchableOpacity
-            style={[
-              styles.langBtn,
-              langue === 'fr' ? styles.langBtnActive : styles.langBtnInactive,
-            ]}
-            onPress={() => handleChangerLangue('fr')}
-          >
-            <Text
-              style={[
-                styles.langBtnText,
-                langue === 'fr' && styles.langBtnTextActive,
-              ]}
-            >
-              🇫🇷 Français
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.langBtn,
-              langue === 'ar' ? styles.langBtnActive : styles.langBtnInactive,
-            ]}
-            onPress={() => handleChangerLangue('ar')}
-          >
-            <Text
-              style={[
-                styles.langBtnText,
-                langue === 'ar' && styles.langBtnTextActive,
-              ]}
-            >
-              🇸🇦 عربي
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.langBtn,
-              langue === 'en' ? styles.langBtnActive : styles.langBtnInactive,
-            ]}
-            onPress={() => handleChangerLangue('en')}
-          >
-            <Text
-              style={[
-                styles.langBtnText,
-                langue === 'en' && styles.langBtnTextActive,
-              ]}
-            >
-              🇬🇧 English
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* SECTION 4 : DECONNEXION */}
-      <TouchableOpacity
-        style={styles.logoutBtn}
-        onPress={() => logout()}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.logoutBtnText}>🚪 {t('se_deconnecter')}</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {/* BOUTON SECONDARY MINT : SE DÉCONNECTER */}
+        <TouchableOpacity
+          style={[styles.secondaryBtn, styles.logoutBtn]}
+          onPress={handleLogout}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.secondaryBtnText}>
+            {t('se_deconnecter') ?? 'Se déconnecter'}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
+// ------------------------------------------------------------
+// STYLES — Design Figma 43
+// ------------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF5FF',
+    backgroundColor: Theme.colors.warm,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 48,
   },
+
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Theme.colors.muted,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 14,
+  },
+
+  // Carte blanche
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderColor: '#E9D5FF',
-    marginBottom: 16,
+    borderColor: Theme.colors.border,
+    marginBottom: 12,
+    ...Theme.shadows.card,
   },
-  profileHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  fieldLabel: {
+    fontSize: 11,
+    color: Theme.colors.muted,
+    marginBottom: 6,
   },
-  avatar: {
-    fontSize: 34,
-  },
-  adminName: {
+  fieldValue: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  adminEmail: {
-    fontSize: 13,
-    color: '#64748B',
-    marginTop: 1,
-  },
-  adminRole: {
-    fontSize: 12,
-    color: '#7E22CE',
     fontWeight: '700',
-    marginTop: 2,
+    color: Theme.colors.ink,
   },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#581C87',
-    marginBottom: 8,
-    marginTop: 4,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  input: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  actionBtn: {
-    backgroundColor: '#7E22CE',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  successBox: {
-    backgroundColor: '#ECFDF5',
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  successText: {
-    color: '#065F46',
-    fontWeight: '600',
-    fontSize: 12,
-  },
+
+  // Langues
   langRow: {
     flexDirection: 'row',
-    gap: 10,
-  },
-  langBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
     alignItems: 'center',
-    borderWidth: 1,
+    gap: 8,
   },
-  langBtnActive: {
-    backgroundColor: '#F3E8FF',
-    borderColor: '#7E22CE',
+  langText: {
+    fontSize: 15,
+    color: Theme.colors.muted,
+    fontWeight: '500',
   },
-  langBtnInactive: {
-    backgroundColor: '#F8FAFC',
-    borderColor: '#E2E8F0',
+  langActive: {
+    color: Theme.colors.ink,
+    fontWeight: '800',
   },
-  langBtnText: {
+  langSep: {
+    fontSize: 14,
+    color: Theme.colors.muted,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+    marginTop: 24,
+    marginBottom: 14,
+  },
+
+  // Bannière Mint
+  mintBanner: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: Theme.radius.lg,
+    padding: 18,
+    marginBottom: 18,
+  },
+  bannerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  checkIcon: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Theme.colors.deepGreen,
+  },
+  bannerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Theme.colors.deepGreen,
+  },
+  bannerSub: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#64748B',
+    color: Theme.colors.forest,
+    lineHeight: 18,
   },
-  langBtnTextActive: {
-    color: '#7E22CE',
+
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Theme.colors.border,
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: Theme.colors.muted,
+  },
+  infoValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Theme.colors.ink,
+  },
+
+  // Boutons
+  secondaryBtn: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: Theme.radius.full,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  secondaryBtnText: {
+    color: Theme.colors.deepGreen,
+    fontSize: 15,
     fontWeight: '700',
   },
   logoutBtn: {
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    borderRadius: 10,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  logoutBtnText: {
-    color: '#DC2626',
-    fontWeight: '700',
-    fontSize: 14,
+    marginTop: 14,
   },
 });
-

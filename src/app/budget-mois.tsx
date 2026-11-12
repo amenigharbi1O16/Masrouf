@@ -1,13 +1,25 @@
 // ============================================================
 // FICHIER : src/app/budget-mois.tsx
-// RÔLE    : Écran de configuration du Budget par Enveloppes du mois.
-//           Permet à l'utilisateur :
-//           1. De saisir son budget total du mois.
-//           2. De répartir le budget par enveloppes « Masrouf [Catégorie] ».
-//           3. De voir en temps réel : Total, Somme répartie, Reste à répartir.
-//           4. D'ajouter des catégories supplémentaires ou personnalisées.
-//           5. De recopier le budget du mois précédent en 1 clic.
-//           6. Règle anti-triche : interdit de baisser le budget sous les dépenses déjà faites.
+// RÔLE    : Écran de création et répartition du budget — Design Figma 09, 10 & 11.
+//
+// CE QUI EST AFFICHÉ SUR L'ÉCRAN :
+//   Étape 1 : "Créer un budget" (Figma 09) :
+//     • Header : ‹ retour + "Créer un budget" + profil
+//     • Label "UNE PÉRIODE QUI VOUS CONVIENT" (uppercase, muted)
+//     • Titre "Donnez un but à chaque dinar." (bold, ink)
+//     • Sous-titre "Choisissez librement les dates, sans vous limiter au mois civil."
+//     • Cartes blanches : Date de début, Date de fin, Budget total · DT
+//     • Bannière mint de validation des dates
+//     • Bouton primary forest : "Répartir par catégorie"
+//     • Bouton secondary mint : "Annuler"
+//
+//   Étape 2 : "Répartir le budget / Modifier" (Figma 10 & 11) :
+//     • Header : ‹ retour + "Répartir le budget" + profil
+//     • Ligne d'en-tête : "01–30 NOV. 2026 · 30 JOURS"
+//     • Lignes récapitulatives : Budget total, Réparti, Non réparti
+//     • Cartes blanches par enveloppe (Alimentation · DT, Factures · DT...)
+//     • Bannière mint : "✓ X DT restent non répartis"
+//     • Bouton primary forest : "Créer mon budget" / "Enregistrer les modifications"
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
@@ -19,7 +31,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Modal,
 } from 'react-native';
 import { router } from 'expo-router';
 
@@ -29,17 +40,20 @@ import {
   getMonthlyBudget,
   saveMonthlyBudget,
   getEnveloppesBudget,
-  copyPreviousMonthBudget,
   canDecreaseBudget,
-  reassignerDepensesCategorieVersAutres,
-  addUserCustomCategory,
   Categorie,
-  EnveloppeBudget,
 } from '../db/queries';
 
-// Contexte et internationalisation
+// Design System & Contexte
+import { Theme } from '../constants/theme';
 import { useAuth } from '../utils/auth';
 import { useTranslation } from '../utils/i18n';
+import AppHeader from '../components/AppHeader';
+
+const MOIS_NOMS = [
+  'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
+];
 
 type EnveloppeItem = {
   categorie_id: number;
@@ -47,7 +61,6 @@ type EnveloppeItem = {
   categorie_icone: string;
   montant: number;
   pourcentage: number;
-  est_systeme?: number;
 };
 
 export default function BudgetMoisScreen() {
@@ -55,35 +68,31 @@ export default function BudgetMoisScreen() {
   const { t } = useTranslation();
 
   const maintenant = new Date();
-  const moisCourant = `${maintenant.getFullYear()}-${String(
-    maintenant.getMonth() + 1
-  ).padStart(2, '0')}`;
+  const annee = maintenant.getFullYear();
+  const moisIndex = maintenant.getMonth();
+  const moisCle = `${annee}-${String(moisIndex + 1).padStart(2, '0')}`;
+  const dernierJour = new Date(annee, moisIndex + 1, 0).getDate();
 
-  const [budgetTotalTexte, setBudgetTotalTexte] = useState<string>('');
+  // Étape courante : 'periode' (Figma 09) ou 'repartition' (Figma 10 / 11)
+  const [etape, setEtape] = useState<'periode' | 'repartition'>('periode');
+  const [estEdition, setEstEdition] = useState<boolean>(false);
+
+  // Étape 1 : Dates et total
+  const [dateDebut, setDateDebut] = useState<string>(`01 ${MOIS_NOMS[moisIndex]} ${annee}`);
+  const [dateFin, setDateFin] = useState<string>(`${dernierJour} ${MOIS_NOMS[moisIndex]} ${annee}`);
+  const [budgetTotalTexte, setBudgetTotalTexte] = useState<string>('800');
+
+  // Étape 2 : Répartition
   const [enveloppes, setEnveloppes] = useState<EnveloppeItem[]>([]);
-  const [categoriesDisponibles, setCategoriesDisponibles] = useState<Categorie[]>([]);
-  const [modalAjoutVisible, setModalAjoutVisible] = useState<boolean>(false);
 
-  // Formulaire d'ajout de catégorie personnalisée
-  const [afficherFormPerso, setAfficherFormPerso] = useState<boolean>(false);
-  const [persoNom, setPersoNom] = useState<string>('');
-  const [persoIcone, setPersoIcone] = useState<string>('🏷️');
-  const [persoType, setPersoType] = useState<'product' | 'expense'>('product');
-
-  // ----------------------------------------------------------
-  // CHARGEMENT INITIAL DU BUDGET DU MOIS
-  // ----------------------------------------------------------
   useEffect(() => {
     if (!user) return;
-
-    const toutesCats = getAllCategories(true);
-    setCategoriesDisponibles(toutesCats);
-
-    const existant = getMonthlyBudget(user.id, moisCourant);
+    const existant = getMonthlyBudget(user.id, moisCle);
 
     if (existant && existant.montant_total > 0) {
+      setEstEdition(true);
       setBudgetTotalTexte(String(existant.montant_total));
-      const envs = getEnveloppesBudget(user.id, moisCourant);
+      const envs = getEnveloppesBudget(user.id, moisCle);
       setEnveloppes(
         envs.map((e) => ({
           categorie_id: e.categorie_id,
@@ -93,58 +102,38 @@ export default function BudgetMoisScreen() {
           pourcentage: e.pourcentage_alloue,
         }))
       );
+      // Si un budget existe déjà, on démarre directement en vue répartition (Figma 11)
+      setEtape('repartition');
     } else {
-      // Si aucun budget n'existe encore, on propose les 9 catégories par défaut
+      setEstEdition(false);
       const budgetBase = user.budget_mensuel > 0 ? user.budget_mensuel : 800;
       setBudgetTotalTexte(String(budgetBase));
 
+      const toutesCats = getAllCategories(true);
       const defauts = toutesCats.filter((c) => c.est_defaut === 1);
-      const initialEnvs: EnveloppeItem[] = defauts.map((c) => {
-        const montant = (budgetBase * c.pourcentage_defaut) / 100;
-        return {
-          categorie_id: c.id,
-          categorie_nom: c.nom,
-          categorie_icone: c.icone,
-          montant: Math.round(montant),
-          pourcentage: c.pourcentage_defaut,
-          est_systeme: c.est_systeme,
-        };
-      });
-      setEnveloppes(initialEnvs);
+      const envsInit = (defauts.length > 0 ? defauts : toutesCats.slice(0, 5)).map((c) => ({
+        categorie_id: c.id,
+        categorie_nom: c.nom,
+        categorie_icone: c.icone,
+        montant: Math.round((budgetBase * (c.pourcentage_defaut || 20)) / 100),
+        pourcentage: c.pourcentage_defaut || 20,
+      }));
+      setEnveloppes(envsInit);
     }
-  }, [user, moisCourant]);
+  }, [user, moisCle]);
 
-  const totalBudget = parseFloat(budgetTotalTexte) || 0;
-  const sommeRepartie = enveloppes.reduce((sum, e) => sum + e.montant, 0);
-  const resteARepartir = totalBudget - sommeRepartie;
-  const estEnDepassement = sommeRepartie > totalBudget;
+  const budgetTotalNum = parseFloat(budgetTotalTexte.replace(',', '.')) || 0;
+  const sommeRepartie = enveloppes.reduce((acc, cur) => acc + cur.montant, 0);
+  const nonReparti = Math.max(0, budgetTotalNum - sommeRepartie);
+  const estEnDepassement = sommeRepartie > budgetTotalNum;
 
-  // ----------------------------------------------------------
-  // MODIFICATION DU BUDGET GLOBAL (Met à jour les montants selon les %)
-  // ----------------------------------------------------------
-  function handleChangerBudgetTotal(texte: string) {
-    setBudgetTotalTexte(texte);
-    const nouveauTotal = parseFloat(texte) || 0;
-
-    if (nouveauTotal > 0) {
-      setEnveloppes((prev) =>
-        prev.map((e) => ({
-          ...e,
-          montant: Math.round((nouveauTotal * e.pourcentage) / 100),
-        }))
-      );
-    }
-  }
-
-  // ----------------------------------------------------------
-  // MODIFICATION DU MONTANT D'UNE ENVELOPPE
-  // ----------------------------------------------------------
-  function handleModifierMontantEnveloppe(catId: number, texte: string) {
-    const val = parseFloat(texte) || 0;
+  // Modification du montant d'une enveloppe
+  function handleChangerMontant(catId: number, texte: string) {
+    const val = parseFloat(texte.replace(',', '.')) || 0;
     setEnveloppes((prev) =>
       prev.map((e) => {
         if (e.categorie_id === catId) {
-          const pct = totalBudget > 0 ? Math.round((val / totalBudget) * 100) : 0;
+          const pct = budgetTotalNum > 0 ? Math.round((val / budgetTotalNum) * 100) : 0;
           return { ...e, montant: val, pourcentage: pct };
         }
         return e;
@@ -152,685 +141,402 @@ export default function BudgetMoisScreen() {
     );
   }
 
-  // ----------------------------------------------------------
-  // SUPPRESSION D'UNE ENVELOPPE (Sauf 'Autres')
-  // ----------------------------------------------------------
-  function handleSupprimerEnveloppe(env: EnveloppeItem) {
-    if (env.categorie_nom.toLowerCase() === 'autres' || env.est_systeme === 1) {
-      Alert.alert('Action refusée', "L'enveloppe 'Autres' est obligatoire et ne peut pas être supprimée.");
-      return;
-    }
-
-    Alert.alert(
-      'Supprimer cette enveloppe',
-      `Voulez-vous retirer l'enveloppe ${env.categorie_nom} ?\n${t('categorie_supprimee_info')}`,
-      [
-        { text: t('fermer'), style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: () => {
-            if (user) {
-              reassignerDepensesCategorieVersAutres(env.categorie_id);
-            }
-            setEnveloppes((prev) => prev.filter((e) => e.categorie_id !== env.categorie_id));
-          },
-        },
-      ]
-    );
-  }
-
-  // ----------------------------------------------------------
-  // AJOUTER UNE NOUVELLE ENVELOPPE
-  // ----------------------------------------------------------
-  function handleAjouterCategorie(c: Categorie) {
-    const dejaPresente = enveloppes.some((e) => e.categorie_id === c.id);
-    if (dejaPresente) {
-      Alert.alert('Attention', 'Cette catégorie fait déjà partie de vos enveloppes.');
-      return;
-    }
-
-    const nouvelle: EnveloppeItem = {
-      categorie_id: c.id,
-      categorie_nom: c.nom,
-      categorie_icone: c.icone,
-      montant: resteARepartir > 0 ? Math.min(resteARepartir, 50) : 0,
-      pourcentage: 0,
-      est_systeme: c.est_systeme,
-    };
-
-    setEnveloppes((prev) => [...prev, nouvelle]);
-    setModalAjoutVisible(false);
-  }
-
-  // ----------------------------------------------------------
-  // CREER UNE CATEGORIE PERSONNALISEE (AVEC SELECTEUR TYPE PRODUIT / DEPENSE)
-  // ----------------------------------------------------------
-  function handleCreerCategoriePerso() {
-    if (!user) return;
-    const nomClean = persoNom.trim();
-    if (!nomClean) {
-      Alert.alert('Erreur', 'Veuillez saisir un nom pour votre catégorie.');
-      return;
-    }
-    const newCatId = addUserCustomCategory(
-      user.id,
-      nomClean,
-      persoIcone.trim() || '🏷️',
-      persoType,
-      'Perso'
-    );
-    const updatedCats = getAllCategories(true);
-    setCategoriesDisponibles(updatedCats);
-    const nouvelleCat = updatedCats.find((c) => c.id === newCatId);
-    if (nouvelleCat) {
-      handleAjouterCategorie(nouvelleCat);
-    }
-    setPersoNom('');
-    setPersoIcone('🏷️');
-    setPersoType('product');
-    setAfficherFormPerso(false);
-  }
-
-  // ----------------------------------------------------------
-  // RECOPIER LE MOIS PRECEDENT
-  // ----------------------------------------------------------
-  function handleRecopierMoisPrecedent() {
-    if (!user) return;
-    const ok = copyPreviousMonthBudget(user.id, moisCourant);
-    if (ok) {
-      const existant = getMonthlyBudget(user.id, moisCourant);
-      if (existant) {
-        setBudgetTotalTexte(String(existant.montant_total));
-        const envs = getEnveloppesBudget(user.id, moisCourant);
-        setEnveloppes(
-          envs.map((e) => ({
-            categorie_id: e.categorie_id,
-            categorie_nom: e.categorie_nom,
-            categorie_icone: e.categorie_icone,
-            montant: e.montant_alloue,
-            pourcentage: e.pourcentage_alloue,
-          }))
-        );
-      }
-      Alert.alert('Succès', 'Le budget du mois précédent a été recopié avec succès !');
-    } else {
-      Alert.alert('Information', 'Aucun budget enregistré au mois précédent.');
-    }
-  }
-
-  // ----------------------------------------------------------
-  // ENREGISTREMENT ET VALIDATION STRICTE
-  // ----------------------------------------------------------
+  // Sauvegarde finale dans SQLite
   function handleSauvegarder() {
     if (!user) return;
 
-    if (totalBudget <= 0) {
-      Alert.alert('Erreur', 'Veuillez saisir un budget total supérieur à 0.');
+    if (budgetTotalNum <= 0) {
+      Alert.alert(t('erreur') ?? 'Attention', 'Veuillez définir un budget total valide.');
       return;
     }
 
     if (estEnDepassement) {
       Alert.alert(
-        'Dépassement interdit',
-        `${t('depassement_total')}\n\nSomme allouée : ${sommeRepartie.toFixed(2)} TND\nBudget max : ${totalBudget.toFixed(2)} TND`
+        t('erreur') ?? 'Attention',
+        'La somme des enveloppes dépasse le montant total alloué.'
       );
       return;
     }
 
-    // REGLE ANTI-TRICHE : vérifie qu'on ne baisse pas une enveloppe sous les dépenses existantes
+    // Règle anti-triche : vérifie si on baisse sous le montant déjà dépensé
     for (const env of enveloppes) {
-      const autorise = canDecreaseBudget(user.id, moisCourant, env.categorie_id, env.montant);
+      const autorise = canDecreaseBudget(user.id, moisCle, env.categorie_id, env.montant);
       if (!autorise) {
         Alert.alert(
-          'Règle Anti-triche',
-          `${t('anti_triche_erreur')}\n\nEnveloppe : ${env.categorie_nom}`
+          'Règle budgétaire',
+          `Vous ne pouvez pas baisser l'enveloppe « ${env.categorie_nom} » sous le montant déjà dépensé ce mois-ci.`
         );
         return;
       }
     }
 
-    // Enregistrement dans SQLite
-    saveMonthlyBudget(user.id, moisCourant, totalBudget, enveloppes);
+    // Enregistrement SQLite
+    saveMonthlyBudget(
+      user.id,
+      moisCle,
+      budgetTotalNum,
+      enveloppes.map((e) => ({
+        categorie_id: e.categorie_id,
+        montant: e.montant,
+        pourcentage: e.pourcentage,
+      }))
+    );
 
-    Alert.alert('Succès', 'Vos enveloppes budgétaires ont été enregistrées !', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    router.back();
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* SECTION 1 : SAISIE DU BUDGET TOTAL */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t('budget_mensuel')} ({moisCourant})</Text>
-        <Text style={styles.label}>{t('fixer_budget')}</Text>
-        <TextInput
-          style={styles.inputTotal}
-          keyboardType="numeric"
-          placeholder="Ex: 800"
-          value={budgetTotalTexte}
-          onChangeText={handleChangerBudgetTotal}
-        />
+    <View style={styles.container}>
+      {/* Header avec action retour */}
+      <AppHeader
+        titre={
+          etape === 'periode'
+            ? 'Créer un budget'
+            : estEdition
+            ? 'Modifier le budget'
+            : 'Répartir le budget'
+        }
+        onMenuPress={() => {
+          if (etape === 'repartition' && !estEdition) {
+            setEtape('periode');
+          } else {
+            router.back();
+          }
+        }}
+      />
 
-        {/* RECOPIER MOIS PRECEDENT */}
-        <TouchableOpacity
-          style={styles.copyBtn}
-          onPress={handleRecopierMoisPrecedent}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.copyBtnText}>🔄 {t('recopier_mois_prec')}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* SECTION 2 : REPARTITION EN DIRECT */}
-      <View style={[styles.card, estEnDepassement && styles.cardDanger]}>
-        <View style={styles.statsRow}>
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>{t('somme_repartie')}</Text>
-            <Text style={[styles.statValue, estEnDepassement && styles.textDanger]}>
-              {sommeRepartie.toFixed(2)} TND
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {etape === 'periode' ? (
+          /* ==================================================== */
+          /* ÉTAPE 1 : DÉFINITION DE LA PÉRIODE ET DU BUDGET (Figma 09) */
+          /* ==================================================== */
+          <View>
+            <Text style={styles.sectionLabel}>
+              UNE PÉRIODE QUI VOUS CONVIENT
             </Text>
-          </View>
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>{t('reste_a_repartir')}</Text>
-            <Text
-              style={[
-                styles.statValue,
-                { color: resteARepartir < 0 ? '#DC2626' : '#059669' },
-              ]}
-            >
-              {resteARepartir.toFixed(2)} TND
+            <Text style={styles.screenTitle}>
+              Donnez un but à chaque dinar.
             </Text>
-          </View>
-        </View>
+            <Text style={styles.screenSubtitle}>
+              Choisissez librement les dates, sans vous limiter au mois civil.
+            </Text>
 
-        {estEnDepassement ? (
-          <Text style={styles.dangerNotice}>⚠️ {t('depassement_total')}</Text>
-        ) : null}
-      </View>
+            {/* Date de début */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Date de début</Text>
+              <TextInput
+                style={styles.textInput}
+                value={dateDebut}
+                onChangeText={setDateDebut}
+              />
+            </View>
 
-      {/* SECTION 3 : LISTE DES ENVELOPPES « MASROUF + CATEGORIE » */}
-      <View style={styles.envelopesHeader}>
-        <Text style={styles.sectionTitle}>{t('budget_enveloppes')}</Text>
-        <TouchableOpacity
-          style={styles.addCategoryBtn}
-          onPress={() => setModalAjoutVisible(true)}
-        >
-          <Text style={styles.addCategoryBtnText}>+ {t('ajouter_categorie')}</Text>
-        </TouchableOpacity>
-      </View>
+            {/* Date de fin */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Date de fin</Text>
+              <TextInput
+                style={styles.textInput}
+                value={dateFin}
+                onChangeText={setDateFin}
+              />
+            </View>
 
-      {enveloppes.map((env) => (
-        <View key={env.categorie_id} style={styles.envelopeCard}>
-          <View style={styles.envelopeLeft}>
-            <Text style={styles.envelopeIcon}>{env.categorie_icone}</Text>
-            <View>
-              <Text style={styles.envelopeName}>
-                {t('masrouf_prefix')} {env.categorie_nom}
-              </Text>
-              <Text style={styles.envelopePct}>
-                {env.pourcentage}% du total
+            {/* Budget total · DT */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Budget total · DT</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Ex: 1,200.000"
+                placeholderTextColor={Theme.colors.muted}
+                keyboardType="decimal-pad"
+                value={budgetTotalTexte}
+                onChangeText={setBudgetTotalTexte}
+              />
+            </View>
+
+            {/* Bannière validation (Figma 09) */}
+            <View style={styles.mintBanner}>
+              <View style={styles.bannerHeaderRow}>
+                <Text style={styles.checkIcon}>✓</Text>
+                <Text style={styles.bannerTitle}>Vos dates sont valides</Text>
+              </View>
+              <Text style={styles.bannerSub}>
+                30 jours · La fin est postérieure au début.
               </Text>
             </View>
-          </View>
 
-          <View style={styles.envelopeRight}>
-            <TextInput
-              style={styles.envelopeInput}
-              keyboardType="numeric"
-              value={String(env.montant)}
-              onChangeText={(txt) =>
-                handleModifierMontantEnveloppe(env.categorie_id, txt)
-              }
-            />
-            <Text style={styles.currencyTnd}>TND</Text>
-
-            {env.categorie_nom.toLowerCase() !== 'autres' ? (
-              <TouchableOpacity
-                style={styles.deleteEnvBtn}
-                onPress={() => handleSupprimerEnveloppe(env)}
-              >
-                <Text style={styles.deleteEnvText}>✕</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
-      ))}
-
-      {/* BOUTON D'ENREGISTREMENT PRINCIPAL */}
-      <TouchableOpacity
-        style={[styles.saveButton, estEnDepassement && styles.saveButtonDisabled]}
-        onPress={handleSauvegarder}
-        disabled={estEnDepassement}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.saveButtonText}>{t('enregistrer_budget')}</Text>
-      </TouchableOpacity>
-
-      {/* MODAL AJOUT DE CATEGORIE */}
-      <Modal visible={modalAjoutVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{t('ajouter_categorie')}</Text>
-
-                  {/* BOUTON BASCULE : CREER NOUVELLE CATEGORIE PERSO */ }
-                  < TouchableOpacity
-              style = { styles.togglePersoBtn }
-              onPress = {() => setAfficherFormPerso(!afficherFormPerso)}
+            {/* Boutons d'action */}
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => setEtape('repartition')}
+              activeOpacity={0.85}
             >
-              <Text style={styles.togglePersoBtnText}>
-                {afficherFormPerso ? '← Choisir parmi les catégories existantes' : '+ Créer une catégorie personnalisée'}
+              <Text style={styles.primaryBtnText}>Répartir par catégorie</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => router.back()}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.secondaryBtnText}>
+                {t('annuler') ?? 'Annuler'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          /* ==================================================== */
+          /* ÉTAPE 2 : RÉPARTITION PAR CATÉGORIE (Figma 10 & 11)   */
+          /* ==================================================== */
+          <View>
+            {/* Ligne en-tête dates (Figma 10) */}
+            <Text style={styles.periodHeader}>
+              01–{dernierJour} {MOIS_NOMS[moisIndex].toUpperCase()} {annee} · {dernierJour} JOURS
+            </Text>
+
+            {/* Lignes récapitulatives */}
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Budget total</Text>
+              <Text style={styles.summaryValue}>
+                {budgetTotalNum.toFixed(3)} DT
+              </Text>
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Réparti</Text>
+              <Text style={styles.summaryValue}>
+                {sommeRepartie.toFixed(3)} DT
+              </Text>
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Non réparti</Text>
+              <Text
+                style={[
+                  styles.summaryValue,
+                  estEnDepassement && { color: Theme.colors.coral },
+                ]}
+              >
+                {estEnDepassement
+                  ? `Dépassement de ${(sommeRepartie - budgetTotalNum).toFixed(3)} DT`
+                  : `${nonReparti.toFixed(3)} DT`}
+              </Text>
+            </View>
+
+            {/* Cartes blanches des enveloppes de catégories */}
+            <View style={{ marginTop: 16 }}>
+              {enveloppes.map((env) => (
+                <View key={env.categorie_id} style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>
+                    {env.categorie_icone} {env.categorie_nom} · DT
+                  </Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="0.000"
+                    placeholderTextColor={Theme.colors.muted}
+                    keyboardType="decimal-pad"
+                    value={String(env.montant)}
+                    onChangeText={(txt) => handleChangerMontant(env.categorie_id, txt)}
+                  />
+                </View>
+              ))}
+            </View>
+
+            {/* Bannière de confirmation (Figma 10) */}
+            <View
+              style={[
+                styles.mintBanner,
+                estEnDepassement && styles.warningBanner,
+              ]}
+            >
+              <View style={styles.bannerHeaderRow}>
+                <Text style={styles.checkIcon}>{estEnDepassement ? '⚠️' : '✓'}</Text>
+                <Text style={styles.bannerTitle}>
+                  {estEnDepassement
+                    ? 'Le total dépasse votre budget total'
+                    : `${nonReparti.toFixed(3)} DT restent non répartis`}
+                </Text>
+              </View>
+              <Text style={styles.bannerSub}>
+                {estEnDepassement
+                  ? 'Ajustez les montants de vos enveloppes pour ne pas dépasser.'
+                  : 'À répartir plus tard. Le total ne peut dépasser le budget.'}
+              </Text>
+            </View>
+
+            {/* Bouton de validation */}
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={handleSauvegarder}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryBtnText}>
+                {estEdition ? 'Enregistrer les modifications' : 'Créer mon budget'}
               </Text>
             </TouchableOpacity>
 
-            {afficherFormPerso ? (
-              <View style={styles.persoForm}>
-                <Text style={styles.persoLabel}>Nom de la catégorie *</Text>
-                <TextInput
-                  style={styles.persoInput}
-                  placeholder="Ex: Animaux, Jardinage..."
-                  value={persoNom}
-                  onChangeText={setPersoNom}
-                />
-
-                <Text style={styles.persoLabel}>Type de catégorie *</Text>
-                <View style={styles.persoTypeRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.persoTypeBtn,
-                      persoType === 'product' && styles.persoTypeBtnActive,
-                    ]}
-                    onPress={() => setPersoType('product')}
-                  >
-                    <Text
-                      style={[
-                        styles.persoTypeText,
-                        persoType === 'product' && styles.persoTypeTextActive,
-                      ]}
-                    >
-                      🛒 Produit (Supermarché)
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.persoTypeBtn,
-                      persoType === 'expense' && styles.persoTypeBtnActive,
-                    ]}
-                    onPress={() => setPersoType('expense')}
-                  >
-                    <Text
-                      style={[
-                        styles.persoTypeText,
-                        persoType === 'expense' && styles.persoTypeTextActive,
-                      ]}
-                    >
-                      🧾 Dépense (Fixe / Facture)
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.persoLabel}>Icône (Emoji)</Text>
-                <TextInput
-                  style={styles.persoInput}
-                  placeholder="Ex: 🐱, 🪴"
-                  value={persoIcone}
-                  onChangeText={setPersoIcone}
-                />
-
-                <TouchableOpacity
-                  style={styles.persoSubmitBtn}
-                  onPress={handleCreerCategoriePerso}
-                >
-                  <Text style={styles.persoSubmitBtnText}>+ Créer et ajouter à l'enveloppe</Text>
-                </TouchableOpacity>
-              </View>
-          ) : (
-          <ScrollView style={{ maxHeight: 350 }}>
-            {categoriesDisponibles
-              .filter((c) => !enveloppes.some((e) => e.categorie_id === c.id))
-              .map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={styles.catOptionItem}
-                  onPress={() => handleAjouterCategorie(c)}
-                >
-                  <Text style={{ fontSize: 22, marginRight: 10 }}>{c.icone}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.catOptionName}>{c.nom}</Text>
-                    <Text style={styles.catOptionTheme}>
-                      Thème : {c.theme} • {c.type === 'expense' ? '🧾 Dépense' : '🛒 Produit'}
-                    </Text>
-                  </View>
-                  <Text style={styles.catOptionAdd}>+ Ajouter</Text>
-                </TouchableOpacity>
-              ))}
-          </ScrollView>
-            )}
-
-          <TouchableOpacity
-            style={styles.modalCloseBtn}
-            onPress={() => {
-              setModalAjoutVisible(false);
-              setAfficherFormPerso(false);
-            }}
-          >
-            <Text style={styles.modalCloseBtnText}>{t('fermer')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-    </ScrollView >
+            {/* Bouton retour étape période */}
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => setEtape('periode')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.secondaryBtnText}>
+                ‹ Modifier la période
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
+// ------------------------------------------------------------
+// STYLES — Design Figma 09, 10 & 11
+// ------------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Theme.colors.warm,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 48,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 14,
-  },
-  cardDanger: {
-    borderColor: '#FCA5A5',
-    backgroundColor: '#FEF2F2',
-  },
-  cardTitle: {
-    fontSize: 16,
+
+  sectionLabel: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#1E293B',
+    color: Theme.colors.muted,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 8,
   },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-    marginTop: 8,
+  screenTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+    marginBottom: 6,
+  },
+  screenSubtitle: {
+    fontSize: 14,
+    color: Theme.colors.muted,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+
+  // Cartes blanches de saisie
+  inputCard: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 10,
+    ...Theme.shadows.card,
+  },
+  inputLabel: {
+    fontSize: 11,
+    color: Theme.colors.muted,
     marginBottom: 4,
   },
-  inputTotal: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
+  textInput: {
+    fontSize: 15,
+    color: Theme.colors.ink,
+    fontWeight: '600',
+    padding: 0,
   },
-  copyBtn: {
+
+  // Bannière mint de validation
+  mintBanner: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: Theme.radius.lg,
+    padding: 16,
     marginTop: 10,
-    paddingVertical: 8,
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
+    marginBottom: 20,
   },
-  copyBtnText: {
-    color: '#1D4ED8',
-    fontSize: 12,
-    fontWeight: '700',
+  warningBanner: {
+    backgroundColor: 'rgba(220, 119, 112, 0.15)',
   },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1E293B',
-    marginTop: 2,
-  },
-  textDanger: {
-    color: '#DC2626',
-  },
-  dangerNotice: {
-    marginTop: 8,
-    color: '#DC2626',
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  envelopesHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-    marginTop: 4,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  addCategoryBtn: {
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  addCategoryBtnText: {
-    color: '#2563EB',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  envelopeCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 8,
+  bannerHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
   },
-  envelopeLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  envelopeIcon: {
-    fontSize: 24,
-  },
-  envelopeName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  envelopePct: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 1,
-  },
-  envelopeRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  envelopeInput: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1E293B',
-    width: 75,
-    textAlign: 'right',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-  },
-  currencyTnd: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  deleteEnvBtn: {
-    padding: 4,
-    marginLeft: 4,
-  },
-  deleteEnvText: {
-    color: '#94A3B8',
+  checkIcon: {
     fontSize: 14,
+    fontWeight: '800',
+    color: Theme.colors.deepGreen,
+  },
+  bannerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Theme.colors.deepGreen,
+  },
+  bannerSub: {
+    fontSize: 13,
+    color: Theme.colors.forest,
+  },
+
+  // Étape 2 : Ligne de période
+  periodHeader: {
+    fontSize: 12,
     fontWeight: '700',
+    color: Theme.colors.muted,
+    letterSpacing: 0.8,
+    marginBottom: 16,
   },
-  saveButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  saveButtonDisabled: {
-    backgroundColor: '#94A3B8',
-  },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginBottom: 12,
-  },
-  catOptionItem: {
+  summaryRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: Theme.colors.border,
   },
-  catOptionName: {
+  summaryLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1E293B',
+    color: Theme.colors.muted,
   },
-  catOptionTheme: {
-    fontSize: 11,
-    color: '#64748B',
+  summaryValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Theme.colors.ink,
   },
-  catOptionAdd: {
-    color: '#2563EB',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  modalCloseBtn: {
-    marginTop: 14,
-    paddingVertical: 10,
+
+  // Boutons
+  primaryBtn: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: Theme.radius.full,
+    height: 52,
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-  },
-  modalCloseBtnText: {
-    color: '#64748B',
-    fontWeight: '700',
-  },
-  togglePersoBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 8,
+    justifyContent: 'center',
+    marginTop: 8,
     marginBottom: 12,
-    alignItems: 'center',
+    ...Theme.shadows.button,
   },
-  togglePersoBtnText: {
-    color: '#4F46E5',
-    fontSize: 12,
+  primaryBtnText: {
+    color: Theme.colors.white,
+    fontSize: 15,
     fontWeight: '700',
   },
-  persoForm: {
-    paddingVertical: 6,
-  },
-  persoLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#475569',
-    marginTop: 6,
-    marginBottom: 4,
-  },
-  persoInput: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-  },
-  persoTypeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginVertical: 4,
-  },
-  persoTypeBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
+  secondaryBtn: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: Theme.radius.full,
+    height: 52,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  persoTypeBtnActive: {
-    borderColor: '#4F46E5',
-    backgroundColor: '#EEF2FF',
-  },
-  persoTypeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  persoTypeTextActive: {
-    color: '#4F46E5',
-    fontWeight: '700',
-  },
-  persoSubmitBtn: {
-    backgroundColor: '#4F46E5',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  persoSubmitBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
+  secondaryBtnText: {
+    color: Theme.colors.deepGreen,
+    fontSize: 15,
     fontWeight: '700',
   },
 });
-

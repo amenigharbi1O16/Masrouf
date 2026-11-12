@@ -1,9 +1,16 @@
 // ============================================================
 // FICHIER : src/app/inscription.tsx
-// RÔLE    : Écran d'inscription pour créer un compte utilisateur.
-//           RÈGLE DE SÉCURITÉ ABSOLUE :
-//           Crée UNIQUEMENT des comptes de rôle 'user'.
-//           Il est rigoureusement impossible de créer un compte 'admin' ici.
+// RÔLE    : Écran de création de compte — Design Figma officiel.
+//
+// DESIGN (Figma écran 02) :
+//   - Fond : #F5F3ED
+//   - Header : hamburger ☰ | "Créer un compte" | icône profil
+//   - Sous-titre : "Un peu de clarté, chaque jour."
+//   - Titre : "Commencez avec MASROUF"
+//   - Champs : Nom complet, Adresse e-mail, Mot de passe, Confirmer
+//   - Validation : "Utilisez au moins 8 caractères, dont un chiffre."
+//   - Bouton primaire "Créer un compte" : #102B27
+//   - Bouton secondaire "Déjà inscrit ? Se connecter" : #D9F0E4
 // ============================================================
 
 import React, { useState } from 'react';
@@ -13,16 +20,16 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 
-// Contexte d'authentification et internationalisation
 import { useAuth } from '../utils/auth';
-import { useTranslation } from '../utils/i18n';
+import { useTranslation, Langue } from '../utils/i18n';
+import { Theme } from '../constants/theme';
 
 export default function InscriptionScreen() {
   const { register } = useAuth();
@@ -31,44 +38,30 @@ export default function InscriptionScreen() {
   const [nom, setNom] = useState('');
   const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
-  const [confirmationMdp, setConfirmationMdp] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [erreur, setErreur] = useState('');
   const [enChargement, setEnChargement] = useState(false);
 
-  // ----------------------------------------------------------
-  // VALIDATION ET INSCRIPTION
-  // ----------------------------------------------------------
   async function handleInscription() {
     setErreur('');
-
-    if (!nom.trim()) {
-      setErreur(t('erreur_nom_requis'));
+    if (!nom.trim() || !email.trim() || !motDePasse || !confirmation) {
+      setErreur(t('erreur_champs_requis'));
       return;
     }
-
-    if (!email.trim() || !email.includes('@')) {
-      setErreur(t('erreur_email_invalide'));
-      return;
-    }
-
-    if (motDePasse.length < 6) {
-      setErreur(t('erreur_mdp_trop_court'));
-      return;
-    }
-
-    if (motDePasse !== confirmationMdp) {
+    if (motDePasse !== confirmation) {
       setErreur(t('erreur_confirmation_mdp'));
       return;
     }
-
+    if (motDePasse.length < 8 || !/\d/.test(motDePasse)) {
+      setErreur(t('erreur_mdp_trop_court'));
+      return;
+    }
     setEnChargement(true);
     try {
-      const res = await register(nom, email, motDePasse);
-
+      const res = await register(nom.trim(), email.trim(), motDePasse);
       if (!res.success) {
         setErreur(t(res.errorKey ?? 'erreur_connexion'));
       }
-      // Si succès, NavigationGuard redirige automatiquement vers /(tabs)
     } catch {
       setErreur(t('erreur_connexion'));
     } finally {
@@ -78,147 +71,137 @@ export default function InscriptionScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.keyboardContainer}
+      style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* LOGO */}
-        <View style={styles.headerBox}>
-          {/* SELECTEUR DE LANGUE RAPIDE (FR / AR / EN) */}
-          <View style={styles.langSwitchRow}>
-            <TouchableOpacity
-              style={[styles.langChip, langue === 'fr' && styles.langChipActive]}
-              onPress={() => changerLangue('fr')}
-            >
-              <Text
-                style={[
-                  styles.langChipText,
-                  langue === 'fr' && styles.langChipTextActive,
-                ]}
-              >
-                FR
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.langChip, langue === 'ar' && styles.langChipActive]}
-              onPress={() => changerLangue('ar')}
-            >
-              <Text
-                style={[
-                  styles.langChipText,
-                  langue === 'ar' && styles.langChipTextActive,
-                ]}
-              >
-                عربي
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.langChip, langue === 'en' && styles.langChipActive]}
-              onPress={() => changerLangue('en')}
-            >
-              <Text
-                style={[
-                  styles.langChipText,
-                  langue === 'en' && styles.langChipTextActive,
-                ]}
-              >
-                EN
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.logoIcon}>📝</Text>
-          <Text style={styles.appTitle}>{t('inscription')}</Text>
-          <Text style={styles.appSubtitle}>Rejoignez Masrouf pour maîtriser votre budget</Text>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── EN-TÊTE ── */}
+        <View style={styles.appHeader}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={styles.hamburger}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.appName}>{t('creer_compte') ?? 'Créer un compte'}</Text>
+          <Text style={styles.profileIcon}>👤</Text>
         </View>
 
-        {/* CARTE FORMULAIRE */}
-        <View style={styles.card}>
-          {/* Nom complet */}
-          <Text style={styles.inputLabel}>{t('nom_complet')} *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ex: Mohamed Trabelsi"
-            placeholderTextColor="#94A3B8"
-            value={nom}
-            onChangeText={(txt) => {
-              setNom(txt);
-              setErreur('');
-            }}
-          />
+        {/* ── SOUS-TITRE ET TITRE ── */}
+        <Text style={styles.taglineSub}>
+          {t('inscription_sous_titre') ?? 'Un peu de clarté, chaque jour.'}
+        </Text>
+        <Text style={styles.mainTitle}>
+          {t('inscription_titre') ?? 'Commencez avec MASROUF'}
+        </Text>
 
-          {/* E-mail */}
-          <Text style={styles.inputLabel}>{t('email')} *</Text>
+        {/* ── CHAMP NOM ── */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>{t('nom_complet') ?? 'Nom complet'}</Text>
           <TextInput
-            style={styles.input}
-            placeholder="exemple@email.tn"
-            placeholderTextColor="#94A3B8"
+            style={styles.inputValue}
+            value={nom}
+            onChangeText={(v) => { setNom(v); setErreur(''); }}
+            placeholder="Ines Ben Ali"
+            placeholderTextColor={Theme.colors.subtle}
+            autoCapitalize="words"
+          />
+        </View>
+
+        {/* ── CHAMP EMAIL ── */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>{t('adresse_email') ?? 'Adresse e-mail'}</Text>
+          <TextInput
+            style={styles.inputValue}
+            value={email}
+            onChangeText={(v) => { setEmail(v); setErreur(''); }}
+            placeholder="ines.benali@email.tn"
+            placeholderTextColor={Theme.colors.subtle}
             keyboardType="email-address"
             autoCapitalize="none"
-            value={email}
-            onChangeText={(txt) => {
-              setEmail(txt);
-              setErreur('');
-            }}
           />
+        </View>
 
-          {/* Mot de passe */}
-          <Text style={styles.inputLabel}>{t('mot_de_passe')} (min. 6 caractères) *</Text>
+        {/* ── CHAMP MOT DE PASSE ── */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>{t('mot_de_passe') ?? 'Mot de passe'}</Text>
           <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            placeholderTextColor="#94A3B8"
-            secureTextEntry
+            style={styles.inputValue}
             value={motDePasse}
-            onChangeText={(txt) => {
-              setMotDePasse(txt);
-              setErreur('');
-            }}
-          />
-
-          {/* Confirmation mot de passe */}
-          <Text style={styles.inputLabel}>{t('confirmer_mot_de_passe')} *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            placeholderTextColor="#94A3B8"
+            onChangeText={(v) => { setMotDePasse(v); setErreur(''); }}
+            placeholder="••••••••••"
+            placeholderTextColor={Theme.colors.subtle}
             secureTextEntry
-            value={confirmationMdp}
-            onChangeText={(txt) => {
-              setConfirmationMdp(txt);
-              setErreur('');
-            }}
           />
+        </View>
 
-          {/* Message d'erreur */}
-          {erreur ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>⚠️ {erreur}</Text>
-            </View>
-          ) : null}
+        {/* ── CHAMP CONFIRMATION ── */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>
+            {t('confirmer_mot_de_passe') ?? 'Confirmer le mot de passe'}
+          </Text>
+          <TextInput
+            style={styles.inputValue}
+            value={confirmation}
+            onChangeText={(v) => { setConfirmation(v); setErreur(''); }}
+            placeholder="••••••••••"
+            placeholderTextColor={Theme.colors.subtle}
+            secureTextEntry
+          />
+        </View>
 
-          {/* Bouton de validation */}
-          <TouchableOpacity
-            style={styles.registerButton}
-            onPress={handleInscription}
-            disabled={enChargement}
-            activeOpacity={0.8}
-          >
-            {enChargement ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.registerButtonText}>{t('inscription')} →</Text>
-            )}
-          </TouchableOpacity>
+        {/* ── RÈGLE DE MOT DE PASSE ── */}
+        <Text style={styles.ruleText}>
+          {t('regle_mot_de_passe') ?? 'Utilisez au moins 8 caractères, dont un chiffre.'}
+        </Text>
 
-          {/* Retour au Login */}
-          <TouchableOpacity
-            style={styles.loginLink}
-            onPress={() => router.replace('/login')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.loginLinkText}>{t('deja_compte')}</Text>
-          </TouchableOpacity>
+        {/* ── ERREUR ── */}
+        {erreur ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{erreur}</Text>
+          </View>
+        ) : null}
+
+        {/* ── BOUTON PRIMAIRE ── */}
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={handleInscription}
+          disabled={enChargement}
+          activeOpacity={0.85}
+        >
+          {enChargement ? (
+            <ActivityIndicator color={Theme.colors.white} />
+          ) : (
+            <Text style={styles.primaryBtnText}>
+              {t('creer_compte') ?? 'Créer un compte'}
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        {/* ── BOUTON SECONDAIRE ── */}
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={() => router.replace('/login')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.secondaryBtnText}>
+            {t('deja_inscrit') ?? 'Déjà inscrit ? Se connecter'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* ── SÉLECTEUR LANGUE ── */}
+        <View style={styles.langRow}>
+          {(['en', 'fr', 'ar'] as Langue[]).map((l, i) => (
+            <React.Fragment key={l}>
+              {i > 0 && <Text style={styles.langSep}> / </Text>}
+              <TouchableOpacity onPress={() => changerLangue(l)}>
+                <Text style={[styles.langOption, langue === l && styles.langOptionActive]}>
+                  {l === 'en' ? 'EN' : l === 'fr' ? 'FR' : 'العربية'}
+                </Text>
+              </TouchableOpacity>
+            </React.Fragment>
+          ))}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -226,126 +209,114 @@ export default function InscriptionScreen() {
 }
 
 const styles = StyleSheet.create({
-  keyboardContainer: {
+  root: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Theme.colors.warm,
   },
-  scrollContent: {
-    padding: 24,
-    justifyContent: 'center',
-    minHeight: '100%',
+  scroll: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 48,
   },
-  headerBox: {
+  appHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
   },
-  langSwitchRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-    backgroundColor: '#F1F5F9',
-    padding: 4,
-    borderRadius: 20,
+  hamburger: {
+    fontSize: 22,
+    color: Theme.colors.ink,
+    marginRight: 12,
   },
-  langChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 16,
-  },
-  langChipActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  langChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  langChipTextActive: {
-    color: '#2563EB',
+  appName: {
+    flex: 1,
+    fontSize: 20,
     fontWeight: '800',
+    color: Theme.colors.ink,
   },
-  logoIcon: {
-    fontSize: 48,
+  profileIcon: { fontSize: 20 },
+  taglineSub: {
+    fontSize: 14,
+    color: Theme.colors.muted,
     marginBottom: 6,
   },
-  appTitle: {
-    fontSize: 24,
+  mainTitle: {
+    fontSize: 22,
     fontWeight: '800',
-    color: '#1E293B',
+    color: Theme.colors.ink,
+    marginBottom: 24,
   },
-  appSubtitle: {
-    fontSize: 13,
-    color: '#64748B',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
+  inputCard: {
+    backgroundColor: Theme.colors.white,
     borderRadius: 16,
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 14,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderColor: Theme.colors.border,
   },
   inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-    marginBottom: 6,
-    marginTop: 8,
+    fontSize: 12,
+    color: Theme.colors.muted,
+    marginBottom: 4,
   },
-  input: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    padding: 12,
+  inputValue: {
     fontSize: 15,
-    color: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    color: Theme.colors.ink,
+    fontWeight: '500',
+    padding: 0,
+  },
+  ruleText: {
+    fontSize: 12,
+    color: Theme.colors.muted,
+    marginBottom: 16,
+    marginTop: 4,
   },
   errorBox: {
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 12,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
   },
   errorText: {
-    color: '#DC2626',
+    color: Theme.colors.coral,
     fontSize: 13,
     fontWeight: '600',
   },
-  registerButton: {
-    backgroundColor: '#059669',
-    borderRadius: 10,
-    paddingVertical: 13,
+  primaryBtn: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: 9999,
+    height: 52,
     alignItems: 'center',
-    marginTop: 18,
+    justifyContent: 'center',
+    marginTop: 8,
+    marginBottom: 10,
   },
-  registerButtonText: {
-    color: '#FFFFFF',
+  primaryBtnText: {
+    color: Theme.colors.white,
     fontSize: 15,
     fontWeight: '700',
   },
-  loginLink: {
+  secondaryBtn: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: 9999,
+    height: 52,
     alignItems: 'center',
-    marginTop: 14,
-    paddingVertical: 6,
+    justifyContent: 'center',
+    marginBottom: 32,
   },
-  loginLinkText: {
-    color: '#2563EB',
-    fontSize: 13,
+  secondaryBtnText: {
+    color: Theme.colors.forest,
+    fontSize: 15,
     fontWeight: '600',
   },
+  langRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  langSep: { color: Theme.colors.muted, fontSize: 13 },
+  langOption: { fontSize: 13, color: Theme.colors.muted, fontWeight: '500' },
+  langOptionActive: { color: Theme.colors.ink, fontWeight: '800' },
 });
-

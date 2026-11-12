@@ -1,22 +1,44 @@
 // ============================================================
 // FICHIER : src/app/(admin)/_layout.tsx
-// RÔLE    : Agencement des onglets de l'espace Administrateur (Bottom Tabs).
-//           Protège l'accès : seul le rôle 'admin' peut accéder à cet espace.
+// RÔLE    : Layout principal de l'espace Administrateur.
+//           Navigation unifiée par tiroir latéral (Drawer) conforme au design Figma.
+//           Contrôle d'accès strict : rôle 'admin' obligatoire.
 // ============================================================
 
-import React, { useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { Tabs, router } from 'expo-router';
-import { Text, StyleSheet } from 'react-native';
-
-// Contexte et internationalisation
+import { Theme } from '../../constants/theme';
 import { useAuth } from '../../utils/auth';
-import { useTranslation } from '../../utils/i18n';
+import AdminDrawer from '../../components/AdminDrawer';
 
-export default function AdminTabLayout() {
+interface AdminDrawerContextType {
+  openDrawer: () => void;
+  closeDrawer: () => void;
+  ouvrirDrawer: () => void;
+  fermerDrawer: () => void;
+  isOpen: boolean;
+}
+
+const AdminDrawerContext = createContext<AdminDrawerContextType>({
+  openDrawer: () => {},
+  closeDrawer: () => {},
+  ouvrirDrawer: () => {},
+  fermerDrawer: () => {},
+  isOpen: false,
+});
+
+export function useAdminDrawer() {
+  return useContext(AdminDrawerContext);
+}
+
+export default function AdminLayout() {
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
-  // Contrôle d'accès strict : refoulement immédiat si non-admin
+  const openDrawer = useCallback(() => setDrawerVisible(true), []);
+  const closeDrawer = useCallback(() => setDrawerVisible(false), []);
+
   useEffect(() => {
     if (!user || user.role !== 'admin') {
       router.replace('/(tabs)' as any);
@@ -28,68 +50,39 @@ export default function AdminTabLayout() {
   }
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: '#7E22CE', // Violet distinctif pour l'Admin
-        tabBarInactiveTintColor: '#64748B',
-        tabBarStyle: {
-          height: 62,
-          paddingBottom: 8,
-          paddingTop: 6,
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#E9D5FF',
-        },
-        headerStyle: { backgroundColor: '#FAF5FF' },
-        headerTitleStyle: { fontWeight: 'bold', color: '#581C87' },
+    <AdminDrawerContext.Provider
+      value={{
+        openDrawer,
+        closeDrawer,
+        ouvrirDrawer: openDrawer,
+        fermerDrawer: closeDrawer,
+        isOpen: drawerVisible,
       }}
     >
-      {/* 1. Tableau de bord */}
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: t('tableau_de_bord'),
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>📊</Text>,
-        }}
-      />
+      <View style={styles.root}>
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarStyle: { display: 'none' },
+          }}
+        >
+          <Tabs.Screen name="dashboard" />
+          <Tabs.Screen name="utilisateurs" />
+          <Tabs.Screen name="categories" />
+          <Tabs.Screen name="points-regles" />
+          <Tabs.Screen name="reglages" />
+        </Tabs>
 
-      {/* 2. Gestion des utilisateurs */}
-      <Tabs.Screen
-        name="utilisateurs"
-        options={{
-          title: t('utilisateurs_admin'),
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>👥</Text>,
-        }}
-      />
-
-      {/* 3. Gestion des catégories */}
-      <Tabs.Screen
-        name="categories"
-        options={{
-          title: t('categories_admin'),
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>🏷️</Text>,
-        }}
-      />
-
-      {/* 4. Règles des points */}
-      <Tabs.Screen
-        name="points-regles"
-        options={{
-          title: t('regles_points_admin'),
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>⭐</Text>,
-        }}
-      />
-
-      {/* 5. Réglages Admin */}
-      <Tabs.Screen
-        name="reglages"
-        options={{
-          title: t('reglages_admin'),
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>⚙️</Text>,
-        }}
-      />
-    </Tabs>
+        {/* Tiroir latéral administrateur */}
+        <AdminDrawer visible={drawerVisible} onClose={closeDrawer} />
+      </View>
+    </AdminDrawerContext.Provider>
   );
 }
 
-const styles = StyleSheet.create({});
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: Theme.colors.warm,
+  },
+});

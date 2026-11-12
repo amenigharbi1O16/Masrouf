@@ -1,12 +1,11 @@
 // ============================================================
 // FICHIER : src/app/onboarding.tsx
-// RÔLE    : Assistant de premier démarrage (Onboarding) en 3 étapes
-//           pour les nouveaux utilisateurs.
+// RÔLE    : Assistant de premier démarrage en 3 étapes — Design Figma 04/05/06.
 //
 // ÉTAPES :
-//   Étape 1 : Bienvenue & Présentation de la philosophie 100% locale et privée.
-//   Étape 2 : Choix des catégories de dépenses et d'achats préférées.
-//   Étape 3 : Confirmation & Finalisation (onboarding_done = 1).
+//   1. Bienvenue (Figma 04) : carte hero verte, 3 caractéristiques
+//   2. Sélection des catégories (Figma 05) : Produits + Dépenses par liste
+//   3. Résumé (Figma 06) : catégories choisies + bannière + deux boutons
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
@@ -19,270 +18,252 @@ import {
   SafeAreaView,
   Alert,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 
-// Contexte d'authentification et base de données
 import { useAuth } from '../utils/auth';
 import {
   getAllCategories,
-  getUserCategories,
   setUserCategories,
   updateUserOnboarding,
   Categorie,
 } from '../db/queries';
-
-// Internationalisation
 import { useTranslation } from '../utils/i18n';
+import { Theme } from '../constants/theme';
 
 export default function OnboardingScreen() {
   const { user, refreshUser } = useAuth();
   const { t } = useTranslation();
 
-  // Étape actuelle (1, 2 ou 3)
   const [etape, setEtape] = useState<number>(1);
-
-  // Catégories disponibles et sélectionnées pour l'étape 2
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [selectionnees, setSelectionnees] = useState<number[]>([]);
 
   useEffect(() => {
-    // Charge les catégories visibles du système
     const toutes = getAllCategories(true);
     setCategories(toutes);
-
-    // Pré-coche par défaut les catégories recommandées / par défaut
     const recommandees = toutes.filter((c) => c.est_defaut === 1).map((c) => c.id);
     setSelectionnees(recommandees);
   }, []);
 
-  // ----------------------------------------------------------
-  // BASCULE D'UNE CATÉGORIE (COCHER / DÉCOCHER)
-  // ----------------------------------------------------------
   function toggleCategorie(id: number) {
     setSelectionnees((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }
 
-  function toutSelectionner() {
-    setSelectionnees(categories.map((c) => c.id));
-  }
-
-  function selectionRecommandee() {
-    const reco = categories.filter((c) => c.est_defaut === 1).map((c) => c.id);
-    setSelectionnees(reco);
-  }
-
-  // ----------------------------------------------------------
-  // PASSAGE A L'ETAPE SUIVANTE
-  // ----------------------------------------------------------
   function handleSuivant() {
-    if (etape === 1) {
-      setEtape(2);
-      return;
-    }
-
+    if (etape === 1) { setEtape(2); return; }
     if (etape === 2) {
       if (selectionnees.length === 0) {
-        Alert.alert(
-          'Sélection requise',
-          'Veuillez sélectionner au moins une catégorie pour commencer.'
-        );
+        Alert.alert(t('selection_requise') ?? 'Sélection requise', t('selectionner_categorie') ?? 'Veuillez sélectionner au moins une catégorie.');
         return;
       }
-      // Sauvegarde les catégories choisies dans user_category
-      if (user) {
-        setUserCategories(user.id, selectionnees);
-      }
+      if (user) setUserCategories(user.id, selectionnees);
       setEtape(3);
       return;
     }
   }
 
-  // ----------------------------------------------------------
-  // FINALISATION DE L'ONBOARDING
-  // ----------------------------------------------------------
   async function handleTerminer() {
     if (!user) return;
-
-    try {
-      // 1. Marque l'onboarding comme complété dans SQLite
-      updateUserOnboarding(user.id, true);
-
-      // 2. Rafraîchit l'état local du user dans le contexte d'auth
-      await refreshUser();
-
-      // 3. Redirige vers l'accueil utilisateur
-      router.replace('/(tabs)');
-    } catch (err) {
-      console.error("Erreur lors de la validation de l'onboarding :", err);
-      router.replace('/(tabs)');
-    }
+    updateUserOnboarding(user.id);
+    await refreshUser();
+    router.replace('/(tabs)');
   }
 
+  function handleRetourSelection() {
+    setEtape(2);
+  }
+
+  // Catégories sélectionnées avec leurs détails
+  const detailsSelectionnes = categories.filter((c) => selectionnees.includes(c.id));
+  const produits = categories.filter((c) => c.type === 'product');
+  const depenses = categories.filter((c) => c.type === 'expense');
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-
-      {/* INDICATEUR DE PROGRESSION (3 ÉTAPES) */}
-      <View style={styles.progressContainer}>
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: etape === 1 ? '33%' : etape === 2 ? '66%' : '100%' },
-            ]}
-          />
-        </View>
-        <Text style={styles.stepText}>Étape {etape} sur 3</Text>
+    <SafeAreaView style={styles.root}>
+      {/* ── BARRE DE PROGRESSION ── */}
+      <View style={styles.progressBar}>
+        <View style={[styles.progressFill, { width: `${(etape / 3) * 100}%` }]} />
       </View>
+      <Text style={styles.progressLabel}>{etape} / 3</Text>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* ==================================================== */}
-        {/* ETAPE 1 : BIENVENUE & PHILOSOPHIE LOCALE             */}
-        {/* ==================================================== */}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* ======================================================
+            ÉTAPE 1 : BIENVENUE (Figma 04)
+        ====================================================== */}
         {etape === 1 && (
-          <View style={styles.stepCard}>
-            <Text style={styles.heroEmoji}>🌱</Text>
-            <Text style={styles.heroTitle}>Bienvenue sur Masrouf !</Text>
-            <Text style={styles.heroSubtitle}>
-              L'application tunisienne conçue pour vous redonner la maîtrise totale
-              de vos dépenses quotidiennes et de votre budget familial.
+          <>
+            {/* En-tête */}
+            <View style={styles.appHeader}>
+              <Text style={styles.appHeaderTitle}>{t('bienvenue') ?? 'Bienvenue'}</Text>
+              <Text style={styles.profileIcon}>👤</Text>
+            </View>
+
+            <Text style={styles.stepMeta}>01 / 03  ·  {t('a_votre_image') ?? 'À VOTRE IMAGE'}</Text>
+
+            {/* Carte hero verte */}
+            <View style={styles.heroCard}>
+              <Text style={styles.heroLeaf}>🍃</Text>
+              <Text style={styles.heroText}>
+                {t('onboarding_titre_hero') ?? 'De petits gestes.\nPlus de possibilités.'}
+              </Text>
+            </View>
+
+            <Text style={styles.mainTitle}>
+              {t('onboarding_decouvrez') ?? 'Découvrez votre argent autrement.'}
+            </Text>
+            <Text style={styles.mainSub}>
+              {t('onboarding_intro') ?? 'Planifiez des périodes flexibles, suivez vos dépenses et faites évoluer vos habitudes.'}
             </Text>
 
-            <View style={styles.featureBox}>
-              <View style={styles.featureItem}>
-                <Text style={styles.featureIcon}>🔒</Text>
-                <View style={styles.featureTextCol}>
-                  <Text style={styles.featureItemTitle}>100% Local et Privé</Text>
-                  <Text style={styles.featureItemDesc}>
-                    Aucun serveur distant. Vos revenus, achats et dépenses restent
-                    exclusivement stockés sur votre smartphone.
-                  </Text>
+            {/* 3 caractéristiques */}
+            {[
+              { n: '01', title: t('vos_categories') ?? 'Vos catégories', sub: t('onboarding_cat_desc') ?? 'Choisissez ce qui compte pour vous' },
+              { n: '02', title: t('a_votre_rythme') ?? 'À votre rythme', sub: t('onboarding_budget_desc') ?? 'Créez un budget quand vous êtes prêt' },
+              { n: '03', title: t('vos_progres') ?? 'Vos progrès', sub: t('onboarding_points_desc') ?? 'Gagnez des points en gardant le cap' },
+            ].map((item) => (
+              <View key={item.n} style={styles.featureRow}>
+                <View style={styles.featureIcon}>
+                  <Text style={styles.featureIconText}>☐</Text>
                 </View>
-              </View>
-
-              <View style={styles.featureItem}>
-                <Text style={styles.featureIcon}>📊</Text>
-                <View style={styles.featureTextCol}>
-                  <Text style={styles.featureItemTitle}>Méthode des Enveloppes</Text>
-                  <Text style={styles.featureItemDesc}>
-                    Allouez des montants cibles par catégorie pour garder le contrôle
-                    sans mauvaises surprises en fin de mois.
-                  </Text>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.featureTitle}>{item.title}</Text>
+                  <Text style={styles.featureSub}>{item.sub}</Text>
                 </View>
+                <Text style={styles.featureNum}>{item.n}</Text>
               </View>
-
-              <View style={styles.featureItem}>
-                <Text style={styles.featureIcon}>🛒</Text>
-                <View style={styles.featureTextCol}>
-                  <Text style={styles.featureItemTitle}>Suivi Intégré des Produits</Text>
-                  <Text style={styles.featureItemDesc}>
-                    Saisie détaillée par article ou montant direct avec évaluation du
-                    prix d'achat moyen.
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleSuivant}>
-              <Text style={styles.primaryBtnText}>Personnaliser mes catégories →</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ==================================================== */}
-        {/* ETAPE 2 : SÉLECTION DES CATÉGORIES FAVORITES         */}
-        {/* ==================================================== */}
-        {etape === 2 && (
-          <View style={styles.stepCard}>
-            <Text style={styles.sectionTitle}>Vos Catégories Préférées</Text>
-            <Text style={styles.sectionSubtitle}>
-              Cochez les catégories que vous utilisez régulièrement. Vous pourrez en
-              ajouter ou en masquer d'autres à tout moment.
-            </Text>
-
-            {/* Boutons d'aide à la sélection */}
-            <View style={styles.quickActionsRow}>
-              <TouchableOpacity
-                style={styles.quickBtn}
-                onPress={selectionRecommandee}
-              >
-                <Text style={styles.quickBtnText}>⭐ Recommandées</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickBtn} onPress={toutSelectionner}>
-                <Text style={styles.quickBtnText}>✅ Tout cocher</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Liste des catégories avec cases à cocher */}
-            <View style={styles.catGrid}>
-              {categories.map((c) => {
-                const estCochee = selectionnees.includes(c.id);
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.catCheckCard, estCochee && styles.catCheckCardActive]}
-                    onPress={() => toggleCategorie(c.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.catEmoji}>{c.icone}</Text>
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={styles.catNameText}>{c.nom}</Text>
-                      <Text style={styles.catDetailText}>
-                        {c.type === 'expense' ? '🧾 Dépense' : '🛒 Produit'} • {c.theme}
-                      </Text>
-                    </View>
-                    <View
-                      style={[styles.checkbox, estCochee && styles.checkboxChecked]}
-                    >
-                      {estCochee && <Text style={styles.checkMark}>✓</Text>}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            ))}
 
             <TouchableOpacity style={styles.primaryBtn} onPress={handleSuivant}>
               <Text style={styles.primaryBtnText}>
-                Valider ({selectionnees.length} sélectionnée(s)) →
+                {t('choisir_categories') ?? 'Choisir mes catégories'}
               </Text>
             </TouchableOpacity>
-          </View>
+          </>
         )}
 
-        {/* ==================================================== */}
-        {/* ETAPE 3 : CONFIRMATION ET ACCUEIL                   */}
-        {/* ==================================================== */}
-        {etape === 3 && (
-          <View style={styles.stepCard}>
-            <Text style={styles.heroEmoji}>🎉</Text>
-            <Text style={styles.heroTitle}>Tout est prêt !</Text>
-            <Text style={styles.heroSubtitle}>
-              Votre espace Masrouf est maintenant configuré avec vos catégories
-              personnalisées.
-            </Text>
-
-            <View style={styles.summaryBox}>
-              <Text style={styles.summaryTitle}>Rappel important :</Text>
-              <Text style={styles.summaryText}>
-                • Votre budget mensuel est initialement libre (0 TND).
-              </Text>
-              <Text style={styles.summaryText}>
-                • Rendez-vous dans l'onglet <Text style={{ fontWeight: '700' }}>Accueil</Text> ou{' '}
-                <Text style={{ fontWeight: '700' }}>Réglages</Text> pour définir votre enveloppe
-                globale dès que vous le souhaitez.
-              </Text>
-              <Text style={styles.summaryText}>
-                • Vous pouvez commencer immédiatement à saisir vos premiers achats !
-              </Text>
+        {/* ======================================================
+            ÉTAPE 2 : SÉLECTION DES CATÉGORIES (Figma 05)
+        ====================================================== */}
+        {etape === 2 && (
+          <>
+            <View style={styles.appHeader}>
+              <Text style={styles.appHeaderTitle}>{t('vos_categories') ?? 'Vos catégories'}</Text>
+              <Text style={styles.profileIcon}>👤</Text>
             </View>
 
-            <TouchableOpacity style={styles.finishBtn} onPress={handleTerminer}>
-              <Text style={styles.finishBtnText}>Commencer à gérer mon Masrouf 🚀</Text>
+            <Text style={styles.stepMeta}>02 / 03  ·  {t('choisissez_suivi') ?? 'CHOISISSEZ VOTRE SUIVI'}</Text>
+            <Text style={styles.mainTitle}>{t('quotidien_organise') ?? 'Le quotidien, bien organisé.'}</Text>
+            <Text style={styles.mainSub}>{t('modifier_plus_tard') ?? 'Vous pouvez les modifier à tout moment.'}</Text>
+
+            {/* Section Produits */}
+            <Text style={styles.catSectionTitle}>{t('produits') ?? 'Produits'}</Text>
+            {produits.map((c) => {
+              const checked = selectionnees.includes(c.id);
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.catRow}
+                  onPress={() => toggleCategorie(c.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.catName}>{c.nom}</Text>
+                  <Text style={[styles.catAction, checked && styles.catActionChecked]}>
+                    {checked ? `✓ ${t('selectionnee') ?? 'Sélectionnée'}` : t('selectionner') ?? 'Sélectionner'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {/* Section Dépenses */}
+            <Text style={[styles.catSectionTitle, { marginTop: 20 }]}>{t('depenses') ?? 'Dépenses'}</Text>
+            {depenses.map((c) => {
+              const checked = selectionnees.includes(c.id);
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.catRow}
+                  onPress={() => toggleCategorie(c.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.catName}>{c.nom}</Text>
+                  <Text style={[styles.catAction, checked && styles.catActionChecked]}>
+                    {checked ? `✓ ${t('selectionnee') ?? 'Sélectionnée'}` : t('selectionner') ?? 'Sélectionner'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            <TouchableOpacity style={styles.primaryBtn} onPress={handleSuivant}>
+              <Text style={styles.primaryBtnText}>
+                {t('verifier_categories') ?? `Vérifier les ${selectionnees.length} catégories`}
+              </Text>
             </TouchableOpacity>
-          </View>
+          </>
+        )}
+
+        {/* ======================================================
+            ÉTAPE 3 : RÉSUMÉ (Figma 06)
+        ====================================================== */}
+        {etape === 3 && (
+          <>
+            <View style={styles.appHeader}>
+              <Text style={styles.appHeaderTitle}>{t('pret_a_commencer') ?? 'Prêt à commencer'}</Text>
+              <Text style={styles.profileIcon}>👤</Text>
+            </View>
+
+            <Text style={styles.stepMeta}>03 / 03  ·  {t('votre_selection') ?? 'VOTRE SÉLECTION'}</Text>
+            <Text style={styles.mainTitle}>{t('plan_vous_ressemble') ?? 'Un plan qui vous ressemble.'}</Text>
+            <Text style={styles.mainSub}>
+              {`${detailsSelectionnes.length} ${t('categories_selectionnees') ?? 'catégories sélectionnées'}. ${t('pas_besoin_budget') ?? 'Pas encore besoin de budget.'}`}
+            </Text>
+
+            {/* Liste des catégories sélectionnées */}
+            {detailsSelectionnes.map((c) => (
+              <View key={c.id} style={styles.selectedCatCard}>
+                <View style={styles.selectedCatIcon}>
+                  <Text style={{ fontSize: 18 }}>{c.icone}</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.selectedCatName}>{c.nom}</Text>
+                  <Text style={styles.selectedCatType}>
+                    {c.type === 'product' ? (t('categorie_produit') ?? 'Catégorie de produit') : (t('categorie_depense') ?? 'Catégorie de dépense')}
+                  </Text>
+                </View>
+                <Text style={{ color: Theme.colors.deepGreen, fontSize: 16 }}>✓</Text>
+              </View>
+            ))}
+
+            {/* Bannière mint */}
+            <View style={styles.mintBanner}>
+              <Text style={styles.mintBannerCheck}>✓</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.mintBannerTitle}>
+                  {t('gardez_controle') ?? 'Vous gardez le contrôle'}
+                </Text>
+                <Text style={styles.mintBannerSub}>
+                  {t('ajouter_retirer_params') ?? 'Ajoutez ou retirez des catégories dans les paramètres.'}
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.primaryBtn} onPress={handleTerminer}>
+              <Text style={styles.primaryBtnText}>
+                {t('acceder_accueil') ?? 'Accéder à mon accueil'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleRetourSelection}>
+              <Text style={styles.secondaryBtnText}>
+                {t('modifier_selection') ?? 'Modifier la sélection'}
+              </Text>
+            </TouchableOpacity>
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -290,218 +271,228 @@ export default function OnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  progressContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
+  root: { flex: 1, backgroundColor: Theme.colors.warm },
+
+  // Barre de progression
   progressBar: {
-    height: 6,
-    backgroundColor: '#E2E8F0',
-    borderRadius: 3,
+    height: 4,
+    backgroundColor: Theme.colors.border,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#2563EB',
-    borderRadius: 3,
+    backgroundColor: Theme.colors.forest,
   },
-  stepText: {
+  progressLabel: {
     fontSize: 12,
-    color: '#64748B',
-    marginTop: 6,
+    color: Theme.colors.muted,
     textAlign: 'center',
+    marginTop: 6,
     fontWeight: '600',
   },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+
+  scroll: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 48,
   },
-  stepCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+
+  // En-tête
+  appHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 16,
   },
-  heroEmoji: {
-    fontSize: 54,
+  appHeaderTitle: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+  },
+  profileIcon: { fontSize: 20 },
+
+  // Méta-étape
+  stepMeta: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Theme.colors.muted,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
     marginBottom: 12,
   },
-  heroTitle: {
-    fontSize: 22,
+
+  // Carte hero
+  heroCard: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 24,
+  },
+  heroLeaf: { fontSize: 28, marginBottom: 12 },
+  heroText: {
+    fontSize: 26,
     fontWeight: '800',
-    color: '#1E293B',
-    textAlign: 'center',
-    marginBottom: 8,
+    color: Theme.colors.white,
+    lineHeight: 32,
   },
-  heroSubtitle: {
+
+  // Titres
+  mainTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+    marginBottom: 6,
+  },
+  mainSub: {
     fontSize: 14,
-    color: '#64748B',
-    textAlign: 'center',
+    color: Theme.colors.muted,
     lineHeight: 20,
-    marginBottom: 20,
+    marginBottom: 24,
   },
-  featureBox: {
-    width: '100%',
-    backgroundColor: '#F8FAFC',
+
+  // Caractéristiques étape 1
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.white,
     borderRadius: 14,
     padding: 14,
-    marginBottom: 20,
-    gap: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
   },
-  featureItem: {
+  featureIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: Theme.colors.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featureIconText: { fontSize: 20, color: Theme.colors.forest },
+  featureTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Theme.colors.ink,
+    marginBottom: 2,
+  },
+  featureSub: { fontSize: 12, color: Theme.colors.muted, lineHeight: 16 },
+  featureNum: { fontSize: 14, fontWeight: '700', color: Theme.colors.muted },
+
+  // Catégories étape 2
+  catSectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+    marginBottom: 10,
+  },
+  catRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Theme.colors.divider,
+  },
+  catName: {
+    fontSize: 14,
+    color: Theme.colors.ink,
+    fontWeight: '500',
+  },
+  catAction: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Theme.colors.muted,
+  },
+  catActionChecked: {
+    color: Theme.colors.forest,
+  },
+
+  // Résumé étape 3
+  selectedCatCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.white,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  selectedCatIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: Theme.colors.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedCatName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Theme.colors.ink,
+  },
+  selectedCatType: {
+    fontSize: 12,
+    color: Theme.colors.muted,
+    marginTop: 2,
+  },
+
+  // Bannière mint
+  mintBanner: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: 14,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
+    marginBottom: 24,
+    marginTop: 10,
   },
-  featureIcon: {
-    fontSize: 22,
-  },
-  featureTextCol: {
-    flex: 1,
-  },
-  featureItemTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  featureItemDesc: {
-    fontSize: 12,
-    color: '#64748B',
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  sectionTitle: {
-    fontSize: 19,
+  mintBannerCheck: {
+    color: Theme.colors.deepGreen,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#1E293B',
-    textAlign: 'center',
-    marginBottom: 6,
+    marginTop: 1,
   },
-  sectionSubtitle: {
-    fontSize: 13,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 14,
-  },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 14,
-    width: '100%',
-  },
-  quickBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  quickBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  catGrid: {
-    width: '100%',
-    gap: 8,
-    marginBottom: 18,
-  },
-  catCheckCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-  },
-  catCheckCardActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#2563EB',
-  },
-  catEmoji: {
-    fontSize: 24,
-  },
-  catNameText: {
+  mintBannerTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#1E293B',
+    color: Theme.colors.ink,
+    marginBottom: 4,
   },
-  catDetailText: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
+  mintBannerSub: {
+    fontSize: 13,
+    color: Theme.colors.muted,
+    lineHeight: 18,
   },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#CBD5E1',
+
+  // Boutons
+  primaryBtn: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: 9999,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  checkboxChecked: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  checkMark: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 14,
-  },
-  summaryBox: {
-    width: '100%',
-    backgroundColor: '#F0FDF4',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    marginBottom: 24,
-    gap: 8,
-  },
-  summaryTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#166534',
-    marginBottom: 2,
-  },
-  summaryText: {
-    fontSize: 13,
-    color: '#15803D',
-    lineHeight: 18,
-  },
-  primaryBtn: {
-    width: '100%',
-    backgroundColor: '#2563EB',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 10,
   },
   primaryBtnText: {
-    color: '#FFFFFF',
+    color: Theme.colors.white,
     fontSize: 15,
     fontWeight: '700',
   },
-  finishBtn: {
-    width: '100%',
-    backgroundColor: '#16A34A',
-    paddingVertical: 14,
-    borderRadius: 12,
+  secondaryBtn: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: 9999,
+    height: 52,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
   },
-  finishBtnText: {
-    color: '#FFFFFF',
+  secondaryBtnText: {
+    color: Theme.colors.forest,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '600',
   },
 });

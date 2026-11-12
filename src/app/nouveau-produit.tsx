@@ -1,16 +1,24 @@
 // ============================================================
 // FICHIER : src/app/nouveau-produit.tsx
-// RÔLE    : Fenêtre modale de création d'un nouveau produit.
+// RÔLE    : Écran de création d'un produit — Design Figma 15.
 //
-// VISUEL SUR L'ÉCRAN :
-//   S'ouvre par glissement vertical depuis le bas de l'écran.
-//   1. Champ de saisie : Nom du produit (ex: Yaourt Nature).
-//   2. Champ de saisie : Marque commerciale (ex: Délice, Vitalait).
-//   3. Sélecteur d'unité : Boutons interactifs ['pièce', 'kg', 'L', 'g', 'pack'].
-//   4. Sélecteur de catégorie : Cartes avec icônes emoji (Alimentation, Boissons, Hygiène, etc.).
-//   5. Bouton bleu "Créer le produit" :
-//      - Écrit la nouvelle ligne dans la table SQLite 'produits'
-//      - Ferme la modale via router.back().
+// CE QUI EST AFFICHÉ SUR L'ÉCRAN (Design Figma 15 · FR · Add product) :
+//   • Header : ☰ / ‹ retour + "Ajouter un produit" + icône profil
+//   • Label "INFORMATIONS DU PRODUIT" (uppercase, muted)
+//   • Titre "Un nouveau produit à suivre." (bold, ink)
+//   • Cartes blanches de saisie avec label 11px muted + valeur/input :
+//       1. "Nom du produit" (ex: Huile d'olive)
+//       2. "Marque" (ex: Châal)
+//       3. "Photo · facultative" (+ Ajouter une photo)
+//       4. "Catégorie de produit" (sélecteur parmi les catégories de produits)
+//       5. "Prix · DT" (ex: 14.500)
+//       6. "Quantité" (ex: 1)
+//       7. "Unité" (ex: L, kg, pièce...)
+//       8. "Magasin" (ex: Monoprix)
+//       9. "Date d'achat" (format JJ mmm. AAAA)
+//   • Note descriptive des catégories
+//   • Bouton primary forest : "Enregistrer le produit et l'achat"
+//   • Bouton secondary mint : "Annuler"
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
@@ -22,281 +30,465 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Modal,
 } from 'react-native';
 import { router } from 'expo-router';
 
 // Fonctions SQLite
-import { getAllCategories, insertProduit, Categorie } from '../db/queries';
+import {
+  getAllCategories,
+  getAllMagasins,
+  insertProduit,
+  insertAchat,
+  findOrCreateMagasin,
+  Categorie,
+  Magasin,
+} from '../db/queries';
 
-// Contexte et internationalisation
+// Design System & Contexte
+import { Theme } from '../constants/theme';
 import { useAuth } from '../utils/auth';
 import { useTranslation } from '../utils/i18n';
+import AppHeader from '../components/AppHeader';
+
+const MOIS_ABR = [
+  'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
+];
 
 export default function NouveauProduitScreen() {
   const { user } = useAuth();
   const { t } = useTranslation();
 
-  // Liste des catégories chargées depuis SQLite
-  const [categories, setCategories] = useState<Categorie[]>([]);
+  const aujourdhui = new Date();
+  const dateFormatee = `${aujourdhui.getDate()} ${MOIS_ABR[aujourdhui.getMonth()]} ${aujourdhui.getFullYear()}`;
+  const moisCle = `${aujourdhui.getFullYear()}-${String(aujourdhui.getMonth() + 1).padStart(2, '0')}`;
 
-  // ÉTATS LOCAUX DU FORMULAIRE :
+  // Liste des catégories SQLite (uniquement type 'product')
+  const [categories, setCategories] = useState<Categorie[]>([]);
+  const [magasins, setMagasins] = useState<Magasin[]>([]);
+
+  // Champs de saisie
   const [nom, setNom] = useState<string>('');
   const [marque, setMarque] = useState<string>('');
+  const [categorieChoisie, setCategorieChoisie] = useState<Categorie | null>(null);
+  const [prix, setPrix] = useState<string>('');
+  const [quantite, setQuantite] = useState<string>('1');
   const [unite, setUnite] = useState<string>('pièce');
-  const [categorieId, setCategorieId] = useState<number | null>(null);
+  const [magasinNom, setMagasinNom] = useState<string>('');
+  const [dateAchat, setDateAchat] = useState<string>(dateFormatee);
 
-  // Unités courantes proposées sous forme de boutons
-  const unitesDisponibles = ['pièce', 'kg', 'L', 'g', 'pack'];
+  // Modale de sélection de catégorie
+  const [modalCatVisible, setModalCatVisible] = useState<boolean>(false);
 
-  // Chargement des catégories au montage
   useEffect(() => {
-    const cats = getAllCategories();
-    setCategories(cats);
-    if (cats.length > 0) {
-      setCategorieId(cats[0].id); // Sélectionne la 1ère catégorie par défaut
+    const cats = getAllCategories(true);
+    // Filtrer par les catégories de type 'product' (ou toutes si non typé)
+    const catsProd = cats.filter((c) => c.type === 'product' || !c.type);
+    setCategories(catsProd.length > 0 ? catsProd : cats);
+    if (catsProd.length > 0) {
+      setCategorieChoisie(catsProd[0]);
+    } else if (cats.length > 0) {
+      setCategorieChoisie(cats[0]);
     }
+
+    const mags = getAllMagasins();
+    setMagasins(mags);
   }, []);
 
   // ----------------------------------------------------------
-  // VALIDATION ET INSERTION DANS SQLITE
+  // ENREGISTREMENT DU PRODUIT ET DE L'ACHAT INITIAL
   // ----------------------------------------------------------
-  function handleCreerProduit() {
+  function handleEnregistrer() {
     if (!user) return;
 
     if (!nom.trim()) {
-      Alert.alert('Attention', 'Veuillez renseigner le nom du produit.');
+      Alert.alert(t('erreur') ?? 'Attention', t('erreur_champ_requis') ?? 'Veuillez saisir le nom du produit.');
       return;
     }
 
-    if (!categorieId) {
-      Alert.alert('Attention', 'Veuillez sélectionner une catégorie.');
+    if (!categorieChoisie) {
+      Alert.alert(t('erreur') ?? 'Attention', 'Veuillez choisir une catégorie.');
       return;
     }
 
-    // Insertion du produit dans la base SQLite locale
-    insertProduit({
+    // 1. Insertion du produit dans SQLite
+    const produitId = insertProduit({
       nom: nom.trim(),
       marque: marque.trim(),
-      unite: unite,
-      categorie_id: categorieId,
+      unite: unite.trim() || 'pièce',
+      categorie_id: categorieChoisie.id,
       created_by: user.id,
     });
 
-    // Fermeture de la modale et retour à l'écran précédent
+    // 2. Si un prix a été saisi, insertion de l'achat correspondant
+    const montantPrix = parseFloat(prix.replace(',', '.'));
+    const qte = parseFloat(quantite.replace(',', '.')) || 1;
+
+    if (!isNaN(montantPrix) && montantPrix > 0) {
+      let magId: number | null = null;
+      if (magasinNom.trim()) {
+        magId = findOrCreateMagasin(magasinNom.trim());
+      }
+
+      insertAchat({
+        produit_id: produitId,
+        utilisateur_id: user.id,
+        magasin_id: magId,
+        categorie_id: categorieChoisie.id,
+        prix_unitaire: montantPrix / qte,
+        quantite: qte,
+        prix_total: montantPrix,
+        mois: moisCle,
+        notes: marque.trim() ? `Marque : ${marque.trim()}` : '',
+      });
+    }
+
+    // Retour à l'écran précédent
     router.back();
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* ==================================================== */}
-      {/* CHAMP 1 : NOM DU PRODUIT                            */}
-      {/* ==================================================== */}
-      <Text style={styles.label}>{t('nom_produit')} *</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Ex: Lait demi-écrémé, Riz blanc..."
-        placeholderTextColor="#94A3B8"
-        value={nom}
-        onChangeText={(txt) => setNom(txt)}
+    <View style={styles.container}>
+      {/* Header avec action retour */}
+      <AppHeader
+        titre={t('ajouter_produit') ?? 'Ajouter un produit'}
+        onMenuPress={() => router.back()}
       />
 
-      {/* ==================================================== */}
-      {/* CHAMP 2 : MARQUE COMMERCIALE                         */}
-      {/* ==================================================== */}
-      <Text style={styles.label}>{t('marque')}</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Ex: Délice, Vitalait, Randa..."
-        placeholderTextColor="#94A3B8"
-        value={marque}
-        onChangeText={(txt) => setMarque(txt)}
-      />
-
-      {/* ==================================================== */}
-      {/* CHAMP 3 : UNITÉ DE MESURE                            */}
-      {/* ==================================================== */}
-      <Text style={styles.label}>{t('unite')}</Text>
-      <View style={styles.unitsRow}>
-        {unitesDisponibles.map((u) => {
-          const estChoisi = unite === u;
-          return (
-            <TouchableOpacity
-              key={u}
-              style={[styles.unitBtn, estChoisi && styles.unitBtnActive]}
-              onPress={() => setUnite(u)}
-            >
-              <Text style={[styles.unitText, estChoisi && styles.unitTextActive]}>
-                {u}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* ==================================================== */}
-      {/* CHAMP 4 : CHOIX DE LA CATÉGORIE                     */}
-      {/* ==================================================== */}
-      <Text style={styles.label}>{t('categorie')} *</Text>
-      <View style={styles.categoriesGrid}>
-        {categories.map((c) => {
-          const estSelectionne = categorieId === c.id;
-          return (
-            <TouchableOpacity
-              key={c.id}
-              style={[
-                styles.categoryCard,
-                estSelectionne && styles.categoryCardSelected,
-              ]}
-              onPress={() => setCategorieId(c.id)}
-            >
-              <Text style={styles.categoryIcon}>{c.icone}</Text>
-              <Text
-                style={[
-                  styles.categoryName,
-                  estSelectionne && styles.categoryNameSelected,
-                ]}
-              >
-                {c.nom}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* ==================================================== */}
-      {/* BOUTONS D'ACTION                                     */}
-      {/* ==================================================== */}
-      <TouchableOpacity
-        style={styles.submitBtn}
-        onPress={handleCreerProduit}
-        activeOpacity={0.8}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.submitBtnText}>+ Créer le produit</Text>
-      </TouchableOpacity>
+        {/* Label uppercase */}
+        <Text style={styles.sectionLabel}>
+          {t('infos_produit') ?? 'INFORMATIONS DU PRODUIT'}
+        </Text>
 
-      <TouchableOpacity
-        style={styles.closeBtn}
-        onPress={() => router.back()}
-        activeOpacity={0.8}
+        {/* Titre principal */}
+        <Text style={styles.screenTitle}>
+          {t('un_nouveau_produit') ?? 'Un nouveau produit à suivre.'}
+        </Text>
+
+        {/* 1. Nom du produit */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>{t('nom_produit') ?? 'Nom du produit'}</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Ex: Huile d'olive"
+            placeholderTextColor={Theme.colors.muted}
+            value={nom}
+            onChangeText={setNom}
+          />
+        </View>
+
+        {/* 2. Marque */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>{t('marque') ?? 'Marque'}</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Ex: Châal"
+            placeholderTextColor={Theme.colors.muted}
+            value={marque}
+            onChangeText={setMarque}
+          />
+        </View>
+
+        {/* 3. Photo facultative */}
+        <TouchableOpacity
+          style={styles.inputCard}
+          activeOpacity={0.8}
+          onPress={() => Alert.alert('Photo', 'La photo est facultative.')}
+        >
+          <Text style={styles.inputLabel}>Photo · facultative</Text>
+          <Text style={styles.photoAddText}>+ Ajouter une photo</Text>
+        </TouchableOpacity>
+
+        {/* 4. Catégorie de produit */}
+        <TouchableOpacity
+          style={styles.inputCard}
+          activeOpacity={0.8}
+          onPress={() => setModalCatVisible(true)}
+        >
+          <Text style={styles.inputLabel}>Catégorie de produit</Text>
+          <View style={styles.catSelectedRow}>
+            <Text style={styles.catValueText}>
+              {categorieChoisie ? `${categorieChoisie.icone} ${categorieChoisie.nom}` : 'Sélectionner une catégorie'}
+            </Text>
+            <Text style={styles.chevron}>▾</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* 5. Prix · DT */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>Prix · DT</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Ex: 14.500"
+            placeholderTextColor={Theme.colors.muted}
+            keyboardType="decimal-pad"
+            value={prix}
+            onChangeText={setPrix}
+          />
+        </View>
+
+        {/* 6. Quantité */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>{t('quantite') ?? 'Quantité'}</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="1"
+            placeholderTextColor={Theme.colors.muted}
+            keyboardType="numeric"
+            value={quantite}
+            onChangeText={setQuantite}
+          />
+        </View>
+
+        {/* 7. Unité */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>{t('unite') ?? 'Unité'}</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Ex: L, kg, pièce, boite..."
+            placeholderTextColor={Theme.colors.muted}
+            value={unite}
+            onChangeText={setUnite}
+          />
+        </View>
+
+        {/* 8. Magasin */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>{t('magasin_label') ?? 'Magasin'}</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Ex: Monoprix, Carrefour, Épicerie..."
+            placeholderTextColor={Theme.colors.muted}
+            value={magasinNom}
+            onChangeText={setMagasinNom}
+          />
+        </View>
+
+        {/* 9. Date d'achat */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputLabel}>Date d'achat</Text>
+          <TextInput
+            style={styles.textInput}
+            value={dateAchat}
+            onChangeText={setDateAchat}
+          />
+        </View>
+
+        {/* Note informative en bas de formulaire */}
+        <Text style={styles.formNote}>
+          Catégories : alimentation ; vêtements et chaussures ; hygiène et soins ; maison et équipement ; matériel informatique ; santé et médicaments.
+        </Text>
+
+        {/* Bouton primary : Enregistrer le produit et l'achat */}
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={handleEnregistrer}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.primaryBtnText}>
+            Enregistrer le produit et l'achat
+          </Text>
+        </TouchableOpacity>
+
+        {/* Bouton secondary mint : Annuler */}
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={() => router.back()}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.secondaryBtnText}>
+            {t('annuler') ?? 'Annuler'}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* MODALE DE SÉLECTION DE CATÉGORIE */}
+      <Modal
+        visible={modalCatVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalCatVisible(false)}
       >
-        <Text style={styles.closeBtnText}>{t('fermer')}</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setModalCatVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Choisir une catégorie</Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {categories.map((c) => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.modalItem}
+                  onPress={() => {
+                    setCategorieChoisie(c);
+                    setModalCatVisible(false);
+                  }}
+                >
+                  <Text style={styles.modalItemIcon}>{c.icone}</Text>
+                  <Text style={styles.modalItemName}>{c.nom}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   );
 }
 
 // ------------------------------------------------------------
-// STYLES GRAPHIQUES
+// STYLES — Design Figma 15
 // ------------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Theme.colors.warm,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 48,
   },
-  label: {
-    fontSize: 14,
+
+  // Label uppercase muted
+  sectionLabel: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#334155',
-    marginBottom: 6,
-    marginTop: 10,
-  },
-  input: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 15,
-    color: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  unitsRow: {
-    flexDirection: 'row',
-    gap: 8,
+    color: Theme.colors.muted,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
     marginBottom: 6,
   },
-  unitBtn: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  unitBtnActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#2563EB',
-  },
-  unitText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  unitTextActive: {
-    color: '#2563EB',
-    fontWeight: '700',
-  },
-  categoriesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+
+  // Titre principal
+  screenTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Theme.colors.ink,
     marginBottom: 20,
   },
-  categoryCard: {
-    width: '48%',
-    backgroundColor: '#FFFFFF',
+
+  // Cartes blanches de champ
+  inputCard: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  categoryCardSelected: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#2563EB',
-  },
-  categoryIcon: {
-    fontSize: 22,
-    marginRight: 8,
-  },
-  categoryName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-    flex: 1,
-  },
-  categoryNameSelected: {
-    color: '#2563EB',
-    fontWeight: '700',
-  },
-  submitBtn: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
+    borderColor: Theme.colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     marginBottom: 10,
+    ...Theme.shadows.card,
   },
-  submitBtnText: {
-    color: '#FFFFFF',
+  inputLabel: {
+    fontSize: 11,
+    color: Theme.colors.muted,
+    marginBottom: 4,
+  },
+  textInput: {
+    fontSize: 15,
+    color: Theme.colors.ink,
+    fontWeight: '600',
+    padding: 0,
+  },
+
+  photoAddText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Theme.colors.ink,
+  },
+
+  catSelectedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  catValueText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Theme.colors.ink,
+  },
+  chevron: {
+    fontSize: 14,
+    color: Theme.colors.muted,
+  },
+
+  // Note de bas de page
+  formNote: {
+    fontSize: 12,
+    color: Theme.colors.muted,
+    lineHeight: 18,
+    marginTop: 8,
+    marginBottom: 20,
+  },
+
+  // Boutons
+  primaryBtn: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: Theme.radius.full,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    ...Theme.shadows.button,
+  },
+  primaryBtnText: {
+    color: Theme.colors.white,
     fontSize: 15,
     fontWeight: '700',
   },
-  closeBtn: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    paddingVertical: 12,
+  secondaryBtn: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: Theme.radius.full,
+    height: 52,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    justifyContent: 'center',
   },
-  closeBtnText: {
-    color: '#64748B',
-    fontSize: 14,
+  secondaryBtnText: {
+    color: Theme.colors.deepGreen,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  // Modale sélecteur
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
+    padding: 20,
+    ...Theme.shadows.card,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+    marginBottom: 16,
+  },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Theme.colors.border,
+  },
+  modalItemIcon: {
+    fontSize: 20,
+  },
+  modalItemName: {
+    fontSize: 15,
     fontWeight: '600',
+    color: Theme.colors.ink,
   },
 });

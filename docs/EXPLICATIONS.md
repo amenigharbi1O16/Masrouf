@@ -1,367 +1,400 @@
-# 📚 Masrouf — Guide des Explications Techniques (Étape 3)
+# 📚 Masrouf — Guide Complet d'Architecture, Code et Soutenance
 
-Ce document fournit les explications détaillées, ligne par ligne et concept par concept, de l'ensemble des développements réalisés lors de l'**Étape 3** de l'application Masrouf. Il est spécialement rédigé pour préparer la soutenance orale devant le professeur.
-
----
-
-## 📑 Sommaire
-1. [Sous-étape 3.1 : Base de données, Schéma et Migrations Sécurisées](#1-sous-étape-31--base-de-données-schéma-et-migrations-sécurisées)
-2. [Sous-étape 3.2 : Sécurité Avancée PBKDF2 et Mise à Niveau Automatique du Hash](#2-sous-étape-32--sécurité-avancée-pbkdf2-et-mise-à-niveau-automatique-du-hash)
-3. [Sous-étape 3.3 : Contrôle d'Accès et Privilèges Administrateur](#3-sous-étape-33--contrôle-daccès-et-privilèges-administrateur)
-4. [Sous-étape 3.4 : Typage des Catégories (Produit vs Dépense)](#4-sous-étape-34--typage-des-catégories-produit-vs-dépense)
-5. [Sous-étape 3.5 : Assistant de Premier Démarrage (Onboarding 3 Étapes)](#5-sous-étape-35--assistant-de-premier-démarrage-onboarding-3-étapes)
-6. [Sous-étape 3.6 : Système Trilingue (Français, Arabe, Anglais) et Fallback](#6-sous-étape-36--système-trilingue-français-arabe-anglais-et-fallback)
-7. [Questions Fréquentes du Professeur & Réponses Types](#7-questions-fréquentes-du-professeur--réponses-types)
+Ce document est le **guide de référence exhaustif** pour comprendre, expliquer et soutenir l'ensemble de l'application mobile **Masrouf** devant le professeur et les examinateurs.
 
 ---
 
-## 1. Sous-étape 3.1 : Base de données, Schéma et Migrations Sécurisées
-
-### Objectif
-Faire évoluer le schéma SQLite sans jamais perdre de données existantes, en ajoutant les colonnes d'onboarding et de versionnement cryptographique, tout en garantissant une idempotence absolue (l'application peut redémarrer 100 fois sans crash).
-
-### Fichiers Modifiés
-- `src/db/database.ts` : Nouvelles colonnes `onboarding_done` (DEFAULT 0) et `hash_version` (DEFAULT 1), mécanisme transactionnel de sauvegarde physique `VACUUM INTO`.
-- `src/db/database.web.ts` : Réplication identique pour le fallback Web dans `localStorage` avec sauvegarde `masrouf_web_v3_backup_etape2`.
-- `src/db/queries.ts` : Typage TypeScript étendu (`salt`, `onboarding_done`, `hash_version`) et fonctions de mise à jour.
-
-### Sauvegarde Physique
-Avant d'appliquer les mutations, la fonction `sauvegarderBaseDeDonnees()` exécute la directive officielle SQLite :
-```sql
-VACUUM INTO 'masrouf_backup_etape2.db';
-```
-- **Pourquoi `VACUUM INTO` ?** Il crée un fichier de sauvegarde indépendant, défragmenté et cohérent sans verrouiller l'application ni risquer de corrompre le fichier actif `masrouf.db`.
-- **Emplacement sur téléphone :** `/data/data/<package>/databases/masrouf_backup_etape2.db` (Android) ou `Library/Application Support/SQLite/masrouf_backup_etape2.db` (iOS).
+## 📑 Sommaire Général
+1. [Architecture Globale & Relations Inter-Fichiers](#1-architecture-globale--relations-inter-fichiers)
+2. [Inventaire des Dépendances & Bibliothèques Installées](#2-inventaire-des-dépendances--bibliothèques-installées)
+3. [Dictionnaire des Concepts, Termes & Fonctions Clés](#3-dictionnaire-des-concepts-termes--fonctions-clés)
+4. [Guide Visuel Écran par Écran : « Ce que voit l'utilisateur & Où est le code »](#4-guide-visuel-écran-par-écran)
+   - [4.1 Authentification & Onboarding (Figma 01 à 06)](#41-authentification--onboarding)
+   - [4.2 Espace Utilisateur & Navigation Drawer (Figma 07 à 12, 19 à 22)](#42-espace-utilisateur--navigation-drawer)
+   - [4.3 Fiches Produits, Achats & Dépenses (Figma 13 à 18)](#43-fiches-produits-achats--dépenses)
+   - [4.4 Budgets par Enveloppes (Figma 09 à 11)](#44-budgets-par-enveloppes)
+   - [4.5 Espace Administrateur (Figma 35 à 43)](#45-espace-administrateur)
+5. [Questions Fréquentes du Jury & Réponses Types](#5-questions-fréquentes-du-jury--réponses-types)
 
 ---
 
-## 2. Sous-étape 3.2 : Sécurité Avancée PBKDF2 et Mise à Niveau Automatique du Hash
+## 1. Architecture Globale & Relations Inter-Fichiers
 
-### Objectif
-Remplacer le hachage SHA-256 direct (vulnérable aux calculs massifs par GPU/ASIC) par **PBKDF2-HMAC-SHA256 avec 10 000 itérations**, sans casser les anciens comptes qui se connectent en version 1.
+### Schéma des Relations et Flux de Données
 
-### Bibliothèque Choisie
-- **`@noble/hashes@1.7.1`** (version fixée sans `^` dans `package.json`).
-- C'est une bibliothèque JavaScript pure sans dépendances natives, ultra-optimisée et 100% compatible avec le moteur **Hermes** de React Native et le bundler **Metro** sur mobile.
+```mermaid
+flowchart TD
+    subgraph UI_Screens["📱 Couche Présentation (Écrans & Composants)"]
+        Login["src/app/login.tsx"]
+        Register["src/app/inscription.tsx"]
+        ChangePwd["src/app/changer-mot-de-passe.tsx"]
+        Onboarding["src/app/onboarding.tsx"]
+        Home["src/app/(tabs)/index.tsx"]
+        Products["src/app/(tabs)/produits.tsx"]
+        Calendar["src/app/(tabs)/calendrier.tsx"]
+        Analytics["src/app/(tabs)/analyses.tsx"]
+        Settings["src/app/(tabs)/reglages.tsx"]
+        NewPurchase["src/app/nouvel-achat.tsx"]
+        NewProduct["src/app/nouveau-produit.tsx"]
+        ProductDetail["src/app/produit/[id].tsx"]
+        BudgetMonth["src/app/budget-mois.tsx"]
+        AdminDash["src/app/(admin)/dashboard.tsx"]
+        AdminUsers["src/app/(admin)/utilisateurs.tsx"]
+        AdminCats["src/app/(admin)/categories.tsx"]
+        AdminPoints["src/app/(admin)/points-regles.tsx"]
+        AdminSettings["src/app/(admin)/reglages.tsx"]
+        AppDrawerComp["src/components/AppDrawer.tsx"]
+        AdminDrawerComp["src/components/AdminDrawer.tsx"]
+        AppHeaderComp["src/components/AppHeader.tsx"]
+    end
 
-### Fonctionnement Cryptographique
-1. **Sel Aléatoire Unique :** Généré obligatoirement par `Crypto.getRandomValues(new Uint8Array(16))` d'`expo-crypto` (jamais `Math.random`). 16 octets = 32 caractères hexadécimaux.
-2. **Étirement de Clé (Key Stretching) :** PBKDF2 applique HMAC-SHA256 10 000 fois consécutives.
-3. **Mise à Niveau Transparente (v1 -> v2) :**
-   - Lors de la connexion, l'app vérifie la version du compte (`hash_version`).
-   - Si `hash_version === 1` : vérifie avec l'ancien SHA-256 simple. Si mot de passe faux, refus immédiat sans toucher à la base.
-   - Si mot de passe correct : l'app génère un nouveau sel, calcule le hash v2 PBKDF2 (10 000 itérations), met à jour la ligne SQLite avec `hash_version = 2`, et connecte l'utilisateur.
-   - Toutes les connexions suivantes se font directement en v2.
-4. **Nouveaux Comptes :** Reçoivent directement `hash_version = 2` dès l'inscription.
-5. **Temps Mesuré :** Sur un appareil moderne, le calcul prend entre **25 ms et 50 ms**, ce qui est instantané pour l'humain mais décourage définitivement un attaquant par force brute.
+    subgraph Core_Services["⚙️ Couche Métier & Contexte"]
+        AuthContext["src/utils/auth.tsx\n(Gestion Session, PBKDF2)"]
+        I18nContext["src/utils/i18n.ts\n(TRILINGUE: FR, AR, EN + RTL)"]
+        SecurityUtil["src/utils/security.ts\n(Hachage, Sel, PBKDF2 10 000 itérations)"]
+        ThemeConst["src/constants/theme.ts\n(Charte Figma: Forest, Mint, Warm)"]
+    end
 
----
+    subgraph Data_Layer["💾 Couche Données (SQLite)"]
+        Queries["src/db/queries.ts\n(Requêtes SQL Typées & Sécurisées)"]
+        Database["src/db/database.ts / database.web.ts\n(Tables, Schéma, Migrations, Sauvegardes)"]
+    end
 
-## 3. Sous-étape 3.3 : Contrôle d'Accès et Privilèges Administrateur
-
-### Objectif
-Garantir qu'aucun utilisateur normal ne puisse déclencher une action administrative sensible au niveau de la couche de données (`queries.ts`), même en contournant l'interface graphique.
-
-### Implémentation
-Création de la fonction de contrôle :
-```typescript
-export function verifierPrivilegeAdmin(adminUserId?: number): void {
-  if (adminUserId !== undefined && adminUserId !== null) {
-    const admin = getUserById(adminUserId);
-    if (!admin || admin.role !== 'admin' || admin.is_active !== 1) {
-      throw new Error(`Accès refusé : l'utilisateur ID ${adminUserId} n'est pas un administrateur actif.`);
-    }
-    return;
-  }
-  const nbAdmins = countActiveAdmins();
-  if (nbAdmins === 0) {
-    throw new Error('Accès refusé : aucun administrateur actif configuré.');
-  }
-}
-```
-Cette garde est appelée systématiquement dans :
-- `updateUserActiveStatus` (suspension / activation de compte)
-- `resetUserPassword` (génération de mot de passe temporaire)
-- `deleteUserAndData` (suppression avec cascade)
-- `getAdminGlobalStats` (lecture des métriques globales)
-- `getAllUsersAdmin` (liste de supervision)
-- `addCategoryAdmin` et `updateCategoryAdmin`
-- `updatePointsSettings` (règles de gamification)
-
----
-
-## 4. Sous-étape 3.4 : Typage des Catégories (Produit vs Dépense)
-
-### Objectif
-Distinguer clairement deux natures d'achats :
-1. **Type `'product'` (Produit / Supermarché) :** Achat d'articles au détail (ex: Lait, Pain, Savon, Huile) avec quantité, unité (L, Kg, pièce), magasin et historique de prix unitaire.
-2. **Type `'expense'` (Dépense directe / Fixe) :** Dépenses globales ou factures (ex: Facture STEG/SONEDE, Taxi, Loyer, Internet) avec montant direct.
-
-### Présence dans l'Application
-- **Côté Administrateur (`(admin)/categories.tsx`) :**
-  - Sélecteur binaire lors de l'ajout d'une catégorie : `🛒 Produit` vs `🧾 Dépense`.
-  - Pastille visuelle distinctive sur chaque carte de catégorie dans la liste.
-- **Côté Utilisateur (`budget-mois.tsx`) :**
-  - Possibilité de créer une catégorie personnalisée à la volée avec choix du type (`Produit` ou `Dépense`).
-  - Insertion automatique dans la table `category` et activation instantanée dans `user_category`.
-
----
-
-## 5. Sous-étape 3.5 : Assistant de Premier Démarrage (Onboarding 3 Étapes)
-
-### Objectif
-Accueillir les nouveaux inscrits avec un parcours guidé et engageant, **sans leur imposer de saisie de budget immédiate**, et initialiser leurs catégories préférées.
-
-### Déroulement de l'Écran (`src/app/onboarding.tsx`)
-1. **Étape 1 — Bienvenue & Philosophie Locale :**
-   - Explication de la confidentialité : 100% hors-ligne, aucune donnée sur serveur cloud.
-   - Présentation de la méthode des enveloppes budgétaires.
-2. **Étape 2 — Vos Catégories Favorites :**
-   - Grille interactive de cases à cocher.
-   - Boutons d'aide rapide : "⭐ Recommandées" (catégories essentielles) et "✅ Tout cocher".
-   - Sauvegarde des choix dans la table relationnelle `user_category` (`setUserCategories(userId, categoryIds)`).
-3. **Étape 3 — Tout est prêt :**
-   - Rappel bienveillant que le budget peut être fixé plus tard à tout moment dans Réglages ou Accueil.
-   - Bouton final : marque `onboarding_done = 1` dans SQLite, actualise le contexte Auth, et redirige vers `/(tabs)`.
-
-### Routage Conditionnel (`src/app/_layout.tsx`)
-Dans `NavigationGuard` :
-```typescript
-if (user.role === 'user') {
-  if ((user.onboarding_done ?? 0) === 0) {
-    if (!estSurOnboarding) router.replace('/onboarding');
-    return;
-  }
-  // Si onboarding déjà fait, bloque l'accès à /onboarding
-  if (estSurOnboarding) router.replace('/(tabs)');
-}
+    UI_Screens --> Core_Services
+    Core_Services --> Data_Layer
+    UI_Screens --> Queries
 ```
 
----
+### Explications Détaillées des Communications Inter-Fichiers
 
-## 6. Sous-étape 3.6 : Système Trilingue (Français, Arabe, Anglais) et Fallback
-
-### Objectif
-Offrir une application totalement trilingue (**Français**, **Arabe**, **Anglais**) avec parité stricte des clés et direction du texte dynamique (RTL/LTR).
-
-### Fichiers de Traduction
-- `src/i18n/fr.json` : 128 clés (ressource de référence et langue de secours).
-- `src/i18n/ar.json` : 128 clés (arabe littéraire adapté aux utilisateurs tunisiens).
-- `src/i18n/en.json` : 128 clés (anglais international).
-*Contrôle automatisé : 0 clé manquante entre les trois langues.*
-
-### Règle d'Or de Secours (Fallback)
-Dans `src/utils/i18n.ts` :
-Si une clé demandée n'existe pas ou est vide dans la langue active, la fonction `translate(cle, langue)` bascule **automatiquement sur la valeur française (`fr.json`)**. L'utilisateur ne voit **jamais** de clé technique brute (ex: `err_code_404`) ni d'espace vide.
-
-### Direction du Texte (RTL vs LTR)
-- **Arabe (`ar`) :** Activation de `I18nManager.forceRTL(true)`. Le texte et l'interface s'alignent de droite à gauche.
-- **Français (`fr`) & Anglais (`en`) :** `I18nManager.forceRTL(false)`. L'interface s'aligne de gauche à droite.
-
-### Emplacements du Sélecteur de Langue
-Un sélecteur à 3 boutons (`🇫🇷 FR` / `🇸🇦 عربي` / `🇬🇧 EN`) est disponible :
-1. Sur l'écran de **Connexion** (`src/app/login.tsx`).
-2. Sur l'écran d'**Inscription** (`src/app/inscription.tsx`).
-3. Dans les **Réglages Utilisateur** (`src/app/(tabs)/reglages.tsx`).
-4. Dans les **Réglages Administrateur** (`src/app/(admin)/reglages.tsx`).
-
-### Persistance
-- Avant connexion : sauvegardée dans `SecureStore` (ou `localStorage` sur Web) sous la clé `masrouf_langue_pre_login`.
-- Après connexion : stockée dans la colonne `langue` de la table `user` de SQLite.
+#### En tirets :
+- **`src/app/_layout.tsx` (Point d'entrée racine) :**
+  - Mission : Initialise `AuthProvider`, charge les polices et fournit la pile `Stack` globale.
+  - Relation : Enveloppe toute l'application dans `AuthProvider`.
+- **`src/utils/auth.tsx` (Moteur d'authentification) :**
+  - Mission : Maintient en mémoire l'état `user` connecté, gère la session chiffrée avec `expo-secure-store`, gère la connexion, déconnexion et la migration de mot de passe.
+  - Relation : Appelle `getUserByEmail()`, `updateUserPassword()` dans `src/db/queries.ts` et `verifierMotDePasse()` dans `src/utils/security.ts`.
+- **`src/utils/i18n.ts` (Moteur Trilingue) :**
+  - Mission : Fournit le hook `useTranslation()` retournant la fonction `t(cle)`, la langue courante et la bascule RTL/LTR pour l'Arabe (`I18nManager`).
+  - Relation : Lit les dictionnaires `fr.json`, `ar.json`, `en.json`. Sauvegarde le choix dans la colonne `langue` de SQLite via `updateLangue()`.
+- **`src/constants/theme.ts` (Système de Design) :**
+  - Mission : Centralise la palette exacte de Figma (Vert Forêt `#102B27`, Menthe `#D9F0E4`, Blanc chaud `#F5F3ED`, Corail `#DC7770`, Or `#E9B66B`), les arrondis (`radius.full: 9999px`) et les ombres.
+  - Relation : Importé par tous les fichiers d'écrans pour garantir une cohérence visuelle parfaite.
+- **`src/db/queries.ts` (Accès aux Données) :**
+  - Mission : Toutes les requêtes `SELECT`, `INSERT`, `UPDATE`, `DELETE` paramétrées (sécurisées contre les injections SQL).
+  - Relation : Lit et écrit dans l'instance singleton SQLite `db` de `src/db/database.ts`.
 
 ---
 
-## 7. Questions Fréquentes du Professeur & Réponses Types
+## 2. Inventaire des Dépendances & Bibliothèques Installées
 
-### Q1 : Pourquoi avoir choisi PBKDF2 plutôt qu'un simple SHA-256 ?
-> **Réponse :** SHA-256 est un algorithme rapide conçu pour vérifier l'intégrité de fichiers. Un ordinateur moderne peut calculer des dizaines de millions de hashes SHA-256 par seconde, rendant une attaque par force brute ou dictionnaire très rapide. PBKDF2 applique 10 000 itérations avec sel aléatoire, ralentissant volontairement le calcul à ~30 ms par mot de passe. Cela neutralise les attaques par force brute sans impacter la fluidité pour l'utilisateur légitime.
-
-### Q2 : Comment avez-vous garanti que les utilisateurs existants ne perdent pas leur accès ?
-> **Réponse :** Grâce à notre colonne `hash_version`. Les utilisateurs créés avant l'Étape 3 ont `hash_version = 1`. Lors de leur prochaine connexion, le système valide leur mot de passe avec l'ancien algorithme, puis recalcule immédiatement une empreinte PBKDF2 forte et met à jour leur compte avec `hash_version = 2`. La transition est 100% transparente.
-
-### Q3 : Pourquoi distinguer le type "Produit" du type "Dépense" ?
-> **Réponse :** Parce que la gestion budgétaire ne traite pas un plein d'essence ou une facture d'électricité de la même façon qu'un paquet de café ou un litre de lait. Les produits nécessitent un historique de prix, un calcul de quantité et la comparaison entre magasins (Carrefour vs Monoprix). Les dépenses sont des montants directs alloués à des factures ou des services fixes.
-
----
-
-## 8. Étape 4 : Tableau de Bord Personnel (Accueil / Home)
-
-### Objectif
-Offrir une vision immédiate et claire de la santé financière du mois en cours : budget total, jauge globale colorée (<70% vert, 70-99% orange, ≥100% rouge), enveloppes par catégorie, dépenses non budgétisées, achats récents et badge de gamification.
-
-### Fichiers Modifiés
-- `src/app/(tabs)/index.tsx` : Intégration de `getMonthlyBudget`, synchronisation bidirectionnelle du budget mensuel, alertes dynamiques à 80% et 100% non répétitives via `alertes_log`.
-- `src/db/queries.ts` : Requêtes d'agrégation `getTotalMois`, `getRecentAchats`, `getEnveloppesBudget`.
-
-### Points Clés pour la Soutenance
-- **Anti-boucle infinie :** `useFocusEffect(rechargerDonnees)` avec un `rechargerDonnees` mémorisé via `useCallback` et exclusion des fonctions stables comme `refreshUser` pour empêcher le débordement de pile (`Maximum update depth exceeded`).
-- **Synchronisation du Budget :** Si l'utilisateur a défini son budget via les enveloppes ou les réglages, le total est immédiatement reflété sur la jauge d'accueil.
+| Nom du Package | Version | But & Mission dans Masrouf |
+|---|---|---|
+| **`expo`** | `~58.0.19` | Framework principal et runtime de l'application React Native. Fournit les outils de build, Metro bundler et le cycle de vie mobile. |
+| **`expo-router`** | `~58.0.26` | Système de navigation déclaratif basé sur l'arborescence des dossiers (File-based Routing). Gère les URLs `/login`, `/(tabs)/produits`, etc. |
+| **`expo-sqlite`** | `~58.0.15` | Moteur de base de données relationnelle SQLite locale embarquée sur le téléphone. Stocke les utilisateurs, budgets, achats et produits. |
+| **`expo-secure-store`** | `~58.0.3` | Stockage chiffré sur puce sécurisée (Keystore Android / Keychain iOS) pour garder le jeton de session utilisateur. |
+| **`expo-crypto`** | `~58.0.8` | Fournit le générateur aléatoire cryptographique certifié (`Crypto.getRandomValues`) indispensable pour la génération de sels uniques. |
+| **`@noble/hashes`** | `1.7.1` | Bibliothèque cryptographique JavaScript pure sans dépendance native. Utilisée pour **PBKDF2-HMAC-SHA256 avec 10 000 itérations**. |
+| **`react-native-safe-area-context`** | `~5.10.1` | Ajuste l'interface pour ne pas être masquée par la barre de statut, le notch (encoche) ou la barre home des téléphones modernes. |
+| **`react-native-screens`** | `~4.30.0` | Optimise les performances mémoire en libérant les vues natives lorsque l'utilisateur change d'écran. |
+| **`react-native-gesture-handler`** | `~3.3.0` | Prise en charge des gestes tactiles fluides à 60 FPS (glissements de tiroir, swipes). |
+| **`react` & `react-native`** | `19.3.0` / `0.88.0` | Noyau de composants déclaratifs React et pont avec les composants graphiques natifs iOS/Android. |
+| **`typescript`** | `~6.0.3` | Typage statique strict garantissant zéro bogue d'exécution et vérifiable par `npx tsc --noEmit`. |
 
 ---
 
-## 9. Étape 5 : Catalogue et Gestion des Produits
+## 3. Dictionnaire des Concepts, Termes & Fonctions Clés
 
-### Objectif
-Permettre à l'utilisateur de consulter la liste de ses produits enregistrés, de rechercher instantanément par nom, marque ou catégorie, et de filtrer les résultats en direct.
+### Concepts Prédéfinis (React & Expo)
+- **`useState`** : Hook React permettant de stocker une variable qui, lorsqu'elle change, redessine automatiquement la vue (ex: le texte recherché).
+- **`useEffect`** : Hook React exécutant une action lors du montage ou quand une dépendance change (ex: charger les catégories au démarrage).
+- **`useCallback`** : Mémorise une fonction pour éviter de la recréer inutilement à chaque cycle de rendu.
+- **`useFocusEffect` (Expo Router)** : Hook s'exécutant **à chaque fois** que l'écran redevient visible au premier plan (crucial pour rafraîchir instantanément les budgets après un achat).
+- **`useLocalSearchParams`** : Récupère les paramètres transmis dans l'URL (ex: `/produit/[id]` extrait l'identifiant du produit cliqué).
+- **`router.push()` / `router.replace()` / `router.back()`** : Fonctions de navigation d'Expo Router permettant d'empiler un écran, de remplacer l'historique ou de revenir en arrière.
 
-### Fichiers Modifiés
-- `src/app/(tabs)/produits.tsx` : Filtrage événementiel via `TextInput` (`onChangeText`), FlatList optimisée, isolation des données par utilisateur (`getAllProduits(user.id)`).
-- `src/db/queries.ts` : `getAllProduits(userId)`.
-
-### Points Clés pour la Soutenance
-- **Programmation Événementielle :** Le filtrage s'exécute à chaque lettre saisie sans recharger la base de données, grâce à l'état React `recherche` combiné à la méthode JavaScript `.filter()`.
-- **Isolation Multi-Utilisateurs :** Chaque utilisateur ne voit que ses propres articles rattachés à son `user_id`.
-
----
-
-## 10. Étape 6 : Saisie Intelligente des Achats et Détection d'Alertes
-
-### Objectif
-Proposer un formulaire modale complet permettant :
-1. Soit d'enregistrer l'achat d'un article du catalogue (prix unitaire x quantité x enseigne).
-2. Soit d'enregistrer une dépense directe sans produit (factures, services, taxi).
-3. De déclencher immédiatement une alerte budgétaire si l'enveloppe dépasse 80% ou 100%.
-
-### Fichiers Modifiés
-- `src/app/nouvel-achat.tsx` : Sélecteur de mode binaire, support du paramètre URL `produitId` pour pré-sélection automatique depuis la fiche produit, contrôle des seuils budgétaires post-insertion via `hasAlerteBeenShown` et `logAlerte`.
-- `src/db/queries.ts` : Insertion dans la vue unifiée `achats` avec dispatch transparent vers `purchase` ou `expense`.
-
-### Points Clés pour la Soutenance
-- **Anti-Répétition des Alertes :** Grâce à la table relationnelle `alert_log` (ou la vue `alertes_log`), une alerte à 80% ou 100% n'est signalée qu'une seule fois par mois et par catégorie.
+### Fonctions Métier Développées dans `src/db/queries.ts`
+- **`getUserByEmail(email)`** : Recherche insensible à la casse d'un utilisateur par son e-mail.
+- **`registerUser(nom, email, hash, salt, hashVersion)`** : Crée un compte utilisateur normal avec `onboarding_done = 0`.
+- **`updateUserPassword(userId, hash, salt, hashVersion)`** : Met à jour le mot de passe et réinitialise `must_change_password = 0`.
+- **`getMonthlyBudget(userId, mois)`** : Récupère le plafond budgétaire configuré pour le mois donné (format `YYYY-MM`).
+- **`getEnveloppesBudget(userId, mois)`** : Calcule pour chaque catégorie : montant alloué, dépensé, restant, et pourcentage consommé.
+- **`canDecreaseBudget(userId, mois, catId, montant)`** : **Règle anti-triche** empêchant l'utilisateur de baisser son enveloppe sous le montant déjà dépensé.
+- **`getAllProduits(userId)`** : Liste tous les produits du catalogue avec leur catégorie et unité.
+- **`getTopProduitsParDepense(userId, mois, limit)`** : Requête analytique avec `GROUP BY` et `ORDER BY total DESC` pour afficher les produits les plus coûteux.
+- **`getAdminGlobalStats(adminUserId)`** : Fournit les KPIs globaux anonymisés (aucun détail privé).
 
 ---
 
-## 11. Étape 7 : Création d'un Nouveau Produit
+## 4. Guide Visuel Écran par Écran : « Ce que voit l'utilisateur & Où est le code »
 
-### Objectif
-Fournir une interface modale rapide pour enregistrer un nouvel article dans le catalogue personnel : nom, marque, unité de mesure (`pièce`, `kg`, `L`, `g`, `pack`), catégorie et visuel.
+### 4.1 Authentification & Onboarding
 
-### Fichiers Modifiés
-- `src/app/nouveau-produit.tsx` : Contrôle de saisie strict (nom obligatoire, catégorie sélectionnée), validation événementielle, écriture dans la table `product` via `insertProduit`.
+#### Écran 1 : Connexion (Figma 01 · Login)
+- **Fichier :** `src/app/login.tsx`
+- **Ce que voit l'utilisateur sur l'écran :**
+  - Carte Hero Forest en haut avec nom de l'app "Masrouf" et slogan.
+  - Carte blanche d'en-tête "Connexion" avec texte de bienvenue.
+  - Champ blanc de saisie pour l'Adresse e-mail.
+  - Champ blanc de saisie pour le Mot de passe (masqué avec points).
+  - Grand bouton arrondi vert foncé "Se connecter".
+  - Bouton secondaire menthe "Créer un compte".
+  - Sélecteur de langue en bas : Anglais · Français · العربية.
+- **Où se trouve le code ?**
+  - Carte Hero : `lines 70-80`
+  - Champs de saisie : `lines 85-115`
+  - Bouton connexion : `lines 120-130`
+  - Appel d'authentification PBKDF2 : fonction `handleLogin` à la `line 40`.
 
----
+#### Écran 2 : Inscription (Figma 02 · Registration)
+- **Fichier :** `src/app/inscription.tsx`
+- **Ce que voit l'utilisateur :**
+  - Titre "Créer un compte".
+  - 4 champs blancs : Nom complet, Adresse e-mail, Mot de passe, Confirmation.
+  - Note de sécurité : "Le mot de passe doit comporter au moins 6 caractères."
+  - Grand bouton "Créer mon compte" et lien retour connexion.
+- **Où se trouve le code ?**
+  - Formulaire : `lines 75-140`
+  - Hachage cryptographique et inscription SQLite : fonction `handleInscription` (`lines 35-65`).
 
-## 12. Étape 8 : Fiche Détail Produit et Suppression Sécurisée
+#### Écran 3 : Changement de mot de passe obligatoire (Figma 03)
+- **Fichier :** `src/app/changer-mot-de-passe.tsx`
+- **Ce que voit l'utilisateur :**
+  - Bannière menthe d'information sécurisée.
+  - 3 champs : Mot de passe actuel, Nouveau mot de passe, Confirmation.
+  - Indicateurs de validation dynamique ✓ / ✗ (longueur, présence d'un chiffre, correspondance).
+  - Bouton vert foncé "Valider mon nouveau mot de passe".
+- **Où se trouve le code ?**
+  - Validation dynamique en direct : `lines 45-60`
+  - Composant visuel des coches : `lines 110-135`.
 
-### Objectif
-Afficher la fiche signalétique complète d'un produit : historique chronologique de tous les achats passés, détection automatique du **meilleur prix** (magasin le moins cher 🏆), calcul du prix moyen, raccourci pour ajouter un achat, et suppression avec gestion des dépenses orphelines.
-
-### Fichiers Modifiés
-- `src/app/produit/[id].tsx` : Utilisation de `useLocalSearchParams` pour router vers `/produit/[id]`, calculs statistiques en mémoire, boutons d'action rapide (Ajouter un achat / Supprimer).
-- `src/db/queries.ts` : Ajout de la fonction `deleteProduit(produitId, mode: 'reassign' | 'cascade')`.
-- `src/db/database.web.ts` : Prise en charge de la suppression Web.
-
-### Solution pour les Achats Associés lors de la Suppression
-Lorsqu'un utilisateur supprime un produit, l'application lui propose deux options via `Alert.alert` :
-1. **Conserver les dépenses (Recommandé - `mode: 'reassign'`) :** Les achats rattachés à ce produit dans `purchase` sont automatiquement convertis en dépenses directes dans la table `expense` avec le libellé `"[Nom du produit] (produit supprimé)"`. **Résultat : aucun millime dépensé ne disparaît du budget mensuel.**
-2. **Tout supprimer (`mode: 'cascade'`) :** Le produit et toutes les lignes d'achats associées sont définitivement effacés par cascade.
-
----
-
-## 13. Étape 9 : Analyses et Statistiques Mensuelles
-
-### Objectif
-Fournir un écran analytique complet pour comprendre la répartition de ses finances :
-1. Total dépensé vs Mois précédent avec calcul automatique de l'économie réalisée (🎉) ou du dépassement (⚠️).
-2. Répartition par catégorie sous forme de barres de progression horizontales proportionnelles et colorées.
-3. Carte de Performance Gamification montrant les points accumulés, le badge actuel (🌱 Débutant, 💰 Économe, 🏆 Expert) et les points manquants pour atteindre le palier supérieur.
-
-### Fichiers Modifiés
-- `src/app/(tabs)/analyses.tsx` : Agrégation SQL `GROUP BY` et `SUM` via `getDepensesParCategorie`, jauge de progression de niveau, messages d'encouragement personnalisés.
-
----
-
-## 14. Étape 10 : Réglages Utilisateur et Gestion du Profil
-
-### Objectif
-Centraliser les préférences de l'utilisateur :
-1. Définition directe du budget mensuel global (TND) avec persistance dans la table `user`.
-2. Changement sécurisé du mot de passe avec le nouveau hachage PBKDF2 (version 2).
-3. Sélecteur trilingue instantané (Français 🇫🇷, Arabe 🇸🇦, Anglais 🇬🇧).
-4. Affichage du niveau de gamification et déconnexion sécurisée de la session (`expo-secure-store`).
-
-### Fichiers Modifiés
-- `src/app/(tabs)/reglages.tsx` : Formulaire de budget global avec confirmation, mise à jour du contexte Auth via `updateUser({ budget_mensuel })`, affichage des points et du badge.
-
----
-
-## 15. Étape 11 : Espace Administrateur et Protection des Données
-
-### Objectif
-Permettre à un administrateur système de superviser l'application tout en respectant scrupuleusement la vie privée des utilisateurs :
-1. **Dashboard KPI Anonyme :** Nombre d'utilisateurs, comptes actifs, catalogue, nombre de transactions, volume global en TND, catégorie la plus sollicitée. Aucune dépense personnelle n'est exposée.
-2. **Gestion des Utilisateurs :** Activer/suspendre un compte, générer un mot de passe temporaire à usage unique (avec `must_change_password = 1`), suppression définitive avec cascade.
-3. **Sécurité et Garde-fous :** Impossible pour un administrateur de se suspendre ou de se supprimer lui-même ; obligation de conserver au moins un administrateur actif.
-4. **Vérification de Privilèges :** Chaque fonction d'administration dans `queries.ts` appelle `verifierPrivilegeAdmin(adminUserId)`.
-
-### Fichiers Modifiés
-- `src/app/(admin)/dashboard.tsx`, `utilisateurs.tsx`, `categories.tsx`, `points-regles.tsx`, `reglages.tsx`.
-- `src/db/queries.ts` : `verifierPrivilegeAdmin`, `getAdminGlobalStats`, `getAllUsersAdmin`.
+#### Écrans 4, 5, 6 : Assistant Onboarding en 3 étapes (Figma 04, 05, 06)
+- **Fichier :** `src/app/onboarding.tsx`
+- **Ce que voit l'utilisateur :**
+  - *Étape 1 (Bienvenue) :* Carte Hero Dark Forest "MASROUF À VOTRE IMAGE", 3 arguments clés.
+  - *Étape 2 (Catégories) :* Grille interactive avec cases à cocher des catégories quotidiennes.
+  - *Étape 3 (Récapitulatif) :* Cartes blanches des catégories choisies, bouton "Commencer".
+  - **Important :** Ne demande aucun budget (respect strict du cahier des charges).
+- **Où se trouve le code ?**
+  - Gestion de l'étape active (`etape` de 1 à 3) : `lines 35-50`
+  - Rendu visuel conditionnel des 3 écrans : `lines 100-240`.
 
 ---
 
-## 16. Étape 12 : Enveloppes Budgétaires et Règle Anti-Triche
+### 4.2 Espace Utilisateur & Navigation Drawer
 
-### Objectif
-Mettre en œuvre la méthode éprouvée des enveloppes budgétaires :
-1. Répartition du budget mensuel par catégorie (« Masrouf Alimentation », « Masrouf Santé », etc.).
-2. Recopie en 1 clic du budget du mois précédent pour gagner du temps.
-3. **Règle Anti-Triche :** Interdiction stricte de baisser le montant alloué à une enveloppe en dessous du montant déjà dépensé ce mois-ci dans cette catégorie.
+#### Le Tiroir Latéral (Drawer - Figma 08)
+- **Fichiers :** `src/components/AppDrawer.tsx` et `src/app/(tabs)/_layout.tsx`
+- **Ce que voit l'utilisateur :**
+  - S'ouvre par glissement fluide depuis la gauche en appuyant sur ☰.
+  - Fond Deep Forest Green `#102B27`.
+  - Profil utilisateur (Nom, e-mail).
+  - 5 liens de navigation : Accueil, Produits, Calendrier, Analyses, Paramètres.
+  - Sélecteur de langue trilingue EN / FR / AR.
+  - Bouton rouge de déconnexion.
+- **Où se trouve le code ?**
+  - Animation `Animated.View` avec `translateX` : `lines 40-70` de `AppDrawer.tsx`.
+  - Dissimulation de l'ancienne barre d'onglets : `tabBarStyle: { display: 'none' }` dans `_layout.tsx`.
 
-### Fichiers Modifiés
-- `src/app/budget-mois.tsx` : Calcul en temps réel de la somme allouée et du reste à répartir, alerte en cas de dépassement du budget global, vérification `canDecreaseBudget` pour chaque enveloppe avant validation.
+#### Écran 7 : Tableau de Bord Accueil (Figma 07, 27, 28, 29)
+- **Fichier :** `src/app/(tabs)/index.tsx`
+- **Ce que voit l'utilisateur :**
+  - Header avec ☰ hamburger + "Bonjour, [Nom]" + profil.
+  - Grande Carte Hero Dark Forest : "DISPONIBLE À DÉPENSER", grand montant en DT, budget total, dépensé, et jauge de progression.
+  - Bannière de statut dynamique :
+    - Vert (<70%) : "Votre budget se porte bien"
+    - Orange (70% - 99%) : "Attention : 80% du budget consommé" (Figma 27)
+    - Rouge (≥100%) : "Budget dépassé" (Figma 28)
+  - Section "Catégories du quotidien" : enveloppes budgétaires avec montants restants.
+  - Section "Transactions récentes" : liste des derniers achats avec icônes.
+  - Bouton menthe "Ajouter une dépense simple".
+  - Bouton flottant (FAB) pleine largeur en bas : "+ Ajouter un achat".
+  - Si aucun budget n'est défini : affiche l'état vide élégant avec bouton "Créer mon budget" (Figma 29).
+- **Où se trouve le code ?**
+  - Calcul de statut et couleurs : `lines 60-80`
+  - Carte Hero Dark Forest : `lines 110-150`
+  - Rendu des enveloppes budgétaires : `lines 160-200`
+  - FAB pleine largeur : `lines 270-285`.
+
+#### Écran 8 : Catalogue des Produits (Figma 12)
+- **Fichier :** `src/app/(tabs)/produits.tsx`
+- **Ce que voit l'utilisateur :**
+  - Label "VOS ESSENTIELS DU QUOTIDIEN".
+  - Carte blanche de recherche textuelle dynamique (nom ou marque).
+  - Barre de filtres horizontaux sous forme de "pills" (Tous, Alimentation, Hygiène...).
+  - Compteur "X produits · Nom A–Z".
+  - Liste de cartes blanches avec icône sur fond menthe, nom gras, catégorie et unité.
+  - FAB pleine largeur "+ Ajouter un produit".
+- **Où se trouve le code ?**
+  - Filtre combiné recherche + catégorie : `lines 65-75`
+  - Composant de carte produit : fonction `renderProduit` (`lines 80-115`).
+
+#### Écran 9 : Calendrier Financier 12 Mois (Figma 19)
+- **Fichier :** `src/app/(tabs)/calendrier.tsx`
+- **Ce que voit l'utilisateur :**
+  - Label "VOTRE ANNÉE FINANCIÈRE".
+  - Sélecteur d'année navigable : `‹  2026  ›`.
+  - Grille 3 colonnes des 12 mois : cartes blanches avec nom, montant dépensé et mini-barre de statut.
+  - Mois en cours mis en valeur avec fond vert foncé et texte blanc.
+  - Légende des statuts : ● Sain ● Alerte 80% ● Dépassé.
+  - Section détaillée du mois sélectionné avec dates, % utilisé et bouton "Ouvrir l'ancienne période".
+- **Où se trouve le code ?**
+  - Boucle de chargement SQLite des 12 mois : `lines 65-85`
+  - Grille 3 colonnes : `lines 160-220`.
+
+#### Écran 10 : Analyses Financières & Gamification (Figma 20 & 21)
+- **Fichier :** `src/app/(tabs)/analyses.tsx`
+- **Ce que voit l'utilisateur :**
+  - Période affichée (ex: "01–30 NOV. 2026").
+  - Carte Hero Forest "TOTAL DÉPENSÉ" avec flèche delta comparant avec le mois passé.
+  - Section "Où va votre argent" : barre continue multi-segments colorés et légende avec pourcentages.
+  - Section "Classement des dépenses" : classement numéroté 1, 2, 3...
+  - Section "Produits phares · par dépense" : top 3 des produits les plus coûteux.
+  - Graphique linéaire stylisé montrant l'évolution du prix unitaire.
+  - Section "Points et progrès" : total des points et progression vers le rang supérieur.
+- **Où se trouve le code ?**
+  - Calcul des deltas mensuels : `lines 90-110`
+  - Barre multi-segments proportionnels : `lines 190-225`
+  - Graphique du produit phare : `lines 280-310`.
+
+#### Écran 11 : Paramètres (Figma 22)
+- **Fichier :** `src/app/(tabs)/reglages.tsx`
+- **Ce que voit l'utilisateur :**
+  - Nom de l'utilisateur en grand format et son e-mail.
+  - Carte blanche "Langue" permettant de basculer instantanément en Anglais, Français ou Arabe.
+  - Carte blanche "Devise : Dinar tunisien · DT".
+  - Boutons menthe : "Gérer les catégories", "Changer le mot de passe".
+  - Bannière menthe de confidentialité certifiant le stockage local SQLite.
+  - Informations : Stockage local (SQLite), Version (1.0.0).
+  - Bouton menthe "Se déconnecter".
+- **Où se trouve le code ?**
+  - Sélecteur de langue en direct : `lines 100-125`
+  - Bannière de confidentialité : `lines 145-165`.
 
 ---
 
-## 17. Étape 13 : Gamification et Évaluation Mensuelle
+### 4.3 Fiches Produits, Achats & Dépenses
 
-### Objectif
-Motiver l'utilisateur à respecter ses budgets grâce à un système ludique et gratifiant :
-1. **Attribution automatique des points :**
-   - Points par enveloppe respectée en fin de mois (ex: +10 pts par catégorie non dépassée).
-   - Bonus « Grand Chelem » pour un mois parfait où 100% des enveloppes ont été respectées (+50 pts).
-2. **Évaluation transparente :**
-   - Dès le premier lancement d'un nouveau mois, `evaluerMoisPrecedent(userId, moisCourant)` analyse le mois clos, calcule les points, insère une entrée dans `points_log` et marque `monthly_budgets.est_evalue = 1` pour éviter tout double comptage.
-   - Une alerte félicite immédiatement l'utilisateur sur son écran d'accueil.
-3. **Seuils Administrables :** L'administrateur peut ajuster le barème des points et les seuils de niveau dans `(admin)/points-regles.tsx`.
+#### Écran 12 : Détail du Produit & Historique des Prix (Figma 13 & 14)
+- **Fichier :** `src/app/produit/[id].tsx`
+- **Ce que voit l'utilisateur :**
+  - Carte Hero Menthe avec nom du produit, marque en grand format et unité.
+  - Lignes de données : Dernier prix unitaire (ex: 14.500 DT / L), Dernier achat, Magasin.
+  - Bannière de comparaison de prix : "Moins cher que le dernier achat : -0.500 DT / -3.3%".
+  - Graphique d'évolution des prix unitaires dans le temps.
+  - Boutons : "Voir l'historique des achats", "+ Ajouter un achat", "Supprimer le produit".
+- **Où se trouve le code ?**
+  - Calcul de la variation de prix vs achat précédent : `lines 75-90`
+  - Graphique temporel : `lines 170-195`
+  - Modale historique détaillé (Figma 14) : `lines 220-250`.
+
+#### Écran 13 : Ajout d'un Produit au Catalogue (Figma 15)
+- **Fichier :** `src/app/nouveau-produit.tsx`
+- **Ce que voit l'utilisateur :**
+  - Label "INFORMATIONS DU PRODUIT", titre "Un nouveau produit à suivre."
+  - Cartes blanches : Nom, Marque, Photo (facultative), Catégorie de produit, Prix, Quantité, Unité, Magasin, Date.
+  - Bouton vert foncé "Enregistrer le produit et l'achat".
+  - Bouton menthe "Annuler".
+- **Où se trouve le code ?**
+  - Insertion double (table `produits` + table `achats`) : fonction `handleEnregistrer` (`lines 80-125`).
+
+#### Écran 14 : Ajout d'un Achat ou d'une Dépense Simple (Figma 16 & 17)
+- **Fichier :** `src/app/nouvel-achat.tsx`
+- **Ce que voit l'utilisateur :**
+  - Sélecteur d'onglet en haut : `[ Achat produit ]  [ Dépense simple ]`.
+  - *Mode Achat produit (Figma 16) :* Aperçu du produit dans une carte menthe, champs Prix total, Quantité, Unité, Magasin, Date, et affichage en temps réel du "Prix unitaire calculé = Prix total ÷ Quantité".
+  - *Mode Dépense simple (Figma 17) :* Champs Montant, Description, Catégorie de dépense, Date, et bannière menthe montrant l'impact sur l'enveloppe budgétaire correspondante.
+- **Où se trouve le code ?**
+  - Calcul dynamique du prix unitaire : `lines 85-90`
+  - Bascule ergonomique des 2 modes : `lines 160-310`.
 
 ---
 
-## 18. Étape 14 : Conformité aux 13 Exigences du Professeur
+### 4.4 Budgets par Enveloppes
 
-Le projet Masrouf valide l'intégralité des 13 points du cahier des charges académique :
-
-1. **Types de vues :** `View`, `Text`, `ScrollView`, `FlatList`, `TextInput`, `TouchableOpacity`, `Modal`.
-2. **Images :** Icônes dynamiques, avatars de catégorie, intégration d'`expo-image` et affichage avec placeholders.
-3. **Style et dimensions :** `StyleSheet.create`, dimensions relatives, gestion des thèmes et palettes de contrastes.
-4. **Composants d'action :** Boutons tactiles avec retour visuel (`activeOpacity`), puces de sélection (`chips`), barres de progression.
-5. **Programmation événementielle :** Événements `onPress`, `onChangeText`, `onFocus`, `onBlur`, recherche en temps réel.
-6. **Formulaires et validations :** Vérification de longueur minimale de mot de passe, confirmation identique, montants numériques positifs, détection des doublons.
-7. **Alertes et dialogues :** Boîtes de confirmation `Alert.alert` sur les opérations critiques (suppression de compte, réinitialisation de mot de passe, suppression de produit, alertes 80%/100%).
-8. **Cycle de vie et hooks :** `useState`, `useEffect`, `useCallback`, `useMemo`, et `useFocusEffect` (rechargement automatique à chaque focus d'écran).
-9. **Stockage relationnel persistant :** SQLite local via `expo-sqlite` avec clés primaires auto-incrémentées, contraintes d'unicité, clés étrangères `ON DELETE CASCADE` et transactions.
-10. **Stockage de session sécurisé :** `expo-secure-store` pour mémoriser le jeton de session utilisateur et la langue pré-connexion.
-11. **Navigation externe moderne :** `expo-router` avec navigation par onglets (`(tabs)`), navigation modale (`nouvel-achat`, `nouveau-produit`), et routes dynamiques (`produit/[id]`).
-12. **Navigation conditionnelle et rôles :** `NavigationGuard` dans `_layout.tsx` inspectant en continu le rôle (`user` vs `admin`), le statut actif/suspendu, et l'assistant de premier démarrage (`onboarding_done`).
-13. **Ressources multilingues avec qualificatifs :** Support trilingue complet (Français, Arabe, Anglais) avec parité stricte des 128 clés, inversion de la direction d'écriture RTL/LTR via `I18nManager`, et règle de secours garantie sur le français.
+#### Écran 15 : Création & Répartition du Budget (Figma 09, 10, 11)
+- **Fichier :** `src/app/budget-mois.tsx`
+- **Ce que voit l'utilisateur :**
+  - *Étape 1 - Période (Figma 09) :* Titre "Donnez un but à chaque dinar.", champs Date début, Date fin, Budget total en DT, et bannière de validation "✓ Vos dates sont valides".
+  - *Étape 2 - Répartition (Figma 10 & 11) :* Récapitulatif (Budget total, Réparti, Non réparti), cartes de saisie par catégorie d'enveloppe, bannière de contrôle du reste à répartir.
+  - Protection anti-triche : Interdiction d'abaisser une enveloppe sous le montant déjà dépensé.
+- **Où se trouve le code ?**
+  - Validation anti-triche : `lines 160-172`
+  - Sauvegarde transactionnelle SQLite : fonction `handleSauvegarder` (`lines 150-185`).
 
 ---
 
-## 19. Questions-Réponses Types pour la Soutenance Orale
+### 4.5 Espace Administrateur
 
-### Q1 : Comment fonctionne la règle anti-triche du budget ?
-> **Réponse :** Dans `budget-mois.tsx`, avant d'enregistrer les nouvelles enveloppes, la fonction `canDecreaseBudget(userId, mois, catId, nouveauMontant)` compare le montant alloué proposé avec la somme des dépenses déjà enregistrées dans cette catégorie pour le mois en cours. Si l'utilisateur essaie de réduire l'enveloppe à 50 TND alors qu'il a déjà dépensé 70 TND, l'application bloque l'opération avec un message d'erreur clair.
+#### Écran 16 : Tableau de Bord Administrateur (Figma 35)
+- **Fichier :** `src/app/(admin)/dashboard.tsx`
+- **Ce que voit l'utilisateur :**
+  - Label "ADMINISTRATEUR · STATISTIQUES GLOBALES".
+  - Carte Hero Forest "COMPTES ACTIFS", grand nombre total et comptes suspendus.
+  - Bannière de confidentialité certifiant l'anonymisation intégrale.
+  - Lignes de comptage des catégories de produits et dépenses.
+  - 6 boutons secondaires menthe menant aux différentes sections d'administration.
+- **Où se trouve le code ?**
+  - Récupération des KPIs anonymes : `lines 45-60`.
 
-### Q2 : Que se passe-t-il si un utilisateur supprime un produit ayant déjà servi à des achats ?
-> **Réponse :** Grâce à notre fonction `deleteProduit(produitId, 'reassign')`, l'application propose à l'utilisateur de convertir automatiquement les tickets d'achat du produit en dépenses directes dans la table `expense`. Le produit est retiré du catalogue, mais les montants dépensés restent parfaitement comptabilisés dans le budget mensuel.
+#### Écran 17 : Gestion des Utilisateurs (Figma 36, 37, 38)
+- **Fichier :** `src/app/(admin)/utilisateurs.tsx`
+- **Ce que voit l'utilisateur :**
+  - Champ de recherche par identifiant de compte anonyme (#1042...).
+  - Compteur total et actifs.
+  - Liste des comptes avec statut "Actif" ou "Suspendu".
+  - Boutons d'action : "Suspendre/Activer le compte" et "Réinitialiser le mot de passe temporaire".
+- **Où se trouve le code ?**
+  - Bascule de statut : fonction `handleBasculerStatut` (`lines 60-85`)
+  - Génération de mot de passe temporaire unique : fonction `handleReinitialiserMdp` (`lines 90-105`).
 
-### Q3 : Pourquoi les alertes à 80% et 100% ne s'affichent-elles pas en boucle ?
-> **Réponse :** Nous utilisons la table `alert_log` (ou vue `alertes_log`). Dès qu'une alerte à 80% ou 100% est déclenchée pour un utilisateur, un mois et une catégorie donnés, une ligne est enregistrée. La fonction `hasAlerteBeenShown` vérifie cette table avant tout affichage, garantissant qu'une alerte n'apparaît qu'une seule et unique fois par mois et par seuil.
+#### Écran 18 : Gestion des Catégories (Figma 39, 40, 41)
+- **Fichier :** `src/app/(admin)/categories.tsx`
+- **Ce que voit l'utilisateur :**
+  - Liste groupée des catégories de produits (ex: Alimentation).
+  - Liste groupée des catégories de dépenses (ex: Transport, Factures).
+  - Formulaire d'ajout rapide avec sélecteur de type Produit / Dépense.
+- **Où se trouve le code ?**
+  - Filtrage par typologie : `lines 45-50`
+  - Formulaire et insertion SQLite : `lines 55-90`.
 
-### Q4 : Comment la confidentialité des utilisateurs est-elle protégée face à l'administrateur ?
-> **Réponse :** L'administrateur n'a aucun accès aux tables de dépenses individuelles (`purchase`, `expense`). La fonction `getAdminGlobalStats` n'exécute que des requêtes de comptage (`COUNT`) et de somme globale (`SUM`) anonymes. De plus, toutes les données sont stockées localement dans la base SQLite de l'appareil, sans aucun serveur distant.
+#### Écran 19 : Règles des Points (Figma 42)
+- **Fichier :** `src/app/(admin)/points-regles.tsx`
+- **Ce que voit l'utilisateur :**
+  - Saisie des points par période réussie, nombre consécutif pour bonus, et bonus de série.
+  - Saisie des seuils minimums pour les niveaux Économe et Expert.
+  - Bannière de contrôle : "✓ Seuils des niveaux valides".
+- **Où se trouve le code ?**
+  - Vérification de cohérence mathématique : `lines 50-65`.
 
-### Q5 : Pourquoi avoir choisi Expo Router plutôt que React Navigation classique ?
-> **Réponse :** Expo Router s'appuie sur le système de fichiers (File-based Routing), ce qui rend l'architecture prévisible et modulaire. Il gère nativement le typage des routes, les fenêtres modales avec présentation glissante, les routes dynamiques (`produit/[id]`), et s'intègre parfaitement avec le cycle de vie de React Native.
+#### Écran 20 : Paramètres Administrateur (Figma 43)
+- **Fichier :** `src/app/(admin)/reglages.tsx`
+- **Ce que voit l'utilisateur :**
+  - Sélecteur de langue trilingue et devise.
+  - Section "Limites d'accès" avec rappel de l'inaccessibilité des données privées.
+  - Bouton "Changer le mot de passe" et "Se déconnecter".
+- **Où se trouve le code ?**
+  - `lines 70-120`.
 
+---
 
+## 5. Questions Fréquentes du Jury & Réponses Types
+
+### Q1 : « Comment garantissez-vous qu'aucune donnée financière n'est envoyée sur Internet ? »
+> **Réponse :** « L'application fonctionne sur une architecture **Local-First**. Nous utilisons **`expo-sqlite`**, une base de données SQLite embarquée physiquement sur le disque local de l'appareil. Aucun appel réseau API (`fetch`, `axios`) n'existe dans le code pour transmettre les données. »
+
+### Q2 : « Quelle est votre politique de hachage de mot de passe et pourquoi ? »
+> **Réponse :** « Nous utilisons **PBKDF2-HMAC-SHA256 avec 10 000 itérations** via la bibliothèque `@noble/hashes`. Chaque mot de passe est combiné à un sel aléatoire de 16 octets généré par `Crypto.getRandomValues`. Ce procédé rend les attaques par dictionnaire et tables arc-en-ciel (rainbow tables) impossibles, même en cas d'extraction physique de la base de données. De plus, notre architecture supporte la migration automatique transparente v1 vers v2 dès la première connexion réussie. »
+
+### Q3 : « Pourquoi avoir choisi un Drawer latéral plutôt qu'une barre d'onglets inférieure ? »
+> **Réponse :** « Le design Figma officiel de Masrouf préconise une expérience utilisateur épurée et moderne sans encombrer le bas de l'écran avec une barre de boutons persistante. La navigation se fait donc via un tiroir latéral accessible par le bouton hamburger ☰, laissant le bas de l'écran libre pour les actions prioritaires, notamment le grand bouton d'action flottant (FAB) d'ajout d'achat. »
+
+### Q4 : « Comment fonctionne le support du multilingue et de l'Arabe (RTL) ? »
+> **Réponse :** « Notre module `src/utils/i18n.ts` supporte 3 langues (Français, Arabe, Anglais). Lorsqu'un utilisateur sélectionne l'Arabe, la fonction `appliquerDirectionLangue('ar')` active `I18nManager.forceRTL(true)`, inversant automatiquement le sens de lecture et la disposition des éléments d'interface. De plus, un mécanisme de repli (fallback) strict sur le Français garantit qu'aucune clé brute n'apparaît à l'écran si une traduction venait à manquer. »
+
+### Q5 : « Comment empêcher un utilisateur de tricher avec ses budgets ? »
+> **Réponse :** « La fonction `canDecreaseBudget()` dans `src/db/queries.ts` vérifie la somme des dépenses déjà enregistrées pour le mois en cours. Si l'utilisateur tente de réduire une enveloppe sous le montant déjà consommé, la mise à jour est immédiatement bloquée avec un message explicatif. »
+
+---
+*Document certifié conforme au code source et au Design System Figma de Masrouf.*

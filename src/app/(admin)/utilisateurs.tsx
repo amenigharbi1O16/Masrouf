@@ -1,15 +1,22 @@
 // ============================================================
 // FICHIER : src/app/(admin)/utilisateurs.tsx
-// RÔLE    : Gestion des utilisateurs par l'Administrateur.
-//           Actions permises :
-//           1. Activer / Suspendre un compte.
-//           2. Réinitialiser le mot de passe (génère un code temporaire unique).
-//           3. Supprimer un compte et toutes ses données (avec confirmation).
+// RÔLE    : Gestion des utilisateurs par l'Administrateur — Design Figma 36, 37 & 38.
 //
-// RÈGLES DE SÉCURITÉ :
-//   - L'admin ne peut pas se supprimer ni se désactiver lui-même.
-//   - Il doit toujours rester au moins un administrateur actif.
-//   - Aucune dépense personnelle ou achat individuel n'est affiché.
+// CE QUI EST AFFICHÉ SUR L'ÉCRAN :
+//   • Header : ☰ hamburger + "Gestion des utilisateurs" + profil
+//   • Label "ADMINISTRATEUR" (muted, uppercase)
+//   • Carte de recherche blanche :
+//       - Label "Trouver un compte"
+//       - Input "Rechercher par identifiant de compte"
+//   • Ligne compteur : "X comptes   Y actifs"
+//   • Cartes blanches de compte (anonymisées) :
+//       - Icône mint
+//       - Compte #1042 (ID décorrélé)
+//       - "Inscrit · JJ mmm. AAAA"
+//       - Statut à droite : "Actif" (vert) ou "Suspendu" (rouge)
+//   • Bouton primary forest : "Gérer le compte #XXXX" (basculer Actif / Suspendu)
+//   • Bouton secondary mint : "Réinitialiser le mot de passe temporaire"
+//   • Note légale de confidentialité en pied de page
 // ============================================================
 
 import React, { useState, useCallback } from 'react';
@@ -18,6 +25,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   ScrollView,
   Alert,
 } from 'react-native';
@@ -28,7 +36,6 @@ import {
   getAllUsersAdmin,
   updateUserActiveStatus,
   resetUserPassword,
-  deleteUserAndData,
   countActiveAdmins,
   Utilisateur,
 } from '../../db/queries';
@@ -38,369 +45,347 @@ import {
   createPasswordHash,
   generateTemporaryPassword,
 } from '../../utils/security';
+import { Theme } from '../../constants/theme';
 import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
+import { useAdminDrawer } from './_layout';
+import AppHeader from '../../components/AppHeader';
 
 export default function AdminUtilisateursScreen() {
   const { user: adminConnecte } = useAuth();
   const { t } = useTranslation();
+  const { ouvrirDrawer } = useAdminDrawer();
 
   const [utilisateurs, setUtilisateurs] = useState<Utilisateur[]>([]);
+  const [recherche, setRecherche] = useState<string>('');
+  const [compteSelectionne, setCompteSelectionne] = useState<Utilisateur | null>(null);
 
   const recharger = useCallback(() => {
     const list = getAllUsersAdmin(adminConnecte?.id);
     setUtilisateurs(list);
-}, [adminConnecte?.id]);
+    if (list.length > 0 && !compteSelectionne) {
+      setCompteSelectionne(list[0]);
+    }
+  }, [adminConnecte?.id, compteSelectionne]);
 
-useFocusEffect(recharger);
+  useFocusEffect(recharger);
 
-// ----------------------------------------------------------
-// ACTION 1 : ACTIVER / SUSPENDRE
-// ----------------------------------------------------------
-function handleBasculerStatut(u: Utilisateur) {
-  if (!adminConnecte) return;
+  // Filtrage des comptes
+  const utilisateursFiltres = utilisateurs.filter((u) => {
+    const terme = recherche.toLowerCase().trim();
+    const compteIdStr = String(u.id + 1000);
+    return (
+      !terme ||
+      compteIdStr.includes(terme) ||
+      u.email.toLowerCase().includes(terme) ||
+      u.nom.toLowerCase().includes(terme)
+    );
+  });
 
-  if (u.id === adminConnecte.id) {
-    Alert.alert('Action refusée', t('impossible_action_soi_meme'));
-    return;
-  }
+  const nbActifs = utilisateurs.filter((u) => u.is_active === 1).length;
 
-  if (u.role === 'admin' && u.is_active === 1) {
-    const nbAdminsActifs = countActiveAdmins();
-    if (nbAdminsActifs <= 1) {
-      Alert.alert('Action refusée', t('au_moins_un_admin'));
+  // Action : Basculer Actif / Suspendu (Figma 37)
+  function handleBasculerStatut(u: Utilisateur) {
+    if (!adminConnecte) return;
+
+    if (u.id === adminConnecte.id) {
+      Alert.alert('Action refusée', t('impossible_action_soi_meme') ?? 'Action impossible sur votre propre compte.');
       return;
     }
-  }
 
-  const nouveauStatut = u.is_active === 1 ? false : true;
-  updateUserActiveStatus(u.id, nouveauStatut, adminConnecte.id);
-  recharger();
-
-  Alert.alert(
-    'Statut mis à jour',
-    `Le compte ${u.email} est désormais ${nouveauStatut ? 'Actif' : 'Suspendu'}.`
-  );
-}
-
-// ----------------------------------------------------------
-// ACTION 2 : REINITIALISER LE MOT DE PASSE
-// ----------------------------------------------------------
-async function handleReinitialiserMdp(u: Utilisateur) {
-  const mdpTemporaire = generateTemporaryPassword(8);
-  const hash = await createPasswordHash(mdpTemporaire);
-
-  resetUserPassword(u.id, hash, adminConnecte?.id);
-  recharger();
-
-  Alert.alert(
-    t('mdp_temporaire_titre'),
-    `${t('mdp_temporaire_msg')}\n\n🔑 ${mdpTemporaire}\n\n(L'utilisateur sera forcé de le remplacer dès sa prochaine connexion).`
-  );
-}
-
-// ----------------------------------------------------------
-// ACTION 3 : SUPPRIMER DEFINITIVEMENT LE COMPTE
-// ----------------------------------------------------------
-function handleSupprimer(u: Utilisateur) {
-  if (!adminConnecte) return;
-
-  if (u.id === adminConnecte.id) {
-    Alert.alert('Action refusée', t('impossible_action_soi_meme'));
-    return;
-  }
-
-  if (u.role === 'admin') {
-    const nbAdminsActifs = countActiveAdmins();
-    if (nbAdminsActifs <= 1) {
-      Alert.alert('Action refusée', t('au_moins_un_admin'));
-      return;
+    if (u.role === 'admin' && u.is_active === 1) {
+      const nbAdminsActifs = countActiveAdmins();
+      if (nbAdminsActifs <= 1) {
+        Alert.alert('Action refusée', t('au_moins_un_admin') ?? 'Il doit rester au moins un administrateur actif.');
+        return;
+      }
     }
+
+    const nouveauStatut = u.is_active === 1 ? false : true;
+    updateUserActiveStatus(u.id, nouveauStatut, adminConnecte.id);
+    recharger();
+
+    Alert.alert(
+      'Statut mis à jour',
+      `Le compte #${u.id + 1000} est désormais ${nouveauStatut ? 'Actif' : 'Suspendu'}.`
+    );
   }
 
-  Alert.alert(
-    t('supprimer_compte'),
-    `${t('confirmer_suppression')}\n\nUtilisateur : ${u.nom} (${u.email})\nToutes ses données (achats, budgets, points) seront définitivement effacées.`,
-    [
-      { text: t('fermer'), style: 'cancel' },
-      {
-        text: t('supprimer_compte'),
-        style: 'destructive',
-        onPress: () => {
-          deleteUserAndData(u.id, adminConnecte.id);
-          recharger();
-          Alert.alert('Compte supprimé', `Le compte ${u.email} a été supprimé.`);
-        },
-      },
-    ]
-  );
-}
+  // Action : Mot de passe temporaire (Figma 38)
+  async function handleReinitialiserMdp(u: Utilisateur) {
+    const mdpTemporaire = generateTemporaryPassword(8);
+    const hash = await createPasswordHash(mdpTemporaire);
 
-return (
-  <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-    <Text style={styles.pageTitle}>{t('utilisateurs_admin')} ({utilisateurs.length})</Text>
+    resetUserPassword(u.id, hash, adminConnecte?.id);
+    recharger();
 
-    {utilisateurs.map((u) => {
-      const estMoi = u.id === adminConnecte?.id;
-      const estActif = u.is_active === 1;
+    Alert.alert(
+      t('mdp_temporaire_titre') ?? 'Mot de passe temporaire généré',
+      `${t('mdp_temporaire_msg') ?? 'Communiquez ce mot de passe à l\'utilisateur :'}\n\n🔑 ${mdpTemporaire}\n\n(Changement obligatoire dès la prochaine connexion).`
+    );
+  }
 
-      return (
-        <View key={u.id} style={styles.userCard}>
-          {/* EN-TETE CARTE */}
-          <View style={styles.userCardHeader}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.nameRow}>
-                <Text style={styles.userName}>{u.nom}</Text>
-                {estMoi ? <Text style={styles.meBadge}>(Vous)</Text> : null}
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <AppHeader
+        titre="Gestion des utilisateurs"
+        onMenuPress={ouvrirDrawer}
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Label uppercase */}
+        <Text style={styles.sectionLabel}>ADMINISTRATEUR</Text>
+
+        {/* Carte de recherche (Figma 36) */}
+        <View style={styles.searchCard}>
+          <Text style={styles.searchLabel}>Trouver un compte</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher par identifiant de compte"
+            placeholderTextColor={Theme.colors.muted}
+            value={recherche}
+            onChangeText={setRecherche}
+          />
+        </View>
+
+        {/* Ligne compteur */}
+        <View style={styles.countRow}>
+          <Text style={styles.countText}>
+            {utilisateurs.length} comptes
+          </Text>
+          <Text style={styles.countActifs}>
+            {nbActifs} actifs
+          </Text>
+        </View>
+
+        {/* Liste des comptes utilisateurs (Figma 36) */}
+        {utilisateursFiltres.map((u) => {
+          const estSel = compteSelectionne?.id === u.id;
+          const estActif = u.is_active === 1;
+
+          return (
+            <TouchableOpacity
+              key={u.id}
+              style={[
+                styles.userCard,
+                estSel && styles.userCardSelected,
+              ]}
+              onPress={() => setCompteSelectionne(u)}
+              activeOpacity={0.75}
+            >
+              <View style={styles.userAvatar}>
+                <Text style={styles.userAvatarIcon}>🛍️</Text>
               </View>
-              <Text style={styles.userEmail}>{u.email}</Text>
-              <Text style={styles.userDate}>Créé le : {u.created_at?.split(' ')[0]}</Text>
-            </View>
 
-            {/* BADGES ROLE ET STATUT */}
-            <View style={styles.badgeColumn}>
-              <View
-                style={[
-                  styles.roleBadge,
-                  u.role === 'admin' ? styles.roleAdmin : styles.roleUser,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.roleBadgeText,
-                    u.role === 'admin' ? styles.roleAdminText : styles.roleUserText,
-                  ]}
-                >
-                  {u.role === 'admin' ? '👑 Admin' : '👤 User'}
+              <View style={styles.userInfo}>
+                <Text style={styles.userName}>Compte #{u.id + 1000}</Text>
+                <Text style={styles.userDate}>
+                  Inscrit · {u.created_at ? u.created_at.substring(0, 10) : 'Récemment'}
                 </Text>
               </View>
 
-              <View
+              <Text
                 style={[
-                  styles.statusBadge,
+                  styles.userStatus,
                   estActif ? styles.statusActive : styles.statusSuspended,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.statusBadgeText,
-                    estActif ? styles.statusActiveText : styles.statusSuspendedText,
-                  ]}
-                >
-                  {estActif ? '🟢 Actif' : '🔴 Suspendu'}
-                </Text>
-              </View>
-            </View>
+                {estActif ? 'Actif' : 'Suspendu'}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+
+        {/* Actions sur le compte sélectionné */}
+        {compteSelectionne && (
+          <View style={styles.actionsBox}>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => handleBasculerStatut(compteSelectionne)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryBtnText}>
+                {compteSelectionne.is_active === 1
+                  ? `Suspendre le compte #${compteSelectionne.id + 1000}`
+                  : `Activer le compte #${compteSelectionne.id + 1000}`}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => handleReinitialiserMdp(compteSelectionne)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.secondaryBtnText}>
+                Réinitialiser le mot de passe temporaire
+              </Text>
+            </TouchableOpacity>
           </View>
+        )}
 
-          {/* BOUTONS D'ACTION */}
-          {!estMoi ? (
-            <View style={styles.actionsRow}>
-              {/* 1. Activer / Suspendre */}
-              <TouchableOpacity
-                style={[
-                  styles.actionBtn,
-                  estActif ? styles.actionBtnSuspend : styles.actionBtnActivate,
-                ]}
-                onPress={() => handleBasculerStatut(u)}
-              >
-                <Text
-                  style={[
-                    styles.actionBtnText,
-                    estActif ? styles.textSuspend : styles.textActivate,
-                  ]}
-                >
-                  {estActif ? 'Suspendre' : 'Activer'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* 2. Reset mot de passe */}
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionBtnReset]}
-                onPress={() => handleReinitialiserMdp(u)}
-              >
-                <Text style={styles.textReset}>Reset MDP</Text>
-              </TouchableOpacity>
-
-              {/* 3. Supprimer */}
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionBtnDelete]}
-                onPress={() => handleSupprimer(u)}
-              >
-                <Text style={styles.textDelete}>Supprimer</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-        </View>
-      );
-    })}
-  </ScrollView>
-);
+        {/* Note de confidentialité (Figma 36) */}
+        <Text style={styles.footerNote}>
+          Administration des comptes uniquement. Les données financières personnelles ne sont jamais visibles.
+        </Text>
+      </ScrollView>
+    </View>
+  );
 }
 
+// ------------------------------------------------------------
+// STYLES — Design Figma 36, 37 & 38
+// ------------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF5FF',
+    backgroundColor: Theme.colors.warm,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 48,
   },
-  pageTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#581C87',
-    marginBottom: 14,
-  },
-  userCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
+
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Theme.colors.muted,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E9D5FF',
   },
-  userCardHeader: {
+
+  // Carte de recherche
+  searchCard: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    marginBottom: 16,
+    ...Theme.shadows.card,
+  },
+  searchLabel: {
+    fontSize: 11,
+    color: Theme.colors.muted,
+    marginBottom: 4,
+  },
+  searchInput: {
+    fontSize: 15,
+    color: Theme.colors.ink,
+    padding: 0,
+  },
+
+  // Compteur
+  countRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  nameRow: {
+  countText: {
+    fontSize: 14,
+    color: Theme.colors.muted,
+  },
+  countActifs: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Theme.colors.ink,
+  },
+
+  // Carte utilisateur
+  userCard: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    ...Theme.shadows.card,
+  },
+  userCardSelected: {
+    borderColor: Theme.colors.forest,
+    borderWidth: 2,
+  },
+  userAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: Theme.colors.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  userAvatarIcon: {
+    fontSize: 20,
+  },
+  userInfo: {
+    flex: 1,
   },
   userName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#1E293B',
-  },
-  meBadge: {
-    fontSize: 11,
-    color: '#7E22CE',
-    fontWeight: '700',
-  },
-  userEmail: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
+    color: Theme.colors.ink,
+    marginBottom: 2,
   },
   userDate: {
-    fontSize: 10,
-    color: '#94A3B8',
-    marginTop: 2,
+    fontSize: 13,
+    color: Theme.colors.muted,
   },
-  badgeColumn: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  roleBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  roleBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  roleAdmin: {
-    backgroundColor: '#FAF5FF',
-    borderWidth: 1,
-    borderColor: '#D8B4FE',
-  },
-  roleAdminText: {
-    color: '#7E22CE',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  roleUser: {
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  roleUserText: {
-    color: '#1D4ED8',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  statusBadgeText: {
-    fontSize: 10,
+  userStatus: {
+    fontSize: 13,
     fontWeight: '700',
   },
   statusActive: {
-    backgroundColor: '#ECFDF5',
-  },
-  statusActiveText: {
-    color: '#065F46',
-    fontSize: 10,
-    fontWeight: '700',
+    color: Theme.colors.ink,
   },
   statusSuspended: {
-    backgroundColor: '#FEF2F2',
+    color: Theme.colors.coral,
   },
-  statusSuspendedText: {
-    color: '#991B1B',
-    fontSize: 10,
-    fontWeight: '700',
+
+  // Actions
+  actionsBox: {
+    marginTop: 16,
+    gap: 10,
   },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: 8,
+  primaryBtn: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: Theme.radius.full,
+    height: 52,
     alignItems: 'center',
-    borderWidth: 1,
+    justifyContent: 'center',
+    ...Theme.shadows.button,
   },
-  actionBtnSuspend: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
-  },
-  actionBtnActivate: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
-  },
-  actionBtnReset: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
-  },
-  actionBtnDelete: {
-    backgroundColor: '#FFF1F2',
-    borderColor: '#FFE4E6',
-  },
-  actionBtnText: {
-    fontSize: 11,
+  primaryBtnText: {
+    color: Theme.colors.white,
+    fontSize: 15,
     fontWeight: '700',
   },
-  textSuspend: {
-    color: '#DC2626',
-    fontSize: 11,
+  secondaryBtn: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: Theme.radius.full,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryBtnText: {
+    color: Theme.colors.deepGreen,
+    fontSize: 15,
     fontWeight: '700',
   },
-  textActivate: {
-    color: '#059669',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  textReset: {
-    color: '#2563EB',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  textDelete: {
-    color: '#BE123C',
-    fontSize: 11,
-    fontWeight: '700',
+
+  footerNote: {
+    fontSize: 12,
+    color: Theme.colors.muted,
+    lineHeight: 18,
+    marginTop: 20,
+    textAlign: 'center',
   },
 });

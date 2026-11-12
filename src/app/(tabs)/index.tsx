@@ -1,22 +1,18 @@
 // ============================================================
 // FICHIER : src/app/(tabs)/index.tsx
-// RÔLE    : Écran d'accueil principal (Dashboard Personnel) de l'utilisateur.
+// RÔLE    : Écran d'accueil (Home) — Design Figma 07/27/28/29.
 //
-// VISUEL SUR L'ÉCRAN :
-//   1. En-tête Gamification : Points totaux & Badge de Niveau
-//      (Débutant, Économe, Expert configuré par l'admin).
-//   2. Carte Budget Global & Enveloppes :
-//      - Total dépensé vs Budget alloué.
-//      - Bouton d'accès rapide vers la gestion des enveloppes.
-//   3. Enveloppes par Catégorie (« Masrouf [Catégorie] ») :
-//      - Barres de progression individuelles aux couleurs normées :
-//        * Vert (< 70 %)
-//        * Orange (70 à 99 %)
-//        * Rouge (≥ 100 %)
-//   4. Alertes budgétaires dans l'application (80 % et 100 %) :
-//      - Affichées une seule fois par mois et par catégorie (table alertes_log).
-//   5. Section "Non budgétisé" si des achats ont été faits hors enveloppes.
-//   6. Actions rapides (+ Dépense, + Produit) et liste des dépenses récentes.
+// DESIGN FIGMA :
+//   - Fond : #F5F3ED
+//   - Header : hamburger ☰ | "Bonjour, [Prénom]" | icône profil
+//   - Label : "[MOIS ANNÉE] · 01-30 NOV."
+//   - Carte hero sombre (#102B27) : disponible à dépenser, budget, barre, dépensé
+//   - Bannière mint (sain) / gold (80%) / coral (dépassé)
+//   - Section "Vos catégories" : cartes blanches avec barre de progression
+//   - Section "Transactions récentes" : lignes avec icône + nom + montant
+//   - Bouton "Ajouter une dépense simple" (secondary, mint)
+//   - FAB "+ Ajouter un achat" (primaire, vert forêt, full-width, ancré en bas)
+//   - État sans budget : carte blanche avec CTA "Créer un budget"
 // ============================================================
 
 import React, { useState, useCallback } from 'react';
@@ -30,7 +26,6 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 
-// Fonctions SQLite
 import {
   getTotalMois,
   getRecentAchats,
@@ -46,95 +41,66 @@ import {
   EnveloppeBudget,
 } from '../../db/queries';
 
-// Contexte et internationalisation
+import { Theme } from '../../constants/theme';
 import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
+import { useDrawer } from './_layout';
+import AppHeader from '../../components/AppHeader';
 
 export default function HomeScreen() {
   const { user, refreshUser } = useAuth();
   const { t } = useTranslation();
+  const { openDrawer } = useDrawer();
 
+  // Période courante
   const maintenant = new Date();
-  const moisCourant = `${maintenant.getFullYear()}-${String(
-    maintenant.getMonth() + 1
-  ).padStart(2, '0')}`;
+  const moisCourant = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}`;
 
+  // Libellé de la période (ex : "NOVEMBRE 2026 · 01-30 NOV.")
+  const moisNom = maintenant.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }).toUpperCase();
+  const debut = `01 ${maintenant.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }).toUpperCase().replace('.', '')}`;
+  const finDuMois = new Date(maintenant.getFullYear(), maintenant.getMonth() + 1, 0);
+  const fin = `${finDuMois.getDate()} ${finDuMois.toLocaleDateString('fr-FR', { month: 'short' }).toUpperCase().replace('.', '')}`;
+
+  // États
   const [totalDepense, setTotalDepense] = useState<number>(0);
   const [achatsRecents, setAchatsRecents] = useState<Achat[]>([]);
   const [enveloppes, setEnveloppes] = useState<EnveloppeBudget[]>([]);
   const [nonBudgetise, setNonBudgetise] = useState<number>(0);
-  const [totalPoints, setTotalPoints] = useState<number>(0);
-  const [niveauLabel, setNiveauLabel] = useState<string>('Débutant');
-  const [budgetTotalMois, setBudgetTotalMois] = useState<number>(0);
+  const [budgetTotal, setBudgetTotal] = useState<number>(0);
 
-  // ----------------------------------------------------------
-  // CHARGEMENT ET RECHARGEMENT DES DONNÉES
-  // NOTE ANTI-BOUCLE : refreshUser est stable (useCallback([], []))
-  //   et utilise setUser(prev => …) pour ne mettre à jour le state
-  //   QUE si le compte a changé. On l'exclut donc des dépendances
-  //   pour ne pas recréer rechargerDonnees à chaque render.
-  // ----------------------------------------------------------
   const rechargerDonnees = useCallback(() => {
     if (!user) return;
-
-    // Vérifie que le compte est toujours actif (anti-boucle : comparaison interne)
     refreshUser();
 
-    // 1. Évaluation du mois précédent (s'exécute 1 fois au premier lancement)
+    // Évaluation du mois précédent (1 fois)
     const evalRes = evaluerMoisPrecedent(user.id, moisCourant);
     if (evalRes.evalue && evalRes.pointsGagnes > 0) {
-      Alert.alert(t('felicitations_mois'), `${evalRes.message}\n+${evalRes.pointsGagnes} ${t('points')} ! 🎉`);
+      Alert.alert(t('felicitations_mois'), `${evalRes.message}\n+${evalRes.pointsGagnes} ${t('points')} 🎉`);
     }
 
-    // 2. Total du mois et achats récents
     const total = getTotalMois(user.id, moisCourant);
     setTotalDepense(total);
     setAchatsRecents(getRecentAchats(user.id, moisCourant));
 
-    // 2b. Budget total du mois (synchronisé avec les enveloppes ou les réglages)
     const mb = getMonthlyBudget(user.id, moisCourant);
-    const bTot = (user.budget_mensuel && user.budget_mensuel > 0) ? user.budget_mensuel : (mb?.montant_total ?? 0);
-    setBudgetTotalMois(bTot);
+    const bTot = (user.budget_mensuel && user.budget_mensuel > 0)
+      ? user.budget_mensuel
+      : (mb?.montant_total ?? 0);
+    setBudgetTotal(bTot);
 
-    // 3. Enveloppes du mois
     const envs = getEnveloppesBudget(user.id, moisCourant);
     setEnveloppes(envs);
+    setNonBudgetise(getNonBudgetedDepenses(user.id, moisCourant));
 
-    // 4. Dépenses non budgétisées
-    const nonBudg = getNonBudgetedDepenses(user.id, moisCourant);
-    setNonBudgetise(nonBudg);
-
-    // 5. Points et Niveau
-    const pts = getTotalPoints(user.id);
-    setTotalPoints(pts);
-
-    const s = getPointsSettings();
-    if (pts >= s.seuil_expert) {
-      setNiveauLabel(t('niveau_expert'));
-    } else if (pts >= s.seuil_econome) {
-      setNiveauLabel(t('niveau_econome'));
-    } else {
-      setNiveauLabel(t('niveau_debutant'));
-    }
-
-    // 6. Vérification des alertes 80 % et 100 % (non répétées)
+    // Alertes 80% et 100%
     for (const env of envs) {
-      if (env.pourcentage_consomme >= 100) {
-        if (!hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 100)) {
-          logAlerte(user.id, moisCourant, env.categorie_id, 100);
-          Alert.alert(
-            t('alerte_100_titre'),
-            `${t('alerte_100_msg')} ${env.categorie_nom} (${env.montant_depense.toFixed(2)} / ${env.montant_alloue.toFixed(2)} TND).`
-          );
-        }
-      } else if (env.pourcentage_consomme >= 80) {
-        if (!hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 80)) {
-          logAlerte(user.id, moisCourant, env.categorie_id, 80);
-          Alert.alert(
-            t('alerte_80_titre'),
-            `${t('alerte_80_msg')} ${env.categorie_nom} (${env.montant_depense.toFixed(2)} / ${env.montant_alloue.toFixed(2)} TND).`
-          );
-        }
+      if (env.pourcentage_consomme >= 100 && !hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 100)) {
+        logAlerte(user.id, moisCourant, env.categorie_id, 100);
+        Alert.alert(t('alerte_100_titre'), `${t('alerte_100_msg')} ${env.categorie_nom}`);
+      } else if (env.pourcentage_consomme >= 80 && !hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 80)) {
+        logAlerte(user.id, moisCourant, env.categorie_id, 80);
+        Alert.alert(t('alerte_80_titre'), `${t('alerte_80_msg')} ${env.categorie_nom}`);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,509 +108,565 @@ export default function HomeScreen() {
 
   useFocusEffect(rechargerDonnees);
 
-  const budgetTotal = budgetTotalMois > 0 ? budgetTotalMois : (user?.budget_mensuel ?? 0);
-  const ratioGlobal = budgetTotal > 0 ? (totalDepense / budgetTotal) * 100 : 0;
-  const largeurBarreGlobale = Math.min(ratioGlobal, 100);
+  const disponible = budgetTotal - totalDepense;
+  const ratio = budgetTotal > 0 ? (totalDepense / budgetTotal) * 100 : 0;
+  const largeurBarre = Math.min(ratio, 100);
 
-  let couleurBarreGlobale = '#10B981'; // Vert < 70%
-  if (ratioGlobal >= 100) {
-    couleurBarreGlobale = '#EF4444'; // Rouge >= 100%
-  } else if (ratioGlobal >= 70) {
-    couleurBarreGlobale = '#F59E0B'; // Orange 70 - 99%
-  }
+  // Couleur de statut budgétaire
+  let couleurBarre: string = Theme.colors.statusGreen;
+  if (ratio >= 100) couleurBarre = Theme.colors.coral;
+  else if (ratio >= 70) couleurBarre = Theme.colors.gold;
+
+  // Statut de la bannière
+  const statut: 'healthy' | 'warning' | 'exceeded' =
+    ratio >= 100 ? 'exceeded' : ratio >= 70 ? 'warning' : 'healthy';
+
+  // Catégories visibles vs résumé
+  const enveloppesVisibles = enveloppes.slice(0, 2);
+  const enveloppesRestantes = enveloppes.slice(2);
+  const totalRestant = enveloppesRestantes.reduce((s, e) => s + e.montant_alloue, 0);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* ==================================================== */}
-      {/* SECTION 1 : BIENVENUE & BANDEAU GAMIFICATION        */}
-      {/* ==================================================== */}
-      <View style={styles.topBar}>
-        <View>
-          <Text style={styles.welcomeText}>
-            {t('bienvenue')} <Text style={styles.userName}>{user?.nom} 👋</Text>
-          </Text>
-          <Text style={styles.subGreeting}>Mois de gestion : {moisCourant}</Text>
-        </View>
+    <View style={styles.root}>
+      {/* ── HEADER ── */}
+      <AppHeader
+        title={`${t('bonjour') ?? 'Bonjour'}, ${user?.nom?.split(' ')[0] ?? ''}`}
+        onMenuPress={openDrawer}
+      />
 
-        {/* Badge Points & Niveau */}
-        <View style={styles.levelBadge}>
-          <Text style={styles.levelIcon}>⭐</Text>
-          <View>
-            <Text style={styles.levelName}>{niveauLabel}</Text>
-            <Text style={styles.pointsText}>{totalPoints} {t('points')}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* ==================================================== */}
-      {/* SECTION 2 : CARTE BUDGET GLOBAL                     */}
-      {/* ==================================================== */}
-      <View style={styles.card}>
-        <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardTitle}>{t('budget_du_mois')}</Text>
-          <TouchableOpacity
-            style={styles.manageEnvelopesBtn}
-            onPress={() => router.push('/budget-mois')}
-          >
-            <Text style={styles.manageEnvelopesText}>⚙️ {t('gerer_enveloppes')}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.cardAmount}>
-          {totalDepense.toFixed(3)} <Text style={styles.currencyText}>TND</Text>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── LABEL PÉRIODE ── */}
+        <Text style={styles.periodLabel}>
+          {moisNom}  ·  {debut}–{fin}.
         </Text>
 
-        <Text style={styles.cardSub}>
-          {t('depense_sur')} {budgetTotal.toFixed(3)} TND ({ratioGlobal.toFixed(0)}%)
-        </Text>
+        {budgetTotal <= 0 ? (
+          /* ── ÉTAT SANS BUDGET (Figma 29) ── */
+          <EtatSansBudget t={t} categories={enveloppes} />
+        ) : (
+          <>
+            {/* ── CARTE HERO BUDGET ── */}
+            <View style={styles.heroCard}>
+              <Text style={styles.heroLabel}>
+                {t('disponible_a_depenser') ?? 'DISPONIBLE À DÉPENSER'}
+              </Text>
+              <Text style={styles.heroAmount}>
+                {formatDT(disponible)}
+              </Text>
+              <Text style={styles.heroBudgetLine}>
+                {t('budget') ?? 'Budget'}  {formatDT(budgetTotal)}
+              </Text>
 
-        {/* Barre de progression globale */}
-        <View style={styles.progressBarTrack}>
-          <View
-            style={[
-              styles.progressBarFill,
-              { width: `${largeurBarreGlobale}%`, backgroundColor: couleurBarreGlobale },
-            ]}
-          />
-        </View>
-      </View>
-
-      {/* ==================================================== */}
-      {/* SECTION 3 : ENVELOPPES PAR CATEGORIE                */}
-      {/* ==================================================== */}
-      <Text style={styles.sectionTitle}>{t('budget_enveloppes')}</Text>
-
-      {enveloppes.length === 0 ? (
-        <TouchableOpacity
-          style={styles.noBudgetPrompt}
-          onPress={() => router.push('/budget-mois')}
-        >
-          <Text style={{ fontSize: 28, marginBottom: 6 }}>📬</Text>
-          <Text style={styles.noBudgetTitle}>Aucune enveloppe configurée pour ce mois</Text>
-          <Text style={styles.noBudgetSub}>Cliquez ici pour répartir votre budget en enveloppes intelligentes !</Text>
-        </TouchableOpacity>
-      ) : (
-        enveloppes.map((env) => {
-          const pct = env.pourcentage_consomme;
-          const barreWidth = Math.min(pct, 100);
-
-          // Couleurs réglementaires
-          let col = '#10B981'; // Vert < 70%
-          if (pct >= 100) {
-            col = '#EF4444'; // Rouge >= 100%
-          } else if (pct >= 70) {
-            col = '#F59E0B'; // Orange 70 à 99%
-          }
-
-          return (
-            <View key={env.categorie_id} style={styles.envelopeCard}>
-              <View style={styles.envelopeHeader}>
-                <View style={styles.envelopeTitleBox}>
-                  <Text style={styles.envelopeIcon}>{env.categorie_icone}</Text>
-                  <Text style={styles.envelopeTitle}>
-                    {t('masrouf_prefix')} {env.categorie_nom}
-                  </Text>
-                </View>
-
-                <Text style={styles.envelopeAmounts}>
-                  {env.montant_depense.toFixed(2)} / {env.montant_alloue.toFixed(2)} TND
-                </Text>
-              </View>
-
-              {/* Barre de l'enveloppe */}
-              <View style={styles.miniTrack}>
+              {/* Barre de progression globale */}
+              <View style={styles.heroProgressTrack}>
                 <View
                   style={[
-                    styles.miniFill,
-                    { width: `${barreWidth}%`, backgroundColor: col },
+                    styles.heroProgressFill,
+                    { width: `${largeurBarre}%`, backgroundColor: couleurBarre },
                   ]}
                 />
               </View>
 
-              <View style={styles.envelopeFooter}>
-                <Text style={[styles.envelopePct, { color: col }]}>
-                  {pct.toFixed(0)} % consommé
+              <View style={styles.heroFooter}>
+                <Text style={styles.heroDepense}>
+                  {t('depense') ?? 'Dépensé'}  {formatDT(totalDepense)}
                 </Text>
-                <Text style={styles.envelopeRestant}>
-                  Reste : {env.montant_restant.toFixed(2)} TND
+                <Text style={styles.heroRatio}>{ratio.toFixed(1)}% {t('utilise') ?? 'utilisé'}</Text>
+              </View>
+              <Text style={styles.heroDate}>
+                {debut}–{fin} {maintenant.getFullYear()}
+              </Text>
+            </View>
+
+            {/* ── BANNIÈRE DE STATUT ── */}
+            <BannierStatut statut={statut} disponible={disponible} t={t} />
+
+            {/* ── SECTION CATÉGORIES ── */}
+            <Text style={styles.sectionTitle}>{t('vos_categories') ?? 'Vos catégories'}</Text>
+
+            {enveloppesVisibles.map((env) => {
+              const pct = env.pourcentage_consomme;
+              const w = Math.min(pct, 100);
+              let col: string = Theme.colors.statusGreen;
+              if (pct >= 100) col = Theme.colors.coral;
+              else if (pct >= 70) col = Theme.colors.gold;
+
+              return (
+                <View key={env.categorie_id} style={styles.catCard}>
+                  <View style={styles.catCardHeader}>
+                    <View style={styles.catIconBox}>
+                      <Text style={{ fontSize: 18, color: Theme.colors.forest }}>☐</Text>
+                    </View>
+                    <Text style={styles.catName}>{env.categorie_nom}</Text>
+                    <Text style={styles.catAmounts}>
+                      {formatDT(env.montant_depense)} / {formatDT(env.montant_alloue)}
+                    </Text>
+                  </View>
+                  <View style={styles.catProgressTrack}>
+                    <View style={[styles.catProgressFill, { width: `${w}%`, backgroundColor: col }]} />
+                  </View>
+                </View>
+              );
+            })}
+
+            {/* Résumé des catégories restantes */}
+            {enveloppesRestantes.length > 0 && (
+              <View style={styles.catSummaryRow}>
+                <Text style={styles.catSummaryNames}>
+                  {enveloppesRestantes.map((e) => e.categorie_nom).join(' · ')}
+                </Text>
+                <Text style={styles.catSummaryAmount}>
+                  {formatDT(enveloppes.slice(2).reduce((s, e) => s + e.montant_depense, 0))} / {formatDT(totalRestant)}
                 </Text>
               </View>
-            </View>
-          );
-        })
-      )}
+            )}
 
-      {/* SECTION 4 : DEPENSES HORS BUDGET */}
-      {nonBudgetise > 0 ? (
-        <View style={styles.nonBudgetCard}>
-          <Text style={styles.nonBudgetTitle}>⚠️ {t('non_budgetise')}</Text>
-          <Text style={styles.nonBudgetSub}>
-            {t('avertissement_non_budgetise')} :{' '}
-            <Text style={{ fontWeight: '800' }}>{nonBudgetise.toFixed(2)} TND</Text>
-          </Text>
-        </View>
-      ) : null}
+            {/* ── SECTION TRANSACTIONS RÉCENTES ── */}
+            {achatsRecents.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>{t('transactions_recentes') ?? 'Transactions récentes'}</Text>
+                {achatsRecents.map((a) => (
+                  <View key={a.id} style={styles.transactionRow}>
+                    <View style={styles.transactionIconBox}>
+                      <Text style={{ fontSize: 16, color: Theme.colors.forest }}>☐</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.transactionName}>{a.produit_nom}</Text>
+                      <Text style={styles.transactionMeta}>
+                        {a.magasin_nom}  ·  {formatDate(a.date_achat)}
+                      </Text>
+                    </View>
+                    <Text style={styles.transactionAmount}>
+                      -{formatDT(a.prix_total)}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </>
+        )}
 
-      {/* ==================================================== */}
-      {/* SECTION 5 : ACTIONS RAPIDES                         */}
-      {/* ==================================================== */}
-      <Text style={styles.sectionTitle}>{t('actions_rapides')}</Text>
-      <View style={styles.actionRow}>
+        {/* Dépenses hors budget */}
+        {nonBudgetise > 0 && (
+          <View style={styles.nonBudgetRow}>
+            <Text style={styles.nonBudgetText}>
+              ⚠ {t('non_budgetise') ?? 'Hors budget'} : {formatDT(nonBudgetise)}
+            </Text>
+          </View>
+        )}
+
+        {/* ── BOUTON DÉPENSE SIMPLE ── */}
         <TouchableOpacity
-          style={[styles.button, styles.primaryButton]}
+          style={styles.simpleExpenseBtn}
           onPress={() => router.push('/nouvel-achat')}
           activeOpacity={0.8}
         >
-          <Text style={styles.buttonText}>{t('ajouter_achat')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.secondaryButton]}
-          onPress={() => router.push('/nouveau-produit')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>
-            {t('ajouter_produit')}
+          <Text style={styles.simpleExpenseBtnText}>
+            {t('ajouter_depense_simple') ?? 'Ajouter une dépense simple'}
           </Text>
         </TouchableOpacity>
+
+        {/* Espace pour le FAB */}
+        <View style={{ height: 80 }} />
+      </ScrollView>
+
+      {/* ── FAB PRINCIPAL ── */}
+      <View style={styles.fabContainer}>
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/nouvel-achat')}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.fabText}>+ {t('ajouter_achat') ?? 'Ajouter un achat'}</Text>
+        </TouchableOpacity>
       </View>
-
-      {/* ==================================================== */}
-      {/* SECTION 6 : DEPENSES RECENTES                       */}
-      {/* ==================================================== */}
-      <Text style={styles.sectionTitle}>{t('depenses_recentes')}</Text>
-
-      {achatsRecents.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>🛍️</Text>
-          <Text style={styles.emptyText}>{t('aucun_achat')}</Text>
-        </View>
-      ) : (
-        achatsRecents.map((achat) => (
-          <View key={achat.id} style={styles.expenseItem}>
-            <View style={styles.expenseIconBox}>
-              <Text style={{ fontSize: 22 }}>{achat.produit_icone}</Text>
-            </View>
-
-            <View style={styles.expenseInfo}>
-              <Text style={styles.expenseTitle}>{achat.produit_nom}</Text>
-              <Text style={styles.expenseMeta}>
-                {achat.magasin_nom} • {achat.date_achat}
-              </Text>
-            </View>
-
-            <View style={styles.expensePriceBox}>
-              <Text style={styles.expensePrice}>
-                {achat.prix_total.toFixed(3)}
-              </Text>
-              <Text style={styles.expenseCurrency}>TND</Text>
-            </View>
-          </View>
-        ))
-      )}
-    </ScrollView>
+    </View>
   );
 }
 
+// ── Composant : bannière de statut budgétaire ──
+function BannierStatut({ statut, disponible, t }: { statut: string; disponible: number; t: (k: string) => string }) {
+  const bg = statut === 'exceeded' ? '#FEE2E2' : statut === 'warning' ? '#FEF9EB' : Theme.colors.mint;
+  const textCol = statut === 'exceeded' ? Theme.colors.coral : statut === 'warning' ? '#92400E' : Theme.colors.deepGreen;
+  const titre = statut === 'exceeded'
+    ? (t('budget_depasse') ?? 'Budget dépassé')
+    : statut === 'warning'
+    ? (t('attention_80') ?? 'Attention — 80 % atteint')
+    : (t('budget_se_porte_bien') ?? 'Votre budget se porte bien');
+  const sous = statut === 'healthy'
+    ? `${t('il_reste') ?? 'Il reste'} ${formatDT(disponible)} ${t('pour_periode') ?? 'pour cette période.'}`
+    : '';
+
+  return (
+    <View style={[styles.statusBanner, { backgroundColor: bg }]}>
+      <Text style={[styles.statusBannerCheck, { color: textCol }]}>✓</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.statusBannerTitle, { color: textCol }]}>{titre}</Text>
+        {sous ? <Text style={[styles.statusBannerSub, { color: textCol }]}>{sous}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+// ── Composant : état sans budget ──
+function EtatSansBudget({ t, categories }: { t: (k: string) => string; categories: EnveloppeBudget[] }) {
+  return (
+    <>
+      <View style={styles.noBudgetCard}>
+        <Text style={{ fontSize: 32, marginBottom: 12 }}>☐</Text>
+        <Text style={styles.noBudgetTitle}>
+          {t('faites_place_objectifs') ?? 'Faites place à vos objectifs'}
+        </Text>
+        <Text style={styles.noBudgetSub}>
+          {t('pas_de_budget_periode') ?? 'Vous n\'avez pas encore de budget pour cette période.'}
+        </Text>
+      </View>
+
+      <TouchableOpacity
+        style={styles.primaryBtn}
+        onPress={() => router.push('/budget-mois')}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.primaryBtnText}>{t('creer_budget') ?? 'Créer un budget'}</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.secondaryBtn}
+        onPress={() => router.push('/budget-mois')}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.secondaryBtnText}>
+          {t('copier_periode_precedente') ?? 'Copier la période précédente'}
+        </Text>
+      </TouchableOpacity>
+
+      <View style={styles.mintBanner}>
+        <Text style={{ color: Theme.colors.deepGreen, fontSize: 14, marginRight: 8 }}>✓</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.mintBannerTitle}>
+            {t('commencez_vos_dates') ?? 'Commencez aux dates de votre choix'}
+          </Text>
+          <Text style={styles.mintBannerSub}>
+            {t('decidez_duree_montant') ?? 'Vous décidez de la durée et du montant total.'}
+          </Text>
+        </View>
+      </View>
+
+      {categories.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>{t('vos_categories_pretes') ?? 'Vos catégories sont prêtes'}</Text>
+          {categories.map((c) => (
+            <View key={c.categorie_id} style={styles.catReadyRow}>
+              <Text style={styles.catReadyName}>{c.categorie_nom}</Text>
+              <Text style={styles.catReadyStatus}>{t('prete') ?? 'Prête'}</Text>
+            </View>
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
+// ── Helpers ──
+function formatDT(val: number): string {
+  // Formatage tunisien : 3 décimales, séparateur point
+  return `${val.toFixed(3)} DT`;
+}
+
+function formatDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  } catch {
+    return dateStr;
+  }
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
+  root: { flex: 1, backgroundColor: Theme.colors.warm },
+  scroll: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  welcomeText: {
-    fontSize: 16,
-    color: '#64748B',
-  },
-  userName: {
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  subGreeting: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  levelBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    gap: 6,
-  },
-  levelIcon: {
-    fontSize: 18,
-  },
-  levelName: {
+
+  // Période
+  periodLabel: {
     fontSize: 11,
-    fontWeight: '800',
-    color: '#1D4ED8',
-  },
-  pointsText: {
-    fontSize: 10,
-    color: '#2563EB',
     fontWeight: '600',
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  manageEnvelopesBtn: {
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  manageEnvelopesText: {
-    fontSize: 11,
-    color: '#2563EB',
-    fontWeight: '700',
-  },
-  cardAmount: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1E293B',
-    marginTop: 8,
-  },
-  currencyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  cardSub: {
-    fontSize: 13,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  progressBarTrack: {
-    height: 10,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 5,
-    marginTop: 12,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 5,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginBottom: 10,
-    marginTop: 6,
-  },
-  noBudgetPrompt: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderStyle: 'dashed',
-    alignItems: 'center',
+    color: Theme.colors.muted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
     marginBottom: 14,
   },
-  noBudgetTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
+
+  // Carte hero (fond foncé)
+  heroCard: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 12,
   },
-  noBudgetSub: {
-    fontSize: 12,
-    color: '#64748B',
-    textAlign: 'center',
+  heroLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.65)',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  heroAmount: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: Theme.colors.white,
+    marginBottom: 4,
+  },
+  heroBudgetLine: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: 12,
+  },
+  heroProgressTrack: {
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  heroProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  heroFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  heroDepense: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '600',
+  },
+  heroRatio: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  heroDate: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
     marginTop: 4,
   },
-  envelopeCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
+
+  // Bannière statut
+  statusBanner: {
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 20,
+  },
+  statusBannerCheck: { fontSize: 14, fontWeight: '800', marginTop: 1 },
+  statusBannerTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  statusBannerSub: { fontSize: 13, lineHeight: 18 },
+
+  // Sections
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Theme.colors.ink,
+    marginBottom: 12,
+  },
+
+  // Cartes catégories
+  catCard: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 8,
+    borderColor: Theme.colors.border,
   },
-  envelopeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  envelopeTitleBox: {
+  catCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    marginBottom: 10,
   },
-  envelopeIcon: {
-    fontSize: 20,
+  catIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: Theme.colors.mint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
-  envelopeTitle: {
+  catName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Theme.colors.ink,
+  },
+  catAmounts: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#1E293B',
+    color: Theme.colors.muted,
+    fontWeight: '500',
   },
-  envelopeAmounts: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  miniTrack: {
-    height: 6,
-    backgroundColor: '#F1F5F9',
+  catProgressTrack: {
+    height: 5,
+    backgroundColor: Theme.colors.border,
     borderRadius: 3,
     overflow: 'hidden',
   },
-  miniFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  envelopeFooter: {
+  catProgressFill: { height: '100%', borderRadius: 3 },
+
+  // Résumé catégories
+  catSummaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 5,
+    marginBottom: 20,
+    paddingHorizontal: 4,
   },
-  envelopePct: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  envelopeRestant: {
-    fontSize: 10,
-    color: '#64748B',
-  },
-  nonBudgetCard: {
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 14,
-  },
-  nonBudgetTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#B45309',
-  },
-  nonBudgetSub: {
-    fontSize: 11,
-    color: '#92400E',
-    marginTop: 2,
-  },
-  actionRow: {
+  catSummaryNames: { fontSize: 12, color: Theme.colors.muted },
+  catSummaryAmount: { fontSize: 12, fontWeight: '700', color: Theme.colors.ink },
+
+  // Transactions
+  transactionRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
     alignItems: 'center',
-  },
-  primaryButton: {
-    backgroundColor: '#2563EB',
-  },
-  secondaryButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  secondaryButtonText: {
-    color: '#334155',
-  },
-  emptyState: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  emptyIcon: {
-    fontSize: 32,
-    marginBottom: 6,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: '#64748B',
-  },
-  expenseItem: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: Theme.colors.white,
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderColor: Theme.colors.border,
   },
-  expenseIconBox: {
-    width: 40,
-    height: 40,
+  transactionIconBox: {
+    width: 36,
+    height: 36,
     borderRadius: 10,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: Theme.colors.mint,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  expenseInfo: {
-    flex: 1,
-  },
-  expenseTitle: {
+  transactionName: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
+    fontWeight: '600',
+    color: Theme.colors.ink,
   },
-  expenseMeta: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  expensePriceBox: {
-    alignItems: 'flex-end',
-  },
-  expensePrice: {
+  transactionMeta: { fontSize: 12, color: Theme.colors.muted, marginTop: 2 },
+  transactionAmount: {
     fontSize: 15,
+    fontWeight: '700',
+    color: Theme.colors.ink,
+  },
+
+  // Hors budget
+  nonBudgetRow: {
+    backgroundColor: '#FEF9EB',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  nonBudgetText: { fontSize: 13, color: '#92400E', fontWeight: '600' },
+
+  // Bouton dépense simple (secondary)
+  simpleExpenseBtn: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: 9999,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  simpleExpenseBtnText: {
+    color: Theme.colors.forest,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  // FAB
+  fabContainer: {
+    position: 'absolute',
+    bottom: 24,
+    left: 20,
+    right: 20,
+  },
+  fab: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: 9999,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Theme.colors.forest,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  fabText: { color: Theme.colors.white, fontSize: 15, fontWeight: '700' },
+
+  // État sans budget
+  noBudgetCard: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  noBudgetTitle: {
+    fontSize: 20,
     fontWeight: '800',
-    color: '#1E293B',
+    color: Theme.colors.ink,
+    textAlign: 'center',
+    marginBottom: 8,
   },
-  expenseCurrency: {
-    fontSize: 10,
-    color: '#64748B',
+  noBudgetSub: {
+    fontSize: 14,
+    color: Theme.colors.muted,
+    textAlign: 'center',
+    lineHeight: 20,
   },
+  primaryBtn: {
+    backgroundColor: Theme.colors.forest,
+    borderRadius: 9999,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  primaryBtnText: { color: Theme.colors.white, fontSize: 15, fontWeight: '700' },
+  secondaryBtn: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: 9999,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  secondaryBtnText: { color: Theme.colors.forest, fontSize: 15, fontWeight: '600' },
+  mintBanner: {
+    backgroundColor: Theme.colors.mint,
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  mintBannerTitle: { fontSize: 14, fontWeight: '700', color: Theme.colors.ink, marginBottom: 4 },
+  mintBannerSub: { fontSize: 13, color: Theme.colors.muted, lineHeight: 18 },
+  catReadyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Theme.colors.divider,
+  },
+  catReadyName: { fontSize: 14, color: Theme.colors.ink },
+  catReadyStatus: { fontSize: 14, fontWeight: '700', color: Theme.colors.muted },
 });

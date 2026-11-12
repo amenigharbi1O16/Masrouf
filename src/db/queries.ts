@@ -611,6 +611,18 @@ export function resetUserPassword(
     return db.getAllSync<Magasin>(`SELECT * FROM magasins ORDER BY nom ASC`);
   }
 
+  export function findOrCreateMagasin(nom: string): number {
+    const propre = nom.trim();
+    if (!propre) return 1;
+    const exist = db.getFirstSync<{ id: number }>(
+      `SELECT id FROM magasins WHERE nom = ? COLLATE NOCASE`,
+      [propre]
+    );
+    if (exist) return exist.id;
+    const res = db.runSync(`INSERT INTO magasins (nom) VALUES (?)`, [propre]);
+    return res.lastInsertRowId;
+  }
+
   export function reassignerDepensesCategorieVersAutres(ancienneCategorieId: number): void {
     const autresCat = db.getFirstSync<{ id: number }>(
       `SELECT id FROM categories WHERE nom = 'Autres' COLLATE NOCASE`
@@ -1119,3 +1131,50 @@ export function getDepensesParCategorie(
     [utilisateurId, mois]
   );
 }
+
+export type TopProduitDepense = {
+  produit_id: number;
+  produit_nom: string;
+  total_depense: number;
+  dernier_prix_unitaire: number;
+  unite: string;
+};
+
+export function getTopProduitsParDepense(
+  utilisateurId: number,
+  mois?: string,
+  limit: number = 3
+): TopProduitDepense[] {
+  try {
+    const sql = mois
+      ? `SELECT
+           p.id as produit_id,
+           p.nom as produit_nom,
+           p.unite as unite,
+           SUM(a.prix_total) as total_depense,
+           COALESCE(MAX(a.prix_unitaire), 0) as dernier_prix_unitaire
+         FROM achats a
+         JOIN produits p ON a.produit_id = p.id
+         WHERE a.utilisateur_id = ? AND a.mois = ?
+         GROUP BY p.id
+         ORDER BY total_depense DESC
+         LIMIT ?`
+      : `SELECT
+           p.id as produit_id,
+           p.nom as produit_nom,
+           p.unite as unite,
+           SUM(a.prix_total) as total_depense,
+           COALESCE(MAX(a.prix_unitaire), 0) as dernier_prix_unitaire
+         FROM achats a
+         JOIN produits p ON a.produit_id = p.id
+         WHERE a.utilisateur_id = ?
+         GROUP BY p.id
+         ORDER BY total_depense DESC
+         LIMIT ?`;
+    const params = mois ? [utilisateurId, mois, limit] : [utilisateurId, limit];
+    return db.getAllSync<TopProduitDepense>(sql, params);
+  } catch {
+    return [];
+  }
+}
+

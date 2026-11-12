@@ -239,3 +239,4 @@ Pour assurer une compatibilité absolue avec l'historique du code et éviter tou
 - `produits` : Vue miroir sur `product` avec triggers `INSTEAD OF INSERT/UPDATE/DELETE`.
 - `achats` : Vue unifiée combinant `purchase` (achats avec produits) et `expense` (dépenses directes) via `UNION ALL`, avec triggers d'insertion automatique vers la bonne table.
 - `monthly_budgets` & `category_budgets` : Vues miroirs sur `month_budget` et `category_budget`.
+
