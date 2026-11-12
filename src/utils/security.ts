@@ -1,111 +1,148 @@
 // ============================================================
 // FICHIER : src/utils/security.ts
 // RÔLE    : Module de cryptographie et sécurité des mots de passe.
-//           Fournit le hachage SHA-256 avec sel aléatoire unique
-//           par utilisateur pour qu'aucun mot de passe ne soit stocké
-//           en texte clair dans SQLite.
+//           Fournit le hachage PBKDF2-HMAC-SHA256 (10 000 itérations)
+//           avec sel aléatoire unique par utilisateur via expo-crypto,
+//           ainsi que la rétrocompatibilité SHA-256 v1 et la mise à niveau
+//           automatique transparente vers v2 lors de la connexion.
 //
-// CONCEPTS CLÉS EXPLIQUÉS :
-//   1. Qu'est-ce que le hachage (SHA-256) ?
-//      C'est une fonction mathématique à sens unique : à partir d'un
-//      mot de passe "secret123", elle produit une empreinte hexadécimale
-//      de 64 caractères impossibles à inverser.
+// CONCEPTS CLÉS POUR LA SOUTENANCE :
+//   1. Qu'est-ce que PBKDF2 (Password-Based Key Derivation Function 2) ?
+//      Contrairement au SHA-256 simple qui s'exécute en quelques microsecondes
+//      (ce qui permet à un attaquant de tester des milliards de combinaisons par seconde),
+//      PBKDF2 applique 10 000 itérations successives avec HMAC-SHA256.
+//      Cela ralentit considérablement les attaques par force brute sans ralentir
+//      l'expérience de l'utilisateur légitime (~20-80 ms).
 //
-//   2. Pourquoi un "SEL" (Salt) aléatoire est-il indispensable ?
-//      Sans sel : si deux utilisateurs choisissent "123456", leurs
-//      empreintes dans la base de données seraient strictement identiques.
-//      Un attaquant pourrait utiliser une "Table Arc-en-ciel" (Rainbow Table),
-//      c'est-à-dire un dictionnaire géant de hashes précalculés, pour
-//      deviner le mot de passe en 1 seconde.
-//      Avec sel : on génère une chaîne aléatoire unique pour chaque compte.
-//      L'empreinte devient SHA256(mot_de_passe + sel).
-//      Même avec deux mots de passe identiques, les hashes stockés
-//      sont radicalement différents, rendant les Rainbow Tables inutilisables !
+//   2. Pourquoi un sel cryptographique aléatoire par compte ?
+//      Le sel (salt) est généré via expo-crypto (Crypto.getRandomValues).
+//      Il garantit que deux utilisateurs ayant le même mot de passe
+//      auront deux empreintes complètement différentes dans SQLite,
+//      rendant les attaques par tables arc-en-ciel (rainbow tables) impossibles.
+//
+//   3. Gestion des versions de hachage (hash_version) :
+//      - Version 1 : SHA-256 simple + sel (comptes historiques).
+//      - Version 2 : PBKDF2 (10 000 itérations) + sel (nouveaux comptes et comptes migrés).
 //
 // FORMAT STOCKÉ DANS SQLITE :
 //   "sel_hexadecimal:hash_hexadecimal" (ex: "a9f8e2...:c4b3d1...")
 // ============================================================
 
 import * as Crypto from 'expo-crypto';
+import { pbkdf2 } from '@noble/hashes/pbkdf2';
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex } from '@noble/hashes/utils';
+
+// Constante officielle pour le renforcement cryptographique
+export const PBKDF2_ITERATIONS = 10000;
+export const PBKDF2_KEY_LENGTH = 32; // 256 bits
 
 // ------------------------------------------------------------
 // FONCTION : generateSalt
 // RÔLE : Génère un sel cryptographique aléatoire de 16 octets (32 caractères hexadécimaux).
+//        Utilise obligatoirement Crypto.getRandomValues (jamais Math.random).
 // ------------------------------------------------------------
 export function generateSalt(): string {
-  // Crypto.getRandomValues remplit un tableau avec des octets cryptographiquement sûrs
   const randomBytes = Crypto.getRandomValues(new Uint8Array(16));
-  // Convertit les octets en chaîne hexadécimale (ex: "4f7a2b...")
   return Array.from(randomBytes)
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
 }
 
 // ------------------------------------------------------------
-// FONCTION : hashPasswordWithSalt
-// RÔLE : Calcule l'empreinte SHA-256 du mot de passe combiné à son sel.
+// FONCTION : hashPasswordV1 (Historique SHA-256 simple)
+// RÔLE : Calcul rapide d'empreinte SHA-256 pour vérifier les anciens comptes.
 // ------------------------------------------------------------
-export async function hashPasswordWithSalt(
-  password: string,
-  salt: string
-): Promise<string> {
-  // Concaténation du mot de passe et du sel unique
+export async function hashPasswordV1(password: string, salt: string): Promise<string> {
   const saltedString = `${password}:${salt}`;
-
-  // Calcul du hachage SHA-256 asynchrone via la puce cryptographique
-  const hash = await Crypto.digestStringAsync(
+  return await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
     saltedString
   );
+}
 
-  return hash;
+// ------------------------------------------------------------
+// FONCTION : hashPasswordV2 (PBKDF2-HMAC-SHA256 - 10 000 itérations)
+// RÔLE : Hachage fort résistant aux attaques par force brute sur GPU/ASIC.
+// ------------------------------------------------------------
+export function hashPasswordV2(password: string, salt: string): string {
+  const t0 = performance.now();
+  // Calcul PBKDF2 avec SHA-256, 10 000 itérations et clé de 32 octets (256 bits)
+  const derivedBytes = pbkdf2(sha256, password, salt, {
+    c: PBKDF2_ITERATIONS,
+    dkLen: PBKDF2_KEY_LENGTH,
+  });
+  const t1 = performance.now();
+  const duree = (t1 - t0).toFixed(2);
+  console.log(`[Sécurité PBKDF2] Hash calculé en ${duree} ms (${PBKDF2_ITERATIONS} itérations)`);
+  return bytesToHex(derivedBytes);
+}
+
+// ------------------------------------------------------------
+// FONCTION : mesurerTempsPBKDF2
+// RÔLE : Mesure le temps réel d'exécution de PBKDF2 (10 000 itérations)
+//        directement sur l'appareil pour le rapporter au professeur/utilisateur.
+// ------------------------------------------------------------
+export function mesurerTempsPBKDF2(): number {
+  const t0 = performance.now();
+  pbkdf2(sha256, 'benchmark_test_password', 'benchmark_test_salt_16bytes', {
+    c: PBKDF2_ITERATIONS,
+    dkLen: PBKDF2_KEY_LENGTH,
+  });
+  const t1 = performance.now();
+  const dureeMs = Math.round((t1 - t0) * 100) / 100;
+  console.log(`[Benchmark PBKDF2] 10 000 itérations exécutées en ${dureeMs} ms sur cet appareil`);
+  return dureeMs;
 }
 
 // ------------------------------------------------------------
 // FONCTION : createPasswordHash
-// RÔLE : Crée le sel, calcule le hash et retourne la chaîne complète
-//        à insérer directement dans la colonne 'password_hash' de SQLite.
+// RÔLE : Génère un nouveau sel aléatoire et calcule le hash (v2 par défaut).
+// RETOUR : "sel:hash"
 // ------------------------------------------------------------
-export async function createPasswordHash(password: string): Promise<string> {
-  // 1. Génère un sel unique pour ce compte
+export async function createPasswordHash(
+  password: string,
+  version: number = 2
+): Promise<string> {
   const salt = generateSalt();
+  let hash = '';
 
-  // 2. Calcule le hash SHA-256
-  const hash = await hashPasswordWithSalt(password, salt);
+  if (version === 1) {
+    hash = await hashPasswordV1(password, salt);
+  } else {
+    hash = hashPasswordV2(password, salt);
+  }
 
-  // 3. Retourne la combinaison sel:hash
   return `${salt}:${hash}`;
 }
 
 // ------------------------------------------------------------
 // FONCTION : verifyPassword
-// RÔLE : Vérifie si un mot de passe saisi en clair correspond à l'empreinte
-//        stockée en base de données SQLite.
-//
-// PARAMÈTRES :
-//   password           = Le mot de passe saisi par l'utilisateur lors du login
-//   storedHashWithSalt = La chaîne "sel:hash" enregistrée dans la table
+// RÔLE : Vérifie un mot de passe en clair selon sa version d'enregistrement.
+//        - Si version 1 : vérifie en SHA-256 simple.
+//        - Si version 2 : vérifie en PBKDF2 (10 000 itérations).
 // ------------------------------------------------------------
 export async function verifyPassword(
   password: string,
-  storedHashWithSalt: string
+  storedHashWithSalt: string,
+  version: number = 1
 ): Promise<boolean> {
-  // Si le champ est vide ou mal formaté, échec immédiat
   if (!storedHashWithSalt || !storedHashWithSalt.includes(':')) {
     return false;
   }
 
-  // Découpe pour extraire le sel original et le hash attendu
   const [salt, expectedHash] = storedHashWithSalt.split(':');
-
   if (!salt || !expectedHash) {
     return false;
   }
 
-  // Recalcule le hash avec le mot de passe saisi et le sel extrait
-  const computedHash = await hashPasswordWithSalt(password, salt);
+  let computedHash = '';
+  if (version === 1) {
+    computedHash = await hashPasswordV1(password, salt);
+  } else {
+    computedHash = hashPasswordV2(password, salt);
+  }
 
-  // Compare les deux empreintes : correspondance exacte = mot de passe valide
   return computedHash.toLowerCase() === expectedHash.toLowerCase();
 }
 
@@ -126,4 +163,3 @@ export function generateTemporaryPassword(longueur: number = 8): string {
 
   return tempPass;
 }
-

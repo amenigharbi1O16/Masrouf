@@ -27,6 +27,7 @@ import {
   getUserById,
   registerUser,
   updateUserPassword,
+  updateUserPasswordAndVersion,
   Utilisateur,
 } from '../db/queries';
 
@@ -128,10 +129,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, errorKey: 'erreur_compte_desactive' };
     }
 
-    // 4. Vérification cryptographique du mot de passe (SHA-256 avec sel)
-    const mdpValide = await verifyPassword(mdp, compte.password_hash);
+    // 4. Vérification cryptographique du mot de passe
+    // Supporte la version 1 (SHA-256) et la version 2 (PBKDF2 10 000 itérations)
+    const versionActuelle = compte.hash_version ?? 1;
+    const mdpValide = await verifyPassword(mdp, compte.password_hash, versionActuelle);
     if (!mdpValide) {
       return { success: false, errorKey: 'erreur_mot_de_passe_faux' };
+    }
+
+    // 4b. Mise à niveau transparente du hash si le compte était en version 1
+    if (versionActuelle === 1) {
+      try {
+        const nouveauHashV2 = await createPasswordHash(mdp, 2);
+        const [nouveauSel] = nouveauHashV2.split(':');
+        updateUserPasswordAndVersion(compte.id, nouveauHashV2, nouveauSel, 2);
+        compte.hash_version = 2;
+        compte.password_hash = nouveauHashV2;
+        compte.salt = nouveauSel;
+        console.log('[Auth] Compte v1 mis à niveau vers PBKDF2 (v2) avec succès');
+      } catch (err) {
+        console.warn('[Auth] Impossible de mettre à niveau le hash v1->v2:', err);
+      }
     }
 
     // 5. Sauvegarde de la session dans le coffre matériel
@@ -147,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ----------------------------------------------------------
   // FONCTION register()
   // RÔLE : Inscription sécurisée d'un utilisateur de rôle 'user' uniquement
+  //        Utilise systématiquement PBKDF2 (hash_version = 2) et sel aléatoire
   // ----------------------------------------------------------
   const register = useCallback(
     async (nom: string, email: string, mdp: string): Promise<RegisterResult> => {
@@ -171,11 +190,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, errorKey: 'erreur_email_deja_pris' };
       }
 
-      // Hachage du mot de passe avec un nouveau sel aléatoire
-      const hashSecurise = await createPasswordHash(mdp);
+      // Hachage fort PBKDF2 (10 000 itérations) avec sel aléatoire expo-crypto
+      const hashSecurise = await createPasswordHash(mdp, 2);
+      const [sel] = hashSecurise.split(':');
 
-      // Insertion du compte de rôle 'user' dans SQLite
-      const nouveauId = registerUser(nomNettoye, emailNettoye, hashSecurise);
+      // Insertion du compte de rôle 'user' dans SQLite avec hash_version = 2
+      const nouveauId = registerUser(nomNettoye, emailNettoye, hashSecurise, sel, 2);
       const nouveauCompte = getUserById(nouveauId);
 
       if (nouveauCompte) {
@@ -191,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ----------------------------------------------------------
   // FONCTION changePassword()
-  // RÔLE : Mise à jour du mot de passe et levée de l'obligation must_change_password
+  // RÔLE : Mise à jour du mot de passe avec PBKDF2 (v2) et levée de must_change_password
   // ----------------------------------------------------------
   const changePassword = useCallback(
     async (nouveauMdp: string): Promise<{ success: boolean; errorKey?: string }> => {
@@ -203,15 +223,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, errorKey: 'erreur_mdp_trop_court' };
       }
 
-      // Calcule le nouveau hash avec sel
-      const nouveauHash = await createPasswordHash(nouveauMdp);
+      // Calcule le nouveau hash fort PBKDF2
+      const nouveauHash = await createPasswordHash(nouveauMdp, 2);
+      const [sel] = nouveauHash.split(':');
 
-      // Met à jour SQLite
-      updateUserPassword(user.id, nouveauHash);
+      // Met à jour SQLite avec hash_version = 2
+      updateUserPasswordAndVersion(user.id, nouveauHash, sel, 2);
 
       // Met à jour le state local
       setUser((prev) =>
-        prev ? { ...prev, password_hash: nouveauHash, must_change_password: 0 } : null
+        prev
+          ? {
+              ...prev,
+              password_hash: nouveauHash,
+              salt: sel,
+              hash_version: 2,
+              must_change_password: 0,
+            }
+          : null
       );
 
       return { success: true };
