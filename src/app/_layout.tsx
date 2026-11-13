@@ -17,14 +17,6 @@ import { Stack, router, useSegments } from 'expo-router';
 // Initialisation de la base SQLite
 import { initDatabase } from '../db/database';
 
-// Exécution synchrone immédiate pour garantir que le schéma et les migrations
-// sont prêts AVANT le montage des composants et écrans.
-try {
-  initDatabase();
-} catch (error) {
-  console.error('[SQLite] Erreur initialisation synchrone :', error);
-}
-
 // Contexte d'authentification
 import { AuthProvider, useAuth } from '../utils/auth';
 

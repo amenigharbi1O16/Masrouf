@@ -75,12 +75,35 @@ function migrerNomPhoto(db: SQLiteDatabase): void {
 }
 
 function creerVuesPrixTotal(db: SQLiteDatabase): void {
-  // On recrée la vue à chaque démarrage : CREATE VIEW IF NOT EXISTS
-  // ne mettrait pas à jour une vue déjà fausse.
-  db.execSync(`
-    DROP TRIGGER IF EXISTS trg_achats_insert;
-    DROP VIEW IF EXISTS achats;
+  // Supprimer triggers d'abord (toujours possible)
+  try { db.execSync(`DROP TRIGGER IF EXISTS trg_achats_insert;`); } catch { }
 
+  // Vérifier si 'achats' est une TABLE physique ou une VIEW
+  const typeAchats = db.getFirstSync<{ type: string }>(
+    `SELECT type FROM sqlite_master WHERE name = 'achats'`
+  );
+  if (typeAchats?.type === 'table') {
+    // achats est une TABLE physique → on la renomme pour ne pas la perdre
+    try { db.execSync(`ALTER TABLE achats RENAME TO achats_old;`); } catch { }
+  } else {
+    try { db.execSync(`DROP VIEW IF EXISTS achats;`); } catch { }
+  }
+
+  // Supprimer triggers produits et vue produits
+  try { db.execSync(`DROP TRIGGER IF EXISTS trg_produits_insert;`); } catch { }
+  try { db.execSync(`DROP TRIGGER IF EXISTS trg_produits_update;`); } catch { }
+  try { db.execSync(`DROP TRIGGER IF EXISTS trg_produits_delete;`); } catch { }
+
+  const typeProduits = db.getFirstSync<{ type: string }>(
+    `SELECT type FROM sqlite_master WHERE name = 'produits'`
+  );
+  if (typeProduits?.type === 'table') {
+    try { db.execSync(`ALTER TABLE produits RENAME TO produits_old;`); } catch { }
+  } else {
+    try { db.execSync(`DROP VIEW IF EXISTS produits;`); } catch { }
+  }
+
+  db.execSync(`
     CREATE VIEW achats AS
     SELECT
       p.id,
@@ -146,12 +169,10 @@ function creerVuesPrixTotal(db: SQLiteDatabase): void {
         COALESCE(NEW.notes, '')
       WHERE NEW.produit_id IS NULL;
     END;
+  `);
 
-    DROP TRIGGER IF EXISTS trg_produits_insert;
-    DROP TRIGGER IF EXISTS trg_produits_update;
-    DROP TRIGGER IF EXISTS trg_produits_delete;
-    DROP VIEW IF EXISTS produits;
-
+  // Créer la vue produits (déjà droppée proprement au-dessus)
+  db.execSync(`
     CREATE VIEW produits AS
     SELECT
       id,

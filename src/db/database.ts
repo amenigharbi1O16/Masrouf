@@ -275,20 +275,43 @@ function migrerAnciennesDonneesSiPresentes(): void {
     }
 
     // 2. Migration anciens achats -> purchase ou expense
-    const aAnciensAchats = db.getFirstSync<{ cnt: number }>(
-      `SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='achats'`
-    );
-    if (aAnciensAchats && aAnciensAchats.cnt > 0) {
+    // Chercher soit 'achats' (table physique) soit 'achats_old' (après renommage par migrate.ts)
+    const nomTableAchats = (() => {
+      const r1 = db.getFirstSync<{ cnt: number }>(
+        `SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='achats'`
+      );
+      if (r1 && r1.cnt > 0) return 'achats';
+      const r2 = db.getFirstSync<{ cnt: number }>(
+        `SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='achats_old'`
+      );
+      if (r2 && r2.cnt > 0) return 'achats_old';
+      return null;
+    })();
+    if (nomTableAchats) {
       const nbPurchases = db.getFirstSync<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM purchase`);
       const nbExpenses = db.getFirstSync<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM expense`);
 
       if (nbPurchases?.cnt === 0 && nbExpenses?.cnt === 0) {
-        // D'abord les produits s'il y en a
-        db.execSync(`
-          INSERT OR IGNORE INTO product (id, user_id, name, brand, category_id, photo_path, unit)
-          SELECT id, created_by, nom, marque, categorie_id, photo_uri, unite
-          FROM produits;
-        `);
+        // D'abord les produits s'il y en a (chercher produits ou produits_old)
+        const nomTableProduits = (() => {
+          const r1 = db.getFirstSync<{ cnt: number }>(
+            `SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='produits'`
+          );
+          if (r1 && r1.cnt > 0) return 'produits';
+          const r2 = db.getFirstSync<{ cnt: number }>(
+            `SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='produits_old'`
+          );
+          if (r2 && r2.cnt > 0) return 'produits_old';
+          return null;
+        })();
+
+        if (nomTableProduits) {
+          db.execSync(`
+            INSERT OR IGNORE INTO product (id, user_id, name, brand, category_id, photo_path, unit)
+            SELECT id, created_by, nom, marque, categorie_id, COALESCE(photo_uri, photo_path, ''), unite
+            FROM ${nomTableProduits};
+          `);
+        }
 
         // Achats avec produit -> purchase
         db.execSync(`
@@ -297,16 +320,15 @@ function migrerAnciennesDonneesSiPresentes(): void {
             a.id,
             a.utilisateur_id,
             a.produit_id,
-            COALESCE(p.categorie_id, 1),
-            a.prix_unitaire,
-            a.quantite,
-            COALESCE(p.unite, 'pièce'),
+            COALESCE(a.categorie_id, 1),
+            COALESCE(a.prix_unitaire, a.prix_total, 0),
+            COALESCE(a.quantite, 1),
+            'pièce',
             'Non précisé',
             a.date_achat,
             a.mois,
             COALESCE(a.notes, '')
-          FROM achats a
-          JOIN produits p ON a.produit_id = p.id
+          FROM ${nomTableAchats} a
           WHERE a.produit_id IS NOT NULL;
         `);
 
@@ -316,13 +338,13 @@ function migrerAnciennesDonneesSiPresentes(): void {
           SELECT
             a.id,
             a.utilisateur_id,
-            COALESCE(a.categorie_id, 9), -- 9 = Autres par défaut
-            a.prix_total,
+            COALESCE(a.categorie_id, 9),
+            COALESCE(a.prix_total, a.prix_unitaire, 0),
             COALESCE(NULLIF(a.titre, ''), 'Dépense'),
             a.date_achat,
             a.mois,
             COALESCE(a.notes, '')
-          FROM achats a
+          FROM ${nomTableAchats} a
           WHERE a.produit_id IS NULL;
         `);
       }
@@ -722,121 +744,137 @@ function creerVuesDeRetroCompatibilite(): void {
       END;
     `);
 
-    // 4. Vue produits + triggers
-    db.execSync(`
-      DROP TRIGGER IF EXISTS trg_produits_insert;
-      DROP TRIGGER IF EXISTS trg_produits_update;
-      DROP TRIGGER IF EXISTS trg_produits_delete;
-      DROP VIEW IF EXISTS produits;
-
-      CREATE VIEW IF NOT EXISTS produits AS
-      SELECT
-        id,
-        name as nom,
-        brand as marque,
-        unit as unite,
-        category_id as categorie_id,
-        user_id as created_by,
-        photo_path,
-        photo_path as photo_uri,
-        created_at
-      FROM product;
-
-      CREATE TRIGGER IF NOT EXISTS trg_produits_insert
-      INSTEAD OF INSERT ON produits
-      BEGIN
-        INSERT INTO product (name, brand, unit, category_id, user_id, photo_path)
-        VALUES (
-          NEW.nom,
-          COALESCE(NEW.marque, ''),
-          COALESCE(NEW.unite, 'pièce'),
-          NEW.categorie_id,
-          NEW.created_by,
-          COALESCE(NEW.photo_path, NEW.photo_uri, '')
-        );
-      END;
-
-      CREATE TRIGGER IF NOT EXISTS trg_produits_update
-      INSTEAD OF UPDATE ON produits
-      BEGIN
-        UPDATE product SET
-          name = COALESCE(NEW.nom, name),
-          brand = COALESCE(NEW.marque, brand),
-          unit = COALESCE(NEW.unite, unit),
-          category_id = COALESCE(NEW.categorie_id, category_id),
-          photo_path = COALESCE(NEW.photo_path, NEW.photo_uri, photo_path)
-        WHERE id = OLD.id;
-      END;
-
-      CREATE TRIGGER IF NOT EXISTS trg_produits_delete
-      INSTEAD OF DELETE ON produits
-      BEGIN
-        DELETE FROM product WHERE id = OLD.id;
-      END;
-    `);
-
-    // 5. Vue achats + trigger
-    db.execSync(`
-      CREATE VIEW IF NOT EXISTS achats AS
-      SELECT
-        p.id,
-        p.product_id as produit_id,
-        p.user_id as utilisateur_id,
-        NULL as magasin_id,
-        p.category_id as categorie_id,
-        p.notes as titre,
-        p.price as prix_unitaire,
-        p.quantity as quantite,
-        (p.price * p.quantity) as prix_total,
-        p.date as date_achat,
-        p.month as mois,
-        p.notes
-      FROM purchase p
-      UNION ALL
-      SELECT
-        e.id + 1000000 as id,
-        NULL as produit_id,
-        e.user_id as utilisateur_id,
-        NULL as magasin_id,
-        e.category_id as categorie_id,
-        e.label as titre,
-        e.amount as prix_unitaire,
-        1 as quantite,
-        e.amount as prix_total,
-        e.date as date_achat,
-        e.month as mois,
-        e.notes
-      FROM expense e;
-
-      CREATE TRIGGER IF NOT EXISTS trg_achats_insert
-      INSTEAD OF INSERT ON achats
-      BEGIN
-        INSERT INTO purchase (user_id, product_id, category_id, price, quantity, unit, store, date, month, notes)
+    // 4. Vue produits + triggers (sécurisé : ne touche pas si c'est une TABLE physique)
+    const typeProduitsBD = db.getFirstSync<{ type: string }>(
+      `SELECT type FROM sqlite_master WHERE name = 'produits'`
+    );
+    if (typeProduitsBD?.type !== 'table') {
+      // On peut dropper la vue et recréer en sécurité
+      db.execSync(`DROP TRIGGER IF EXISTS trg_produits_insert;`);
+      db.execSync(`DROP TRIGGER IF EXISTS trg_produits_update;`);
+      db.execSync(`DROP TRIGGER IF EXISTS trg_produits_delete;`);
+      db.execSync(`DROP VIEW IF EXISTS produits;`);
+      db.execSync(`
+        CREATE VIEW IF NOT EXISTS produits AS
         SELECT
-          NEW.utilisateur_id,
-          NEW.produit_id,
-          COALESCE(NEW.categorie_id, (SELECT category_id FROM product WHERE id = NEW.produit_id), 1),
-          NEW.prix_unitaire,
-          COALESCE(NEW.quantite, 1),
-          COALESCE((SELECT unit FROM product WHERE id = NEW.produit_id), 'pièce'),
-          'Non précisé',
-          COALESCE(NEW.date_achat, date('now')),
-          NEW.mois,
-          COALESCE(NEW.notes, '')
-        WHERE NEW.produit_id IS NOT NULL;
+          id,
+          name as nom,
+          brand as marque,
+          unit as unite,
+          category_id as categorie_id,
+          user_id as created_by,
+          photo_path,
+          photo_path as photo_uri,
+          created_at
+        FROM product;
 
-        INSERT INTO expense (user_id, category_id, amount, label, date, month, notes)
+        CREATE TRIGGER IF NOT EXISTS trg_produits_insert
+        INSTEAD OF INSERT ON produits
+        BEGIN
+          INSERT INTO product (name, brand, unit, category_id, user_id, photo_path)
+          VALUES (
+            NEW.nom,
+            COALESCE(NEW.marque, ''),
+            COALESCE(NEW.unite, 'pièce'),
+            NEW.categorie_id,
+            NEW.created_by,
+            COALESCE(NEW.photo_path, NEW.photo_uri, '')
+          );
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_produits_update
+        INSTEAD OF UPDATE ON produits
+        BEGIN
+          UPDATE product SET
+            name = COALESCE(NEW.nom, name),
+            brand = COALESCE(NEW.marque, brand),
+            unit = COALESCE(NEW.unite, unit),
+            category_id = COALESCE(NEW.categorie_id, category_id),
+            photo_path = COALESCE(NEW.photo_path, NEW.photo_uri, photo_path)
+          WHERE id = OLD.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_produits_delete
+        INSTEAD OF DELETE ON produits
+        BEGIN
+          DELETE FROM product WHERE id = OLD.id;
+        END;
+      `);
+    }
+
+    // 5. Vue achats + trigger (sécurisé : ne touche pas si c'est une TABLE physique)
+    // Si achats est une table physique, migrate.ts la renommera en achats_old
+    // et créera la vue propre — on saute ici pour éviter le conflit
+    const typeAchatsBD = db.getFirstSync<{ type: string }>(
+      `SELECT type FROM sqlite_master WHERE name = 'achats'`
+    );
+    if (typeAchatsBD?.type !== 'table') {
+      try { db.execSync(`DROP TRIGGER IF EXISTS trg_achats_insert;`); } catch { }
+      try { db.execSync(`DROP VIEW IF EXISTS achats;`); } catch { }
+      db.execSync(`
+        CREATE VIEW IF NOT EXISTS achats AS
         SELECT
-          NEW.utilisateur_id,
-          COALESCE(NEW.categorie_id, 9),
-          NEW.prix_total,
-          COALESCE(NULLIF(NEW.titre, ''), 'Dépense'),
-          COALESCE(NEW.date_achat, date('now')),
-          NEW.mois,
-          COALESCE(NEW.notes, '')
-        WHERE NEW.produit_id IS NULL;
-      END;
-    `);
+          p.id,
+          p.product_id as produit_id,
+          p.user_id as utilisateur_id,
+          NULL as magasin_id,
+          p.category_id as categorie_id,
+          p.notes as titre,
+          p.price as prix_unitaire,
+          p.quantity as quantite,
+          (p.price * p.quantity) as prix_total,
+          p.date as date_achat,
+          p.month as mois,
+          p.notes,
+          p.store as magasin_nom
+        FROM purchase p
+        UNION ALL
+        SELECT
+          e.id + 1000000 as id,
+          NULL as produit_id,
+          e.user_id as utilisateur_id,
+          NULL as magasin_id,
+          e.category_id as categorie_id,
+          e.label as titre,
+          e.amount as prix_unitaire,
+          1 as quantite,
+          e.amount as prix_total,
+          e.date as date_achat,
+          e.month as mois,
+          e.notes,
+          '' as magasin_nom
+        FROM expense e;
+
+        CREATE TRIGGER IF NOT EXISTS trg_achats_insert
+        INSTEAD OF INSERT ON achats
+        BEGIN
+          INSERT INTO purchase (user_id, product_id, category_id, price, quantity, unit, store, date, month, notes)
+          SELECT
+            NEW.utilisateur_id,
+            NEW.produit_id,
+            COALESCE(NEW.categorie_id, (SELECT category_id FROM product WHERE id = NEW.produit_id), 1),
+            NEW.prix_unitaire,
+            COALESCE(NEW.quantite, 1),
+            COALESCE((SELECT unit FROM product WHERE id = NEW.produit_id), 'pièce'),
+            'Non précisé',
+            COALESCE(NEW.date_achat, date('now')),
+            NEW.mois,
+            COALESCE(NEW.notes, '')
+          WHERE NEW.produit_id IS NOT NULL;
+
+          INSERT INTO expense (user_id, category_id, amount, label, date, month, notes)
+          SELECT
+            NEW.utilisateur_id,
+            COALESCE(NEW.categorie_id, 9),
+            NEW.prix_total,
+            COALESCE(NULLIF(NEW.titre, ''), 'Dépense'),
+            COALESCE(NEW.date_achat, date('now')),
+            NEW.mois,
+            COALESCE(NEW.notes, '')
+          WHERE NEW.produit_id IS NULL;
+        END;
+      `);
+    }
 
     // 6. Vues monthly_budgets, category_budgets, reglages_points, alertes_log
     db.execSync(`
