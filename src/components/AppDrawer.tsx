@@ -91,8 +91,10 @@ export default function AppDrawer({ visible, onClose }: AppDrawerProps) {
     }
   }, [visible, slideAnim, overlayAnim]);
 
-  // Calcul de la translation selon la direction (RTL = depuis la droite)
-  const isRTL = I18nManager.isRTL;
+  // Calcul de la translation selon la direction :
+  // En Français et Anglais -> LTR strict (tiroir ancré à GAUCHE, glisse de gauche à droite)
+  // En Arabe -> RTL (tiroir ancré à DROITE, glisse de droite à gauche)
+  const isRTL = locale === 'ar';
   const translateX = slideAnim.interpolate({
     inputRange: [0, 1],
     outputRange: isRTL ? [DRAWER_WIDTH, 0] : [-DRAWER_WIDTH, 0],

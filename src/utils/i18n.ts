@@ -47,6 +47,52 @@ const PRE_LOGIN_LANG_KEY = 'masrouf_langue_pre_login';
 const traductions: Record<Langue, Record<string, string>> = { fr, ar, en };
 
 // ------------------------------------------------------------
+// DICTIONNAIRE MULTILINGUE DES CATÉGORIES SYSTÈME
+// RÔLE : Permet d'afficher les catégories dans la langue de l'utilisateur
+//        (ex: 'Alimentation' en FR -> 'Food' en EN -> 'تغذية' en AR)
+//        tout en conservant la cohérence avec la table SQLite 'category'.
+// ------------------------------------------------------------
+const NOMS_CATEGORIES_LOCALISES: Record<string, Record<Langue, string>> = {
+  'Alimentation': { fr: 'Alimentation', en: 'Food', ar: 'تغذية' },
+  'Vêtements et chaussures': { fr: 'Vêtements et chaussures', en: 'Clothing and shoes', ar: 'ملابس وأحذية' },
+  'Hygiène et soins': { fr: 'Hygiène et soins', en: 'Personal care', ar: 'عناية شخصية' },
+  'Maison et équipement': { fr: 'Maison et équipement', en: 'Home and equipment', ar: 'منزل وتجهيزات' },
+  'Matériel informatique': { fr: 'Matériel informatique', en: 'Computer equipment', ar: 'أجهزة إلكترونية' },
+  'Santé et médicaments': { fr: 'Santé et médicaments', en: 'Health and medicines', ar: 'صحة وأدوية' },
+  'Maison et entretien': { fr: 'Maison et entretien', en: 'Home and cleaning', ar: 'صيانة منزلية' },
+  'Beauté et coiffure': { fr: 'Beauté et coiffure', en: 'Beauty and hair', ar: 'تجميل وحلاقة' },
+  'Animaux': { fr: 'Animaux', en: 'Pets', ar: 'حيوانات أليفة' },
+
+  'Transport': { fr: 'Transport', en: 'Transport', ar: 'نقل ومواصلات' },
+  'Factures': { fr: 'Factures', en: 'Bills', ar: 'فواتير' },
+  'Éducation': { fr: 'Éducation', en: 'Education', ar: 'تعليم' },
+  'Loisirs': { fr: 'Loisirs', en: 'Entertainment', ar: 'ترفيه' },
+  'Enfants': { fr: 'Enfants', en: 'Children', ar: 'أطفال' },
+  'Aide familiale': { fr: 'Aide familiale', en: 'Family support', ar: 'مساعدة عائلية' },
+  'Épargne': { fr: 'Épargne', en: 'Savings', ar: 'ادخار' },
+  'Dons': { fr: 'Dons', en: 'Donations', ar: 'تبرعات' },
+  'Frais bancaires': { fr: 'Frais bancaires', en: 'Bank fees', ar: 'رسوم بنكية' },
+  'Autres': { fr: 'Autres', en: 'Other', ar: 'أخرى' },
+  'Restaurants et cafés': { fr: 'Restaurants et cafés', en: 'Restaurants and cafés', ar: 'مطاعم ومقاهي' },
+  'Téléphone et internet': { fr: 'Téléphone et internet', en: 'Phone and internet', ar: 'هاتف وإنترنت' },
+  'Loyer': { fr: 'Loyer', en: 'Rent', ar: 'إيجار' },
+  'Formations et cours en ligne': { fr: 'Formations et cours en ligne', en: 'Online courses and training', ar: 'دورات تدريبية' },
+  'Sport et abonnements': { fr: 'Sport et abonnements', en: 'Sports and subscriptions', ar: 'رياضة واشتراكات' },
+  'Voyages': { fr: 'Voyages', en: 'Travel', ar: 'سفر ورحلات' },
+  'Cadeaux et fêtes': { fr: 'Cadeaux et fêtes', en: 'Gifts and celebrations', ar: 'هدايا ومناسبات' },
+  'Dettes et remboursements': { fr: 'Dettes et remboursements', en: 'Debts and repayments', ar: 'ديون وتسديدات' },
+  'Imprévus': { fr: 'Imprévus', en: 'Unexpected', ar: 'طوارئ' },
+};
+
+export function traduireNomCategorie(nom: string, langue: Langue): string {
+  const match = NOMS_CATEGORIES_LOCALISES[nom];
+  if (match && match[langue]) {
+    return match[langue];
+  }
+  return nom;
+}
+
+// ------------------------------------------------------------
 // FONCTION : translate
 // RÔLE : Traduit une clé avec langue de secours française garantie
 //        et interpolation de paramètres {cle}.
@@ -169,6 +215,7 @@ export function useTranslation() {
 
   return {
     t: (cle: string, params?: Record<string, string | number>) => translate(cle, langueActive, params),
+    traduireCategorie: (nom: string) => traduireNomCategorie(nom, langueActive),
     langue: langueActive,
     isRTL: langueActive === 'ar',
     changerLangue,

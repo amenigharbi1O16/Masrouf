@@ -238,7 +238,7 @@
   "selectionnee": "Sélectionnée",
   "selectionner": "Sélectionner",
   "depenses": "Dépenses",
-  "verifier_categories": "Vérification de la sélection",
+  "verifier_categories": "Vérifier les {count} catégories",
   "pret_a_commencer": "Prêt à démarrer !",
   "votre_selection": "Vos enveloppes budgétaires sont prêtes.",
   "plan_vous_ressemble": "Un plan sur mesure pour vos dépenses quotidiennes.",

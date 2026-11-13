@@ -42,6 +42,7 @@ import {
   brouillonPeriodePrecedente,
   getEnveloppesBudget,
   canDecreaseBudget,
+  getUserCategories,
   Categorie,
 } from '../db/queries';
 
@@ -72,7 +73,7 @@ function versIso(date: Date): string {
 
 export default function BudgetMoisScreen() {
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const { t, traduireCategorie } = useTranslation();
   const params = useLocalSearchParams<{ copier?: string }>();
 
   const maintenant = new Date();
@@ -146,8 +147,19 @@ export default function BudgetMoisScreen() {
       setBudgetTotalTexte('');
 
       const toutesCats = getAllCategories(true);
-      const defauts = toutesCats.filter((c) => c.est_defaut === 1);
-      const envsInit = (defauts.length > 0 ? defauts : toutesCats.slice(0, 5)).map((c) => ({
+      // Récupération des catégories choisies par l'utilisateur lors de l'onboarding (persistées en SQLite)
+      const userSelectedCatIds = user ? getUserCategories(user.id) : [];
+      let catsChoisies: Categorie[] = [];
+
+      if (userSelectedCatIds.length > 0) {
+        catsChoisies = toutesCats.filter((c) => userSelectedCatIds.includes(c.id));
+      }
+      if (catsChoisies.length === 0) {
+        const defauts = toutesCats.filter((c) => c.est_defaut === 1);
+        catsChoisies = defauts.length > 0 ? defauts : toutesCats.slice(0, 5);
+      }
+
+      const envsInit = catsChoisies.map((c) => ({
         categorie_id: c.id,
         categorie_nom: c.nom,
         categorie_icone: c.icone,
@@ -391,7 +403,7 @@ export default function BudgetMoisScreen() {
               {enveloppes.map((env) => (
                 <View key={env.categorie_id} style={styles.inputCard}>
                   <Text style={styles.inputLabel}>
-                    {env.categorie_icone} {env.categorie_nom} · DT
+                    {env.categorie_icone} {traduireCategorie(env.categorie_nom)} · DT
                   </Text>
                   <TextInput
                     style={styles.textInput}

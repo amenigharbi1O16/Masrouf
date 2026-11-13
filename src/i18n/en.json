@@ -238,7 +238,7 @@
   "selectionnee": "Selected",
   "selectionner": "Select",
   "depenses": "Expenses",
-  "verifier_categories": "Review selection",
+  "verifier_categories": "Review {count} categories",
   "pret_a_commencer": "Ready to get started!",
   "votre_selection": "Your budget envelopes are set up.",
   "plan_vous_ressemble": "A customized plan for your daily expenses.",

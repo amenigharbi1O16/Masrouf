@@ -238,7 +238,7 @@
   "selectionnee": "محددة",
   "selectionner": "تحديد",
   "depenses": "المصاريف",
-  "verifier_categories": "مراجعة الاختيار",
+  "verifier_categories": "مراجعة {count} فئات",
   "pret_a_commencer": "جاهز للبدء!",
   "votre_selection": "أظرف ميزانيتك أصبحت جاهزة.",
   "plan_vous_ressemble": "خطة مصممة خصيصاً لمصاريفك اليومية.",

@@ -32,7 +32,7 @@ import { Theme } from '../constants/theme';
 
 export default function OnboardingScreen() {
   const { user, refreshUser } = useAuth();
-  const { t } = useTranslation();
+  const { t, traduireCategorie } = useTranslation();
 
   const [etape, setEtape] = useState<number>(1);
   const [categories, setCategories] = useState<Categorie[]>([]);
@@ -41,21 +41,31 @@ export default function OnboardingScreen() {
   useEffect(() => {
     const toutes = getAllCategories(true);
     setCategories(toutes);
+    // Catégories recommandées par défaut
     const recommandees = toutes.filter((c) => c.est_defaut === 1).map((c) => c.id);
     setSelectionnees(recommandees);
   }, []);
 
+  // Sélection ou désélection d'une catégorie
   function toggleCategorie(id: number) {
     setSelectionnees((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }
 
+  // Suppression directe depuis l'écran de récapitulation (Étape 3)
+  function supprimerDeLaSelection(id: number) {
+    setSelectionnees((prev) => prev.filter((x) => x !== id));
+  }
+
   function handleSuivant() {
     if (etape === 1) { setEtape(2); return; }
     if (etape === 2) {
       if (selectionnees.length === 0) {
-        Alert.alert(t('selection_requise') ?? 'Sélection requise', t('selectionner_categorie') ?? 'Veuillez sélectionner au moins une catégorie.');
+        Alert.alert(
+          t('selection_requise') ?? 'Sélection requise',
+          t('selectionner_categorie') ?? 'Veuillez sélectionner au moins une catégorie.'
+        );
         return;
       }
       if (user) setUserCategories(user.id, selectionnees);
@@ -66,8 +76,20 @@ export default function OnboardingScreen() {
 
   async function handleTerminer() {
     if (!user) return;
+    if (selectionnees.length === 0) {
+      Alert.alert(
+        t('selection_requise') ?? 'Sélection requise',
+        t('selectionner_categorie') ?? 'Veuillez sélectionner au moins une catégorie avant de continuer.'
+      );
+      setEtape(2);
+      return;
+    }
+    // Enregistre les catégories sélectionnées dans SQLite user_category
+    setUserCategories(user.id, selectionnees);
+    // Marque l'onboarding comme terminé (onboarding_done = 1)
     updateUserOnboarding(user.id);
     await refreshUser();
+    // Accès à l'accueil où toutes les catégories et le budget sont disponibles
     router.replace('/(tabs)');
   }
 
@@ -98,8 +120,9 @@ export default function OnboardingScreen() {
         ====================================================== */}
         {etape === 1 && (
           <>
-            {/* En-tête */}
+            {/* En-tête avec ☰ hamburger + Titre + Profil 👤 */}
             <View style={styles.appHeader}>
+              <Text style={styles.hamburger}>☰</Text>
               <Text style={styles.appHeaderTitle}>{t('bienvenue') ?? 'Bienvenue'}</Text>
               <Text style={styles.profileIcon}>👤</Text>
             </View>
@@ -152,7 +175,9 @@ export default function OnboardingScreen() {
         ====================================================== */}
         {etape === 2 && (
           <>
+            {/* En-tête : ☰ Hamburger + Your categories + Profil 👤 */}
             <View style={styles.appHeader}>
+              <Text style={styles.hamburger}>☰</Text>
               <Text style={styles.appHeaderTitle}>{t('vos_categories') ?? 'Vos catégories'}</Text>
               <Text style={styles.profileIcon}>👤</Text>
             </View>
@@ -161,7 +186,7 @@ export default function OnboardingScreen() {
             <Text style={styles.mainTitle}>{t('quotidien_organise') ?? 'Le quotidien, bien organisé.'}</Text>
             <Text style={styles.mainSub}>{t('modifier_plus_tard') ?? 'Vous pouvez les modifier à tout moment.'}</Text>
 
-            {/* Section Produits */}
+            {/* Section 1 : Produits */}
             <Text style={styles.catSectionTitle}>{t('produits') ?? 'Produits'}</Text>
             {produits.map((c) => {
               const checked = selectionnees.includes(c.id);
@@ -172,16 +197,16 @@ export default function OnboardingScreen() {
                   onPress={() => toggleCategorie(c.id)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.catName}>{c.nom}</Text>
+                  <Text style={styles.catName}>{traduireCategorie(c.nom)}</Text>
                   <Text style={[styles.catAction, checked && styles.catActionChecked]}>
-                    {checked ? `✓ ${t('selectionnee') ?? 'Sélectionnée'}` : t('selectionner') ?? 'Sélectionner'}
+                    {checked ? `✓ ${t('selectionnee') ?? 'Selected'}` : (t('selectionner') ?? 'Select')}
                   </Text>
                 </TouchableOpacity>
               );
             })}
 
-            {/* Section Dépenses */}
-            <Text style={[styles.catSectionTitle, { marginTop: 20 }]}>{t('depenses') ?? 'Dépenses'}</Text>
+            {/* Section 2 : Dépenses */}
+            <Text style={[styles.catSectionTitle, { marginTop: 24 }]}>{t('depenses') ?? 'Dépenses'}</Text>
             {depenses.map((c) => {
               const checked = selectionnees.includes(c.id);
               return (
@@ -191,28 +216,31 @@ export default function OnboardingScreen() {
                   onPress={() => toggleCategorie(c.id)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.catName}>{c.nom}</Text>
+                  <Text style={styles.catName}>{traduireCategorie(c.nom)}</Text>
                   <Text style={[styles.catAction, checked && styles.catActionChecked]}>
-                    {checked ? `✓ ${t('selectionnee') ?? 'Sélectionnée'}` : t('selectionner') ?? 'Sélectionner'}
+                    {checked ? `✓ ${t('selectionnee') ?? 'Selected'}` : (t('selectionner') ?? 'Select')}
                   </Text>
                 </TouchableOpacity>
               );
             })}
 
+            {/* Bouton de confirmation : Review X categories */}
             <TouchableOpacity style={styles.primaryBtn} onPress={handleSuivant}>
               <Text style={styles.primaryBtnText}>
-                {t('verifier_categories') ?? `Vérifier les ${selectionnees.length} catégories`}
+                {t('verifier_categories', { count: selectionnees.length }) ?? `Vérifier les ${selectionnees.length} catégories`}
               </Text>
             </TouchableOpacity>
           </>
         )}
 
         {/* ======================================================
-            ÉTAPE 3 : RÉSUMÉ (Figma 06)
+            ÉTAPE 3 : RÉSUMÉ & CONFIRMATION (Figma 06)
         ====================================================== */}
         {etape === 3 && (
           <>
+            {/* En-tête : ☰ Hamburger + Prêt à commencer + Profil 👤 */}
             <View style={styles.appHeader}>
+              <Text style={styles.hamburger}>☰</Text>
               <Text style={styles.appHeaderTitle}>{t('pret_a_commencer') ?? 'Prêt à commencer'}</Text>
               <Text style={styles.profileIcon}>👤</Text>
             </View>
@@ -223,21 +251,38 @@ export default function OnboardingScreen() {
               {`${detailsSelectionnes.length} ${t('categories_selectionnees') ?? 'catégories sélectionnées'}. ${t('pas_besoin_budget') ?? 'Pas encore besoin de budget.'}`}
             </Text>
 
-            {/* Liste des catégories sélectionnées */}
+            {/* Liste récapitulative des catégories sélectionnées avec option de suppression directe */}
             {detailsSelectionnes.map((c) => (
               <View key={c.id} style={styles.selectedCatCard}>
                 <View style={styles.selectedCatIcon}>
                   <Text style={{ fontSize: 18 }}>{c.icone}</Text>
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.selectedCatName}>{c.nom}</Text>
+                  <Text style={styles.selectedCatName}>{traduireCategorie(c.nom)}</Text>
                   <Text style={styles.selectedCatType}>
-                    {c.type === 'product' ? (t('categorie_produit') ?? 'Catégorie de produit') : (t('categorie_depense') ?? 'Catégorie de dépense')}
+                    {c.type === 'product'
+                      ? (t('categorie_produit') ?? 'Catégorie de produit')
+                      : (t('categorie_depense') ?? 'Catégorie de dépense')}
                   </Text>
                 </View>
-                <Text style={{ color: Theme.colors.deepGreen, fontSize: 16 }}>✓</Text>
+                {/* Bouton pour retirer directement de la sélection */}
+                <TouchableOpacity
+                  onPress={() => supprimerDeLaSelection(c.id)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.deleteActionBtn}
+                >
+                  <Text style={styles.deleteActionText}>✕</Text>
+                </TouchableOpacity>
               </View>
             ))}
+
+            {detailsSelectionnes.length === 0 && (
+              <View style={styles.emptyWarningCard}>
+                <Text style={styles.emptyWarningText}>
+                  {t('selectionner_categorie') ?? 'Toutes les catégories ont été retirées. Veuillez en choisir au moins une.'}
+                </Text>
+              </View>
+            )}
 
             {/* Bannière mint */}
             <View style={styles.mintBanner}>
@@ -252,12 +297,14 @@ export default function OnboardingScreen() {
               </View>
             </View>
 
+            {/* Bouton primaire : Confirmer et entrer dans l'application */}
             <TouchableOpacity style={styles.primaryBtn} onPress={handleTerminer}>
               <Text style={styles.primaryBtnText}>
                 {t('acceder_accueil') ?? 'Accéder à mon accueil'}
               </Text>
             </TouchableOpacity>
 
+            {/* Bouton secondaire : Revenir en arrière pour modifier/ajouter */}
             <TouchableOpacity style={styles.secondaryBtn} onPress={handleRetourSelection}>
               <Text style={styles.secondaryBtnText}>
                 {t('modifier_selection') ?? 'Modifier la sélection'}
@@ -302,6 +349,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  hamburger: {
+    fontSize: 22,
+    color: Theme.colors.ink,
+    marginRight: 12,
   },
   appHeaderTitle: {
     flex: 1,
@@ -436,6 +488,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Theme.colors.muted,
     marginTop: 2,
+  },
+  deleteActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteActionText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  emptyWarningCard: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#F87171',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  emptyWarningText: {
+    color: '#991B1B',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 
   // Bannière mint
