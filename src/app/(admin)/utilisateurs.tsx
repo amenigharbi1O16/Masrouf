@@ -51,15 +51,42 @@ import { useTranslation } from '../../utils/i18n';
 import { useAdminDrawer } from './_layout';
 import AppHeader from '../../components/AppHeader';
 
+// ============================================================
+// COMPOSANT PRINCIPAL : AdminUtilisateursScreen
+// BUT       : Écran d'administration pour la gestion des utilisateurs de Masrouf.
+// MISSION DANS L'APPLICATION :
+//             1. Lister tous les comptes enregistrés dans la base SQLite locale.
+//             2. Préserver strictement la vie privée des utilisateurs (anonymisation des ID et masquage complet des finances).
+//             3. Permettre la recherche par identifiant de compte décorrélé (#1001, #1002...).
+//             4. Suspendre ou réactiver un compte utilisateur (blocage immédiat de session).
+//             5. Réinitialiser le mot de passe d'un utilisateur bloqué via un mot de passe temporaire aléatoire.
+// CE QUI S'AFFICHE SUR L'ÉCRAN :
+//             - En-tête avec bouton menu tiroir (☰) et titre "Gestion des utilisateurs".
+//             - Carte de recherche blanche avec champ de saisie d'identifiant.
+//             - Compteur dynamique : "X comptes   Y actifs".
+//             - Liste de cartes de comptes anonymisées (Compte #1003, date d'inscription, pastille de statut vert/rouge).
+//             - Bouton primaire : "Gérer le compte #XXXX" (basculer Actif / Suspendu).
+//             - Bouton secondaire : "Réinitialiser le mot de passe temporaire".
+//             - Note légale de confidentialité en bas d'écran.
+// ============================================================
 export default function AdminUtilisateursScreen() {
-  const { user: adminConnecte } = useAuth();
-  const { t } = useTranslation();
-  const { ouvrirDrawer } = useAdminDrawer();
+  const { user: adminConnecte } = useAuth(); // Récupère l'admin en cours pour vérifier ses droits
+  const { t } = useTranslation();            // Traduction multilingue FR / AR / EN
+  const { ouvrirDrawer } = useAdminDrawer(); // Permet d'ouvrir le tiroir latéral admin
 
+  // États locaux
   const [utilisateurs, setUtilisateurs] = useState<CompteAdmin[]>([]);
   const [recherche, setRecherche] = useState<string>('');
   const [compteSelectionne, setCompteSelectionne] = useState<CompteAdmin | null>(null);
 
+  // ============================================================
+  // FONCTION : recharger
+  // BUT      : Rafraîchir la liste des comptes depuis la base SQLite.
+  // MISSION  : Interroge la table 'user' via getAllUsersAdmin() sans jamais extraire les données financières.
+  // CE QUI S'AFFICHE SUR L'ÉCRAN :
+  //            - Met à jour le nombre de comptes affichés dans le compteur.
+  //            - Actualise la liste des cartes d'utilisateurs et leurs statuts.
+  // ============================================================
   const recharger = useCallback(() => {
     const list = getAllUsersAdmin(adminConnecte?.id);
     setUtilisateurs(list);
@@ -68,12 +95,13 @@ export default function AdminUtilisateursScreen() {
     }
   }, [adminConnecte?.id, compteSelectionne]);
 
+  // useFocusEffect : recharge automatiquement la liste dès que l'écran devient actif
   useFocusEffect(recharger);
 
-  // Filtrage des comptes
+  // Filtrage en mémoire selon le terme saisi dans la barre de recherche
   const utilisateursFiltres = utilisateurs.filter((u) => {
     const terme = recherche.toLowerCase().trim();
-    const compteIdStr = String(u.id + 1000);
+    const compteIdStr = String(u.id + 1000); // ID décorrélé (+1000) pour l'anonymisation
     return (
       !terme ||
       compteIdStr.includes(terme) ||
@@ -82,17 +110,31 @@ export default function AdminUtilisateursScreen() {
     );
   });
 
+  // Nombre de comptes actuellement actifs
   const nbActifs = utilisateurs.filter((u) => u.is_active === 1).length;
 
-  // Action : Basculer Actif / Suspendu (Figma 37)
+  // ============================================================
+  // FONCTION : handleBasculerStatut
+  // BUT      : Inverser le statut d'un compte (Actif <-> Suspendu).
+  // MISSION  : 1. Empêcher l'administrateur de suspendre son propre compte (auto-verrouillage).
+  //            2. Empêcher de suspendre le dernier administrateur actif du système.
+  //            3. Mettre à jour la colonne is_active dans SQLite.
+  //            4. Déconnecter automatiquement l'utilisateur à sa prochaine action via refreshUser().
+  // PARAMÈTRE: u (CompteAdmin) : l'utilisateur cible à modifier.
+  // CE QUI S'AFFICHE SUR L'ÉCRAN :
+  //            - Boîte de dialogue Alert.alert confirmant le changement de statut.
+  //            - La pastille du compte bascule immédiatement de "Actif" (vert) à "Suspendu" (rouge) ou inversement.
+  // ============================================================
   function handleBasculerStatut(u: CompteAdmin) {
     if (!adminConnecte) return;
 
+    // Règle de sécurité : un admin ne peut pas se suspendre lui-même
     if (u.id === adminConnecte.id) {
       Alert.alert('Action refusée', t('impossible_action_soi_meme') ?? 'Action impossible sur votre propre compte.');
       return;
     }
 
+    // Règle de sécurité : il doit toujours rester au moins 1 administrateur actif
     if (u.role === 'admin' && u.is_active === 1) {
       const nbAdminsActifs = countActiveAdmins();
       if (nbAdminsActifs <= 1) {
@@ -103,7 +145,7 @@ export default function AdminUtilisateursScreen() {
 
     const nouveauStatut = u.is_active === 1 ? false : true;
     updateUserActiveStatus(u.id, nouveauStatut, adminConnecte.id);
-    recharger();
+    recharger(); // Réactualise la liste affichée
 
     Alert.alert(
       'Statut mis à jour',
@@ -111,13 +153,24 @@ export default function AdminUtilisateursScreen() {
     );
   }
 
-  // Action : Mot de passe temporaire (Figma 38)
+  // ============================================================
+  // FONCTION : handleReinitialiserMdp
+  // BUT      : Réinitialiser le mot de passe d'un utilisateur en générant un mot de passe temporaire.
+  // MISSION  : 1. Générer une chaîne aléatoire cryptographique de 8 caractères (generateTemporaryPassword).
+  //            2. Hacher le mot de passe avec PBKDF2 (createPasswordHash).
+  //            3. Enregistrer dans SQLite avec must_change_password = 1.
+  //            4. Afficher le mot de passe à l'administrateur pour communication à l'intéressé.
+  // PARAMÈTRE: u (CompteAdmin) : l'utilisateur dont le mot de passe doit être régénéré.
+  // CE QUI S'AFFICHE SUR L'ÉCRAN :
+  //            - Boîte modale Alert.alert affichant la clé temporaire en clair (ex: 🔑 K8m#P2w9).
+  //            - Indique qu'un changement immédiat sera exigé à la prochaine connexion.
+  // ============================================================
   async function handleReinitialiserMdp(u: CompteAdmin) {
-    const mdpTemporaire = generateTemporaryPassword(8);
-    const hash = await createPasswordHash(mdpTemporaire);
+    const mdpTemporaire = generateTemporaryPassword(8); // Génère 8 caractères aléatoires
+    const hash = await createPasswordHash(mdpTemporaire); // Hash sécurisé PBKDF2
 
-    resetUserPassword(u.id, hash, adminConnecte?.id);
-    recharger();
+    resetUserPassword(u.id, hash, adminConnecte?.id); // Enregistre dans SQLite
+    recharger(); // Réactualise la vue
 
     Alert.alert(
       t('mdp_temporaire_titre') ?? 'Mot de passe temporaire généré',

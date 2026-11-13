@@ -33,43 +33,80 @@ import { useTranslation, Langue } from '../utils/i18n';
 import { Theme } from '../constants/theme';
 
 export default function LoginScreen() {
+  // ── HOOKS D'AUTHENTIFICATION ET DE TRADUCTION ──
+  // useAuth() : Fournit la méthode login() pour interroger la base SQLite locale
   const { login } = useAuth();
+  // useTranslation() : Fournit la fonction t() pour la localisation dynamique (FR/AR/EN)
+  // langue : code langue actif ('fr', 'ar', 'en')
+  // changerLangue : bascule instantanément l'interface et la direction d'écriture (RTL/LTR)
   const { t, langue, changerLangue } = useTranslation();
 
+  // ── ÉTATS LOCAUX DU COMPOSANT (REACT STATE) ──
+  // email : stocke la chaîne saisie dans le champ e-mail
   const [email, setEmail] = useState('');
+  // motDePasse : stocke le mot de passe masqué saisi par l'utilisateur
   const [motDePasse, setMotDePasse] = useState('');
+  // erreur : contient le message d'erreur à afficher en cas de saisie invalide ou d'échec
   const [erreur, setErreur] = useState('');
+  // enChargement : indique si la vérification SQLite/PBKDF2 est en cours (affiche un spinner)
   const [enChargement, setEnChargement] = useState(false);
 
+  // ============================================================
+  // FONCTION : handleConnexion
+  // BUT      : Valider le formulaire et déclencher la procédure de connexion.
+  // MISSION  : 1. Vérifier que les champs obligatoires ne sont pas vides.
+  //            2. Afficher un indicateur visuel de chargement pour rassurer l'utilisateur.
+  //            3. Appeler la fonction login() qui vérifie l'e-mail et le mot de passe (PBKDF2) dans SQLite.
+  //            4. Si succès : la session est sauvée dans SecureStore et NavigationGuard opère la redirection.
+  //            5. Si échec : intercepter l'erreur et afficher un message clair et traduit.
+  // AFFICHAGE SUR L'ÉCRAN :
+  //            - Si un champ est vide : affiche un bandeau rouge d'erreur avec le texte "Veuillez remplir tous les champs".
+  //            - Pendant la vérification : transforme le texte du bouton en un spinner circulaire blanc (ActivityIndicator).
+  //            - Si identifiants faux : affiche un bandeau rouge "Identifiants incorrects" ou "Compte suspendu".
+  // ============================================================
   async function handleConnexion() {
-    setErreur('');
+    setErreur(''); // Réinitialise l'affichage des erreurs précédentes
+    // Vérification de la présence des deux champs obligatoires
     if (!email.trim() || !motDePasse) {
-      setErreur(t('erreur_champs_requis'));
-      return;
+      setErreur(t('erreur_champs_requis')); // Affiche le message d'erreur sur l'écran
+      return; // Interrompt l'exécution
     }
-    setEnChargement(true);
+    setEnChargement(true); // Active l'affichage du spinner sur le bouton principal
     try {
+      // Appel asynchrone de la vérification cryptographique dans SQLite
       const res = await login(email.trim(), motDePasse);
       if (!res.success) {
+        // En cas de refus, affiche le texte d'erreur localisé sur l'écran
         setErreur(t(res.errorKey ?? 'erreur_connexion'));
       }
     } catch {
+      // Erreur imprévue : affiche un message de secours générique
       setErreur(t('erreur_connexion'));
     } finally {
+      // Dans tous les cas, désactive le spinner pour réafficher le texte du bouton
       setEnChargement(false);
     }
   }
 
-  // Remplissage rapide pour les tests de soutenance
+  // ============================================================
+  // FONCTION : remplirIdentifiants
+  // BUT      : Remplissage instantané des comptes de test pour la soutenance.
+  // MISSION  : Éviter les fautes de frappe sur mobile pendant la démonstration devant le professeur.
+  // PARAMÈTRE: role ('user' | 'admin') : détermine quel jeu d'identifiants pré-remplir.
+  // AFFICHAGE SUR L'ÉCRAN :
+  //            - Met à jour immédiatement le texte visible dans le champ e-mail.
+  //            - Met à jour le champ mot de passe sous forme de puces masquées.
+  //            - Efface tout message d'erreur préalablement affiché.
+  // ============================================================
   function remplirIdentifiants(role: 'user' | 'admin') {
     if (role === 'admin') {
-      setEmail('admin@masrouf.tn');
-      setMotDePasse('admin123');
+      setEmail('admin@masrouf.tn'); // Affiche l'adresse admin dans le champ e-mail
+      setMotDePasse('admin123');    // Remplit le mot de passe de l'administrateur
     } else {
-      setEmail('user@masrouf.tn');
-      setMotDePasse('user123');
+      setEmail('user@masrouf.tn');  // Affiche l'adresse utilisateur dans le champ e-mail
+      setMotDePasse('user123');     // Remplit le mot de passe utilisateur
     }
-    setErreur('');
+    setErreur(''); // Réinitialise l'erreur visuelle
   }
 
   return (

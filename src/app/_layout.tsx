@@ -20,17 +20,34 @@ import { initDatabase } from '../db/database';
 // Contexte d'authentification
 import { AuthProvider, useAuth } from '../utils/auth';
 
-// ------------------------------------------------------------
-// COMPOSANT : NavigationGuard (Pare-feu applicatif)
-// ------------------------------------------------------------
+// ============================================================
+// COMPOSANT : NavigationGuard (Garde de Navigation & Pare-feu Applicatif RBAC)
+// BUT       : Contrôler automatiquement et en temps réel les accès aux routes
+//             selon le statut d'authentification et le rôle (admin vs user).
+// MISSION DANS L'APPLICATION :
+//             1. Bloquer l'accès à l'application tant que la session n'est pas restaurée.
+//             2. Rediriger tout visiteur non connecté vers /login.
+//             3. Forcer le changement de mot de passe si must_change_password === 1.
+//             4. Interdire formellement aux utilisateurs ('user') l'accès à l'espace admin.
+//             5. Interdire formellement aux administrateurs ('admin') l'accès aux onglets utilisateurs personnels.
+//             6. Diriger vers l'onboarding au 1er démarrage si non complété.
+// CE QUI S'AFFICHE SUR L'ÉCRAN :
+//             - Pendant le chargement initial (isLoading === true) : affiche un écran
+//               blanc avec un grand spinner d'attente bleu (ActivityIndicator) centré.
+//             - Une fois la session déterminée : ne rend aucun élément visuel direct (null),
+//               mais opère la redirection automatique vers l'écran adéquat.
+// ============================================================
 function NavigationGuard() {
+  // Récupère l'utilisateur actuellement connecté et l'état de chargement initial
   const { user, isLoading } = useAuth();
+  // Récupère le segment d'URL actif (ex: ['login'], ['(tabs)', 'index'], etc.)
   const segments = useSegments();
 
   useEffect(() => {
-    // Si la session est en cours de restauration depuis SecureStore, on attend
+    // Si la session est en cours de restauration depuis SecureStore, on attend sans rediriger
     if (isLoading) return;
 
+    // Détermine le premier segment de route pour identifier l'espace actuel
     const premierSegment = segments[0] as string | undefined;
 
     const estSurLogin = premierSegment === 'login';
@@ -40,7 +57,7 @@ function NavigationGuard() {
     const estSurTabs = premierSegment === '(tabs)';
     const estSurAdmin = premierSegment === '(admin)';
 
-    // CAS 1 : Utilisateur NON CONNECTÉ
+    // CAS 1 : Utilisateur NON CONNECTÉ -> Redirection immédiate vers /login
     if (!user) {
       if (!estSurLogin && !estSurInscription) {
         router.replace('/login');
@@ -48,7 +65,7 @@ function NavigationGuard() {
       return;
     }
 
-    // CAS 2 : MOT DE PASSE TEMPORAIRE -> Changement obligatoire forcé
+    // CAS 2 : MOT DE PASSE TEMPORAIRE -> Redirection obligatoire vers /changer-mot-de-passe
     if (user.must_change_password === 1) {
       if (!estSurChangerMdp) {
         router.replace('/changer-mot-de-passe');
@@ -58,35 +75,36 @@ function NavigationGuard() {
 
     // CAS 3 : UTILISATEUR NORMAL (rôle 'user')
     if (user.role === 'user') {
-        // 3a. Onboarding non complété -> redirection forcée vers l'assistant
-        if ((user.onboarding_done ?? 0) === 0) {
-          if (!estSurOnboarding) {
-            router.replace('/onboarding' as any);
-          }
-          return;
-        }
-
-        // 3b. Onboarding déjà complété -> Bloque l'accès à l'espace admin, onboarding et pages d'auth
-        if (estSurAdmin || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
-          router.replace('/(tabs)');
+      // 3a. Onboarding non complété -> redirection forcée vers l'assistant en 3 étapes
+      if ((user.onboarding_done ?? 0) === 0) {
+        if (!estSurOnboarding) {
+          router.replace('/onboarding' as any);
         }
         return;
       }
 
-      // CAS 4 : ADMINISTRATEUR (rôle 'admin')
-      if (user.role === 'admin') {
-        // Bloque l'accès aux onglets utilisateurs et aux pages d'auth
-          if (estSurTabs || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
-            router.replace('/(admin)/dashboard' as any);
-          }
-          return;
-        }
-      }, [user, isLoading, segments]);
+      // 3b. Onboarding déjà complété -> Bloque l'accès à l'espace admin et aux pages d'authentification
+      if (estSurAdmin || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
+        router.replace('/(tabs)');
+      }
+      return;
+    }
+
+    // CAS 4 : ADMINISTRATEUR (rôle 'admin')
+    if (user.role === 'admin') {
+      // Bloque l'accès aux onglets utilisateurs et aux pages d'auth, redirige vers le dashboard admin
+      if (estSurTabs || estSurLogin || estSurInscription || estSurChangerMdp || estSurOnboarding) {
+        router.replace('/(admin)/dashboard' as any);
+      }
+      return;
+    }
+  }, [user, isLoading, segments]);
 
   // Écran d'attente lors de la restauration de la session matérielle
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
+        {/* Spinner circulaire centré pendant la lecture d'Expo SecureStore */}
         <ActivityIndicator size="large" color="#2563EB" />
       </View>
     );
@@ -95,9 +113,17 @@ function NavigationGuard() {
   return null;
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // COMPOSANT PRINCIPAL : RootLayout
-// ------------------------------------------------------------
+// BUT       : Racine absolue de l'arborescence des composants React de l'application.
+// MISSION DANS L'APPLICATION :
+//             1. Initialiser le schéma relationnel SQLite via initDatabase() au premier montage.
+//             2. Envelopper toute l'application dans AuthProvider pour rendre l'état utilisateur accessible partout.
+//             3. Intégrer le pare-feu NavigationGuard.
+//             4. Déclarer la pile Stack de navigation Expo Router sans header natif redondant.
+// CE QUI S'AFFICHE SUR L'ÉCRAN :
+//             - Sert de conteneur d'affichage parent pour toutes les vues, routes et modales de Masrouf.
+// ============================================================
 export default function RootLayout() {
   useEffect(() => {
     try {
