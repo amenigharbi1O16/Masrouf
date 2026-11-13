@@ -374,7 +374,7 @@ export function resetUserPassword(
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
        COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
-       COALESCE(m.nom, 'Non précisé')      as magasin_nom
+       COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
      FROM achats a
      LEFT JOIN produits p   ON a.produit_id   = p.id
      LEFT JOIN categories cp ON p.categorie_id = cp.id
@@ -396,7 +396,7 @@ export function resetUserPassword(
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
        COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
-       COALESCE(m.nom, 'Non précisé')      as magasin_nom
+       COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
      FROM achats a
      LEFT JOIN produits p   ON a.produit_id   = p.id
      LEFT JOIN categories cp ON p.categorie_id = cp.id
@@ -646,56 +646,201 @@ export function resetUserPassword(
   // SECTION E — BUDGETS PAR ENVELOPPES
   // ============================================================
 
+  export type BudgetPeriode = {
+    id: number;
+    user_id: number;
+    start_date: string;
+    end_date: string;
+    total: number;
+    is_evaluated: number;
+    succeeded: number;
+  };
+
+  export type LigneEnveloppe = {
+    categorie_id: number;
+    montant: number;
+    pourcentage: number;
+  };
+
+  export type BrouillonBudget = {
+    total: number;
+    enveloppes: LigneEnveloppe[];
+    source_start: string;
+    source_end: string;
+  };
+
+  function dernierJourDuMois(mois: string): string {
+    const [annee, m] = mois.split('-').map(Number);
+    const fin = new Date(annee, m, 0).getDate();
+    return `${mois}-${String(fin).padStart(2, '0')}`;
+  }
+
+  function lireBudget(row: {
+    id: number;
+    user_id: number;
+    start_date: string;
+    end_date: string;
+    total: number;
+    is_evaluated: number;
+    succeeded: number;
+  } | null): BudgetPeriode | null {
+    if (!row) return null;
+    return row;
+  }
+
+  // Budget dont la période contient ce jour. Filtré par user_id.
+  export function getBudgetCouvrant(userId: number, isoDate: string): BudgetPeriode | null {
+    return lireBudget(
+      db.getFirstSync(
+        `SELECT id, user_id, start_date, end_date, total, is_evaluated, succeeded
+         FROM budget
+         WHERE user_id = ? AND start_date <= ? AND end_date >= ?
+         ORDER BY start_date DESC
+         LIMIT 1`,
+        [userId, isoDate, isoDate]
+      ) ?? null
+    );
+  }
+
   export function getMonthlyBudget(
     userId: number,
     mois: string
-  ): { id: number; montant_total: number; est_evalue: number } | null {
-    return (
-      db.getFirstSync<{ id: number; montant_total: number; est_evalue: number }>(
-        `SELECT id, montant_total, est_evalue
-       FROM monthly_budgets
-       WHERE utilisateur_id = ? AND mois = ?`,
-        [userId, mois]
-      ) ?? null
+  ): { id: number; montant_total: number; est_evalue: number; start_date: string; end_date: string } | null {
+    const debut = `${mois}-01`;
+    const fin = dernierJourDuMois(mois);
+    const row = db.getFirstSync<{
+      id: number;
+      total: number;
+      is_evaluated: number;
+      start_date: string;
+      end_date: string;
+    }>(
+      `SELECT id, total, is_evaluated, start_date, end_date
+       FROM budget
+       WHERE user_id = ?
+         AND start_date <= ?
+         AND end_date >= ?
+       ORDER BY start_date DESC
+       LIMIT 1`,
+      [userId, fin, debut]
     );
+    if (!row) return null;
+    return {
+      id: row.id,
+      montant_total: row.total,
+      est_evalue: row.is_evaluated,
+      start_date: row.start_date,
+      end_date: row.end_date,
+    };
+  }
+
+  export type ResultatBudget =
+    | { ok: true; id: number }
+    | { ok: false; code: 'dates' | 'chevauchement' | 'total' | 'somme' };
+
+  /**
+   * Enregistre une période. Ne copie jamais une période toute seule :
+   * l'appelant doit avoir montré les montants et attendu le bouton.
+   */
+  export function enregistrerBudget(
+    userId: number,
+    startDate: string,
+    endDate: string,
+    total: number,
+    enveloppes: LigneEnveloppe[],
+    budgetId?: number
+  ): ResultatBudget {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return { ok: false, code: 'dates' };
+    }
+    if (endDate < startDate) return { ok: false, code: 'dates' };
+    if (!(total > 0)) return { ok: false, code: 'total' };
+
+    const somme = enveloppes.reduce((s, e) => s + (e.montant > 0 ? e.montant : 0), 0);
+    if (somme - total > 0.0005) return { ok: false, code: 'somme' };
+
+    const autre = db.getFirstSync<{ id: number }>(
+      `SELECT id FROM budget
+       WHERE user_id = ?
+         AND id != ?
+         AND start_date <= ?
+         AND end_date >= ?`,
+      [userId, budgetId ?? -1, endDate, startDate]
+    );
+    if (autre) return { ok: false, code: 'chevauchement' };
+
+    let id = budgetId ?? 0;
+    if (budgetId) {
+      db.runSync(
+        `UPDATE budget SET start_date = ?, end_date = ?, total = ? WHERE id = ? AND user_id = ?`,
+        [startDate, endDate, total, budgetId, userId]
+      );
+    } else {
+      const res = db.runSync(
+        `INSERT INTO budget (user_id, start_date, end_date, total) VALUES (?, ?, ?, ?)`,
+        [userId, startDate, endDate, total]
+      );
+      id = res.lastInsertRowId;
+    }
+
+    db.runSync(`DELETE FROM envelope WHERE budget_id = ?`, [id]);
+    for (const env of enveloppes) {
+      if (env.montant > 0) {
+        db.runSync(
+          `INSERT INTO envelope (budget_id, category_id, amount) VALUES (?, ?, ?)`,
+          [id, env.categorie_id, env.montant]
+        );
+      }
+    }
+    return { ok: true, id };
   }
 
   export function saveMonthlyBudget(
     userId: number,
     mois: string,
     total: number,
-    enveloppes: { categorie_id: number; montant: number; pourcentage: number }[]
+    enveloppes: LigneEnveloppe[]
   ): void {
-    // 1. Met à jour la table user
-    db.runSync(
-      `UPDATE user SET budget_mensuel = ? WHERE id = ?`,
-      [total, userId]
+    const existant = getMonthlyBudget(userId, mois);
+    enregistrerBudget(
+      userId,
+      existant?.start_date ?? `${mois}-01`,
+      existant?.end_date ?? dernierJourDuMois(mois),
+      total,
+      enveloppes,
+      existant?.id
     );
+  }
 
-    // 2. Insère ou remplace le budget mensuel
-    db.runSync(
-      `INSERT INTO monthly_budgets (utilisateur_id, mois, montant_total)
-     VALUES (?, ?, ?)
-     ON CONFLICT(utilisateur_id, mois) DO UPDATE SET montant_total = excluded.montant_total`,
-      [userId, mois, total]
+  /**
+   * Prépare la copie. N'écrit rien. La période source est la dernière
+   * qui se termine avant la date de début choisie.
+   */
+  export function brouillonPeriodePrecedente(
+    userId: number,
+    startDate: string
+  ): BrouillonBudget | null {
+    const source = db.getFirstSync<{ id: number; total: number; start_date: string; end_date: string }>(
+      `SELECT id, total, start_date, end_date
+       FROM budget
+       WHERE user_id = ? AND end_date < ?
+       ORDER BY end_date DESC
+       LIMIT 1`,
+      [userId, startDate]
     );
-
-    const budget = getMonthlyBudget(userId, mois);
-    if (!budget) return;
-
-    // 3. Supprime les anciennes enveloppes de ce mois
-    db.runSync(`DELETE FROM category_budgets WHERE monthly_budget_id = ?`, [budget.id]);
-
-    // 4. Réinsère les nouvelles enveloppes
-    for (const env of enveloppes) {
-      if (env.montant > 0) {
-        db.runSync(
-          `INSERT INTO category_budgets (monthly_budget_id, categorie_id, montant, pourcentage)
-         VALUES (?, ?, ?, ?)`,
-          [budget.id, env.categorie_id, env.montant, env.pourcentage]
-        );
-      }
-    }
+    if (!source) return null;
+    const enveloppes = db.getAllSync<LigneEnveloppe>(
+      `SELECT category_id as categorie_id, amount as montant,
+              CASE WHEN ? > 0 THEN ROUND(amount * 100.0 / ?, 2) ELSE 0 END as pourcentage
+       FROM envelope WHERE budget_id = ?`,
+      [source.total, source.total, source.id]
+    );
+    return {
+      total: source.total,
+      enveloppes,
+      source_start: source.start_date,
+      source_end: source.end_date,
+    };
   }
 
   // ------------------------------------------------------------
@@ -705,7 +850,7 @@ export function resetUserPassword(
     const budget = getMonthlyBudget(userId, mois);
     if (!budget) return [];
 
-    // Récupère les enveloppes allouées
+    // Enveloppes de CETTE période, pour CET utilisateur.
     const envelopes = db.getAllSync<{
       categorie_id: number;
       categorie_nom: string;
@@ -714,28 +859,30 @@ export function resetUserPassword(
       pourcentage_alloue: number;
     }>(
       `SELECT
-       cb.categorie_id,
-       c.nom   as categorie_nom,
-       c.icone as categorie_icone,
-       cb.montant     as montant_alloue,
-       cb.pourcentage as pourcentage_alloue
-     FROM category_budgets cb
-     JOIN categories c ON cb.categorie_id = c.id
-     WHERE cb.monthly_budget_id = ?
-     ORDER BY cb.montant DESC`,
-      [budget.id]
+       e.category_id as categorie_id,
+       c.name_key as categorie_nom,
+       c.icon as categorie_icone,
+       e.amount as montant_alloue,
+       CASE WHEN b.total > 0 THEN ROUND(e.amount * 100.0 / b.total, 2) ELSE 0 END as pourcentage_alloue
+     FROM envelope e
+     JOIN budget b ON b.id = e.budget_id
+     JOIN category c ON c.id = e.category_id
+     WHERE e.budget_id = ? AND b.user_id = ?
+     ORDER BY e.amount DESC`,
+      [budget.id, userId]
     );
 
     return envelopes.map((env) => {
-      // Calcule les dépenses liées à cette catégorie (via le produit ou directes)
+      // Dépenses dont la date tombe dans la période, pas dans le mois civil.
       const depenseRow = db.getFirstSync<{ total: number }>(
         `SELECT COALESCE(SUM(a.prix_total), 0) as total
        FROM achats a
        LEFT JOIN produits p ON a.produit_id = p.id
        WHERE a.utilisateur_id = ?
-         AND a.mois = ?
+         AND a.date_achat >= ?
+         AND a.date_achat <= ?
          AND (p.categorie_id = ? OR a.categorie_id = ?)`,
-        [userId, mois, env.categorie_id, env.categorie_id]
+        [userId, budget.start_date, budget.end_date, env.categorie_id, env.categorie_id]
       );
 
       const depense = depenseRow?.total ?? 0;
@@ -767,11 +914,12 @@ export function resetUserPassword(
      FROM achats a
      LEFT JOIN produits p ON a.produit_id = p.id
      WHERE a.utilisateur_id = ?
-       AND a.mois = ?
+       AND a.date_achat >= ?
+       AND a.date_achat <= ?
        AND COALESCE(p.categorie_id, a.categorie_id) NOT IN (
-         SELECT categorie_id FROM category_budgets WHERE monthly_budget_id = ?
+         SELECT category_id FROM envelope WHERE budget_id = ?
        )`,
-      [userId, mois, budget.id]
+      [userId, budget.start_date, budget.end_date, budget.id]
     );
 
     return result?.total ?? 0;
@@ -787,14 +935,18 @@ export function resetUserPassword(
     categorieId: number,
     nouveauMontant: number
   ): boolean {
+    const budget = getMonthlyBudget(userId, mois);
+    const debut = budget?.start_date ?? `${mois}-01`;
+    const fin = budget?.end_date ?? dernierJourDuMois(mois);
     const depenseRow = db.getFirstSync<{ total: number }>(
       `SELECT COALESCE(SUM(a.prix_total), 0) as total
      FROM achats a
      LEFT JOIN produits p ON a.produit_id = p.id
      WHERE a.utilisateur_id = ?
-       AND a.mois = ?
+       AND a.date_achat >= ?
+       AND a.date_achat <= ?
        AND (p.categorie_id = ? OR a.categorie_id = ?)`,
-      [userId, mois, categorieId, categorieId]
+      [userId, debut, fin, categorieId, categorieId]
     );
 
     const dejaDepense = depenseRow?.total ?? 0;
@@ -804,28 +956,9 @@ export function resetUserPassword(
   // ------------------------------------------------------------
   // copyPreviousMonthBudget : Recopie le budget du mois précédent
   // ------------------------------------------------------------
-  export function copyPreviousMonthBudget(userId: number, moisCourant: string): boolean {
-    const [annee, mois] = moisCourant.split('-').map(Number);
-    const moisPrec = mois === 1 ? 12 : mois - 1;
-    const anneePrec = mois === 1 ? annee - 1 : annee;
-    const moisPrecedent = `${anneePrec}-${String(moisPrec).padStart(2, '0')}`;
-
-    const ancienBudget = getMonthlyBudget(userId, moisPrecedent);
-    if (!ancienBudget) return false;
-
-    const anciennesEnveloppes = db.getAllSync<{
-      categorie_id: number;
-      montant: number;
-      pourcentage: number;
-    }>(
-      `SELECT categorie_id, montant, pourcentage
-     FROM category_budgets
-     WHERE monthly_budget_id = ?`,
-      [ancienBudget.id]
-    );
-
-    saveMonthlyBudget(userId, moisCourant, ancienBudget.montant_total, anciennesEnveloppes);
-    return true;
+  /** Ancien nom. Ne sauvegarde plus : renvoie seulement le brouillon. */
+  export function copyPreviousMonthBudget(userId: number, moisCourant: string): BrouillonBudget | null {
+    return brouillonPeriodePrecedente(userId, `${moisCourant}-01`);
   }
 
   // ============================================================

@@ -11,9 +11,9 @@ erDiagram
     user ||--o{ user_category : "active"
     category ||--o{ user_category : "est activée par"
     
-    user ||--o{ month_budget : "possède"
-    user ||--o{ category_budget : "définit"
-    category ||--o{ category_budget : "concerne"
+    user ||--o{ budget : "possède"
+    budget ||--o{ envelope : "répartit"
+    category ||--o{ envelope : "concerne"
     
     user ||--o{ product : "crée"
     category ||--o{ product : "classe"
@@ -66,23 +66,22 @@ erDiagram
         TEXT created_at
     }
 
-    month_budget {
+    budget {
         INTEGER id PK
         INTEGER user_id FK
-        TEXT month
+        TEXT start_date
+        TEXT end_date
         REAL total
         INTEGER is_evaluated
+        INTEGER succeeded
         TEXT created_at
     }
 
-    category_budget {
+    envelope {
         INTEGER id PK
-        INTEGER user_id FK
-        TEXT month
+        INTEGER budget_id FK
         INTEGER category_id FK
         REAL amount
-        REAL percent
-        TEXT created_at
     }
 
     product {
@@ -199,7 +198,7 @@ erDiagram
 - `user_id` (INTEGER, NOT NULL, FK `user(id)` ON DELETE CASCADE) : Utilisateur acheteur.
 - `product_id` (INTEGER, NOT NULL, FK `product(id)` ON DELETE CASCADE) : Produit acheté.
 - `category_id` (INTEGER, NOT NULL, FK `category(id)` ON DELETE CASCADE) : Catégorie budgétaire impactée.
-- `price` (REAL, NOT NULL) : Prix unitaire (en TND).
+- `price` (REAL, NOT NULL) : Prix TOTAL de la ligne (en TND). Le prix unitaire se calcule : price / quantity. L'ancienne base stockait l'unitaire ; la migration `purchase_price_is_total_v1` multiplie une seule fois par la quantité après avoir lu les lignes.
 - `quantity` (REAL, NOT NULL, DEFAULT 1) : Quantité achetée.
 - `unit` (TEXT, NOT NULL) : Unité au moment de l'achat.
 - `store` (TEXT, NOT NULL) : Enseigne ou magasin d'achat (ex: "Carrefour", "Monoprix", "Épicerie").
@@ -219,9 +218,10 @@ erDiagram
 - `notes` (TEXT, NOT NULL, DEFAULT '') : Commentaires.
 - `created_at` (TEXT, NOT NULL) : Horodatage d'enregistrement.
 
-### Table `month_budget` & `category_budget` (Méthode des Enveloppes)
-- `month_budget` : Fixe le budget mensuel global d'un utilisateur pour un mois donné (`total`, `is_evaluated`).
-- `category_budget` : Définit le montant et le pourcentage alloué à chaque enveloppe « Masrouf [Catégorie] » pour ce mois.
+### Table `budget` et `envelope` (période libre)
+- `budget` : une période choisie (`start_date`, `end_date`, `total`). Deux périodes du même utilisateur ne se chevauchent pas. `is_evaluated` empêche de donner les points deux fois. `succeeded` vaut 1 si les dépenses sont restées dans le total.
+- `envelope` : montant alloué à une catégorie pour cette période. La somme des enveloppes ne dépasse pas `budget.total`. Le reste non réparti est autorisé.
+- Les anciennes tables `month_budget` et `category_budget` sont encore lues une fois par la migration, qui crée une période du 1er au dernier jour du mois. Elles ne servent plus aux écrans.
 
 ### Table `alert_log` (Journal Anti-Répétition des Alertes)
 - Enregistre chaque alerte franchie (80% ou 100%) par utilisateur, mois et catégorie pour éviter d'inonder l'utilisateur de messages répétitifs.

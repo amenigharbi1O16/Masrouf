@@ -335,7 +335,7 @@ function EtatSansBudget({ t, categories }: { t: (k: string) => string; categorie
 
       <TouchableOpacity
         style={styles.secondaryBtn}
-        onPress={() => router.push('/budget-mois')}
+        onPress={() => router.push({ pathname: '/budget-mois', params: { copier: '1' } })}
         activeOpacity={0.8}
       >
         <Text style={styles.secondaryBtnText}>

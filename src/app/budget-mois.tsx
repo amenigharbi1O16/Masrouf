@@ -32,13 +32,14 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 // Fonctions SQLite
 import {
   getAllCategories,
   getMonthlyBudget,
-  saveMonthlyBudget,
+  enregistrerBudget,
+  brouillonPeriodePrecedente,
   getEnveloppesBudget,
   canDecreaseBudget,
   Categorie,
@@ -63,24 +64,34 @@ type EnveloppeItem = {
   pourcentage: number;
 };
 
+function versIso(date: Date): string {
+  const mois = String(date.getMonth() + 1).padStart(2, '0');
+  const jour = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${mois}-${jour}`;
+}
+
 export default function BudgetMoisScreen() {
   const { user } = useAuth();
   const { t } = useTranslation();
+  const params = useLocalSearchParams<{ copier?: string }>();
 
   const maintenant = new Date();
   const annee = maintenant.getFullYear();
   const moisIndex = maintenant.getMonth();
   const moisCle = `${annee}-${String(moisIndex + 1).padStart(2, '0')}`;
   const dernierJour = new Date(annee, moisIndex + 1, 0).getDate();
+  const debutMoisIso = versIso(new Date(annee, moisIndex, 1));
+  const finMoisIso = versIso(new Date(annee, moisIndex, dernierJour));
 
   // Étape courante : 'periode' (Figma 09) ou 'repartition' (Figma 10 / 11)
   const [etape, setEtape] = useState<'periode' | 'repartition'>('periode');
   const [estEdition, setEstEdition] = useState<boolean>(false);
 
   // Étape 1 : Dates et total
-  const [dateDebut, setDateDebut] = useState<string>(`01 ${MOIS_NOMS[moisIndex]} ${annee}`);
-  const [dateFin, setDateFin] = useState<string>(`${dernierJour} ${MOIS_NOMS[moisIndex]} ${annee}`);
-  const [budgetTotalTexte, setBudgetTotalTexte] = useState<string>('800');
+  const [dateDebut, setDateDebut] = useState<string>(debutMoisIso);
+  const [dateFin, setDateFin] = useState<string>(finMoisIso);
+  const [erreurDates, setErreurDates] = useState<string>('');
+  const [budgetTotalTexte, setBudgetTotalTexte] = useState<string>('');
 
   // Étape 2 : Répartition
   const [enveloppes, setEnveloppes] = useState<EnveloppeItem[]>([]);
@@ -89,8 +100,33 @@ export default function BudgetMoisScreen() {
     if (!user) return;
     const existant = getMonthlyBudget(user.id, moisCle);
 
+    if (params.copier === '1') {
+      const brouillon = brouillonPeriodePrecedente(user.id, dateDebut);
+      if (!brouillon) {
+        setErreurDates(t('aucune_periode_precedente') ?? 'Aucune période précédente à copier.');
+        return;
+      }
+      setBudgetTotalTexte(String(brouillon.total));
+      setEnveloppes(
+        brouillon.enveloppes.map((e) => {
+          const cat = getAllCategories(false).find((c) => c.id === e.categorie_id);
+          return {
+            categorie_id: e.categorie_id,
+            categorie_nom: cat?.nom ?? '',
+            categorie_icone: cat?.icone ?? '',
+            montant: e.montant,
+            pourcentage: e.pourcentage,
+          };
+        })
+      );
+      setEtape('repartition');
+      return;
+    }
+
     if (existant && existant.montant_total > 0) {
       setEstEdition(true);
+      setDateDebut(existant.start_date);
+      setDateFin(existant.end_date);
       setBudgetTotalTexte(String(existant.montant_total));
       const envs = getEnveloppesBudget(user.id, moisCle);
       setEnveloppes(
@@ -106,8 +142,8 @@ export default function BudgetMoisScreen() {
       setEtape('repartition');
     } else {
       setEstEdition(false);
-      const budgetBase = user.budget_mensuel > 0 ? user.budget_mensuel : 800;
-      setBudgetTotalTexte(String(budgetBase));
+      const budgetBase = 0;
+      setBudgetTotalTexte('');
 
       const toutesCats = getAllCategories(true);
       const defauts = toutesCats.filter((c) => c.est_defaut === 1);
@@ -120,7 +156,7 @@ export default function BudgetMoisScreen() {
       }));
       setEnveloppes(envsInit);
     }
-  }, [user, moisCle]);
+  }, [user, moisCle, params.copier]);
 
   const budgetTotalNum = parseFloat(budgetTotalTexte.replace(',', '.')) || 0;
   const sommeRepartie = enveloppes.reduce((acc, cur) => acc + cur.montant, 0);
@@ -170,17 +206,30 @@ export default function BudgetMoisScreen() {
       }
     }
 
-    // Enregistrement SQLite
-    saveMonthlyBudget(
+    const existant = getMonthlyBudget(user.id, moisCle);
+    const resultat = enregistrerBudget(
       user.id,
-      moisCle,
+      dateDebut,
+      dateFin,
       budgetTotalNum,
       enveloppes.map((e) => ({
         categorie_id: e.categorie_id,
         montant: e.montant,
         pourcentage: e.pourcentage,
-      }))
+      })),
+      estEdition ? existant?.id : undefined
     );
+
+    if (!resultat.ok) {
+      const messages: Record<typeof resultat.code, string> = {
+        dates: 'La date de fin doit être le même jour ou après la date de début.',
+        chevauchement: 'Cette période chevauche un budget déjà enregistré.',
+        total: 'Le budget total doit être supérieur à zéro.',
+        somme: 'La somme des enveloppes dépasse le total.',
+      };
+      Alert.alert(t('erreur') ?? 'Attention', messages[resultat.code]);
+      return;
+    }
 
     router.back();
   }
@@ -260,18 +309,29 @@ export default function BudgetMoisScreen() {
             {/* Bannière validation (Figma 09) */}
             <View style={styles.mintBanner}>
               <View style={styles.bannerHeaderRow}>
-                <Text style={styles.checkIcon}>✓</Text>
-                <Text style={styles.bannerTitle}>Vos dates sont valides</Text>
+                <Text style={styles.checkIcon}>{dateFin >= dateDebut && dateDebut.length === 10 ? '✓' : '!'}</Text>
+                <Text style={styles.bannerTitle}>
+                  {erreurDates || (dateFin >= dateDebut ? 'Vos dates sont valides' : 'La fin est avant le début')}
+                </Text>
               </View>
               <Text style={styles.bannerSub}>
-                30 jours · La fin est postérieure au début.
+                {dateFin >= dateDebut
+                  ? `${Math.round((Date.parse(dateFin) - Date.parse(dateDebut)) / 86400000) + 1} jours`
+                  : 'Corrigez les dates au format AAAA-MM-JJ.'}
               </Text>
             </View>
 
             {/* Boutons d'action */}
             <TouchableOpacity
               style={styles.primaryBtn}
-              onPress={() => setEtape('repartition')}
+              onPress={() => {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(dateDebut) || !/^\d{4}-\d{2}-\d{2}$/.test(dateFin) || dateFin < dateDebut) {
+                  setErreurDates('La fin doit être le même jour ou après le début.');
+                  return;
+                }
+                setErreurDates('');
+                setEtape('repartition');
+              }}
               activeOpacity={0.85}
             >
               <Text style={styles.primaryBtnText}>Répartir par catégorie</Text>

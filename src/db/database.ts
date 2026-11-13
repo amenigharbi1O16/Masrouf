@@ -16,6 +16,7 @@
 // ============================================================
 
 import * as SQLite from 'expo-sqlite';
+import { migrateDatabase } from './migrate';
 
 // Connexion SQLite locale
 export const db = SQLite.openDatabaseSync('masrouf.db');
@@ -208,6 +209,8 @@ export function initDatabase(): void {
   initialiserSettings();
   initialiserComptesDepart();
   creerVuesDeRetroCompatibilite();
+  // Après les vues anciennes : on les remplace par le modèle à périodes libres.
+  migrateDatabase(db);
 }
 
 // ------------------------------------------------------------
