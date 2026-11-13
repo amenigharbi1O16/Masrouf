@@ -129,7 +129,7 @@ export default function AdminUtilisateursScreen() {
     <View style={styles.container}>
       {/* Header */}
       <AppHeader
-        titre="Gestion des utilisateurs"
+        titre={t('gestion_utilisateurs')}
         onMenuPress={ouvrirDrawer}
       />
 
@@ -138,14 +138,14 @@ export default function AdminUtilisateursScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Label uppercase */}
-        <Text style={styles.sectionLabel}>ADMINISTRATEUR</Text>
+        <Text style={styles.sectionLabel}>{t('administrateur').toUpperCase()}</Text>
 
         {/* Carte de recherche (Figma 36) */}
         <View style={styles.searchCard}>
-          <Text style={styles.searchLabel}>Trouver un compte</Text>
+          <Text style={styles.searchLabel}>{t('trouver_compte')}</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="Rechercher par identifiant de compte"
+            placeholder={t('rechercher_compte_placeholder')}
             placeholderTextColor={Theme.colors.muted}
             value={recherche}
             onChangeText={setRecherche}
@@ -155,10 +155,10 @@ export default function AdminUtilisateursScreen() {
         {/* Ligne compteur */}
         <View style={styles.countRow}>
           <Text style={styles.countText}>
-            {utilisateurs.length} comptes
+            {t('comptes_nb', { count: utilisateurs.length })}
           </Text>
           <Text style={styles.countActifs}>
-            {nbActifs} actifs
+            {t('actifs_nb', { count: nbActifs })}
           </Text>
         </View>
 
@@ -194,7 +194,7 @@ export default function AdminUtilisateursScreen() {
                   estActif ? styles.statusActive : styles.statusSuspended,
                 ]}
               >
-                {estActif ? 'Actif' : 'Suspendu'}
+                {estActif ? t('actif') : t('suspendu')}
               </Text>
             </TouchableOpacity>
           );
@@ -210,8 +210,8 @@ export default function AdminUtilisateursScreen() {
             >
               <Text style={styles.primaryBtnText}>
                 {compteSelectionne.is_active === 1
-                  ? `Suspendre le compte #${compteSelectionne.id + 1000}`
-                  : `Activer le compte #${compteSelectionne.id + 1000}`}
+                  ? t('suspendre_compte_id', { id: compteSelectionne.id + 1000 })
+                  : t('activer_compte_id', { id: compteSelectionne.id + 1000 })}
               </Text>
             </TouchableOpacity>
 
@@ -221,7 +221,7 @@ export default function AdminUtilisateursScreen() {
               activeOpacity={0.8}
             >
               <Text style={styles.secondaryBtnText}>
-                Réinitialiser le mot de passe temporaire
+                {t('reinitialiser_mdp_temp')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -229,7 +229,7 @@ export default function AdminUtilisateursScreen() {
 
         {/* Note de confidentialité (Figma 36) */}
         <Text style={styles.footerNote}>
-          Administration des comptes uniquement. Les données financières personnelles ne sont jamais visibles.
+          {t('admin_note_confidentialite')}
         </Text>
       </ScrollView>
     </View>
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 48,
+    paddingBottom: 90,
   },
 
   sectionLabel: {

@@ -95,7 +95,7 @@ export default function AdminCategoriesScreen() {
     <View style={styles.container}>
       {/* Header */}
       <AppHeader
-        titre="Gestion des catégories"
+        titre={t('gestion_categories')}
         onMenuPress={ouvrirDrawer}
       />
 
@@ -105,11 +105,11 @@ export default function AdminCategoriesScreen() {
       >
         {/* Label uppercase */}
         <Text style={styles.sectionLabel}>
-          ADMINISTRATEUR · {categories.length} CATÉGORIES
+          {t('administrateur').toUpperCase()} · {categories.length} {t('categories_admin').toUpperCase()}
         </Text>
 
         {/* SECTION 1 : CATÉGORIES DE PRODUITS (Figma 39) */}
-        <Text style={styles.sectionTitle}>Catégories de produits</Text>
+        <Text style={styles.sectionTitle}>{t('categories_produits')}</Text>
         <View style={styles.listBlock}>
           {categoriesProduit.map((cat, idx) => (
             <View
@@ -120,13 +120,13 @@ export default function AdminCategoriesScreen() {
               ]}
             >
               <Text style={styles.catName}>{cat.nom}</Text>
-              <Text style={styles.catType}>Produit</Text>
+              <Text style={styles.catType}>{t('produit')}</Text>
             </View>
           ))}
         </View>
 
         {/* SECTION 2 : CATÉGORIES DE DÉPENSES (Figma 39) */}
-        <Text style={styles.sectionTitle}>Catégories de dépenses</Text>
+        <Text style={styles.sectionTitle}>{t('categories_depenses')}</Text>
         <View style={styles.listBlock}>
           {categoriesDepense.map((cat, idx) => (
             <View
@@ -137,7 +137,7 @@ export default function AdminCategoriesScreen() {
               ]}
             >
               <Text style={styles.catName}>{cat.nom}</Text>
-              <Text style={styles.catType}>Dépense</Text>
+              <Text style={styles.catType}>{t('depense_label')}</Text>
             </View>
           ))}
         </View>
@@ -146,7 +146,7 @@ export default function AdminCategoriesScreen() {
         <View style={styles.formContainer}>
           {/* Nom de la catégorie */}
           <View style={styles.inputCard}>
-            <Text style={styles.inputLabel}>Nom de la catégorie</Text>
+            <Text style={styles.inputLabel}>{t('nom_categorie')}</Text>
             <TextInput
               style={styles.textInput}
               placeholder="Ex: Loisirs, Équipement..."
@@ -158,7 +158,7 @@ export default function AdminCategoriesScreen() {
 
           {/* Type de catégorie (Sélecteur Produit / Dépense) */}
           <View style={styles.inputCard}>
-            <Text style={styles.inputLabel}>Type de catégorie</Text>
+            <Text style={styles.inputLabel}>{t('types_categories')}</Text>
             <View style={styles.typeSelectorRow}>
               <TouchableOpacity
                 style={[
@@ -173,7 +173,7 @@ export default function AdminCategoriesScreen() {
                     type === 'product' && styles.typeBtnTextActive,
                   ]}
                 >
-                  Produit
+                  {t('produit')}
                 </Text>
               </TouchableOpacity>
 
@@ -190,7 +190,7 @@ export default function AdminCategoriesScreen() {
                     type === 'expense' && styles.typeBtnTextActive,
                   ]}
                 >
-                  Dépense
+                  {t('depense_label')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -202,7 +202,7 @@ export default function AdminCategoriesScreen() {
             onPress={handleAjouter}
             activeOpacity={0.85}
           >
-            <Text style={styles.primaryBtnText}>Enregistrer la catégorie</Text>
+            <Text style={styles.primaryBtnText}>{t('enregistrer_categorie')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 48,
+    paddingBottom: 90,
   },
 
   sectionLabel: {

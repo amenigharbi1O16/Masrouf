@@ -237,10 +237,10 @@ export default function NouveauProduitScreen() {
           activeOpacity={0.8}
           onPress={() => setModalCatVisible(true)}
         >
-          <Text style={styles.inputLabel}>Catégorie de produit</Text>
+          <Text style={styles.inputLabel}>{t('categorie')}</Text>
           <View style={styles.catSelectedRow}>
             <Text style={styles.catValueText}>
-              {categorieChoisie ? `${categorieChoisie.icone} ${categorieChoisie.nom}` : 'Sélectionner une catégorie'}
+              {categorieChoisie ? `${categorieChoisie.icone} ${categorieChoisie.nom}` : (t('selectionner') ?? 'Sélectionner...')}
             </Text>
             <Text style={styles.chevron}>▾</Text>
           </View>
@@ -248,7 +248,7 @@ export default function NouveauProduitScreen() {
 
         {/* 5. Prix · DT */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>Prix · DT</Text>
+          <Text style={styles.inputLabel}>{t('prix_unitaire')}</Text>
           <TextInput
             style={styles.textInput}
             placeholder="Ex: 14.500"
@@ -286,7 +286,7 @@ export default function NouveauProduitScreen() {
 
         {/* 8. Magasin */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>{t('magasin_label') ?? 'Magasin'}</Text>
+          <Text style={styles.inputLabel}>{t('lieu_achat') ?? 'Magasin'}</Text>
           <TextInput
             style={styles.textInput}
             placeholder="Ex: Monoprix, Carrefour, Épicerie..."
@@ -298,7 +298,7 @@ export default function NouveauProduitScreen() {
 
         {/* 9. Date d'achat */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>Date d'achat</Text>
+          <Text style={styles.inputLabel}>{t('date_achat_label')}</Text>
           <TextInput
             style={styles.textInput}
             value={dateAchat}
@@ -318,7 +318,7 @@ export default function NouveauProduitScreen() {
           activeOpacity={0.85}
         >
           <Text style={styles.primaryBtnText}>
-            Enregistrer le produit et l'achat
+            {t('enregistrer')}
           </Text>
         </TouchableOpacity>
 
@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 48,
+    paddingBottom: 90,
   },
 
   // Label uppercase muted

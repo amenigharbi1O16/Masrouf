@@ -1,4 +1,8 @@
-// Écran 26 : modifier un produit, ou le supprimer avec ses achats.
+// ============================================================
+// FICHIER : src/app/modifier-produit.tsx
+// RÔLE    : Modifier un produit existant ou le supprimer proprement.
+// ============================================================
+
 import React, { useState } from 'react';
 import {
   Alert,
@@ -22,10 +26,12 @@ import {
   updateProduit,
 } from '../db/queries';
 import { useAuth } from '../utils/auth';
+import { useTranslation } from '../utils/i18n';
 import { choisirPhotoProduit, supprimerFichierPhoto } from '../utils/photos';
 
 export default function ModifierProduitScreen() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const produit = user && id ? getProduitById(Number(id)) : null;
   const categories = getAllCategories(true).filter((c) => c.type === 'product');
@@ -39,8 +45,10 @@ export default function ModifierProduitScreen() {
   if (!user || !produit) {
     return (
       <View style={styles.container}>
-        <AppHeader titre="Modifier le produit" onMenuPress={() => router.back()} />
-        <Text style={styles.vide}>Produit introuvable.</Text>
+        <AppHeader titre={t('modifier_produit')} onMenuPress={() => router.back()} />
+        <View style={styles.center}>
+          <Text style={styles.vide}>{t('produit_introuvable')}</Text>
+        </View>
       </View>
     );
   }
@@ -54,7 +62,7 @@ export default function ModifierProduitScreen() {
 
   function enregistrer() {
     if (!nom.trim()) {
-      setErreurNom('Le nom est obligatoire.');
+      setErreurNom(t('erreur_nom_requis') ?? 'Le nom est obligatoire.');
       return;
     }
     updateProduit(produit!.id, user!.id, {
@@ -70,14 +78,14 @@ export default function ModifierProduitScreen() {
   function supprimer() {
     const n = getAchatsByProduit(produit!.id, user!.id).length;
     Alert.alert(
-      'Supprimer ce produit',
+      t('supprimer_produit'),
       n > 0
-        ? `Ce produit a ${n} achat(s). Ils seront supprimés avec lui.`
-        : 'Ce produit n’a aucun achat. Il sera supprimé.',
+        ? `Ce produit a ${n} transaction(s) enregistrée(s). Elles seront supprimées avec lui.`
+        : 'Ce produit sera définitivement supprimé.',
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('annuler') ?? 'Annuler', style: 'cancel' },
         {
-          text: 'Supprimer',
+          text: t('supprimer') ?? 'Supprimer',
           style: 'destructive',
           onPress: () => {
             supprimerFichierPhoto(photo || produit!.photo_uri);
@@ -91,35 +99,71 @@ export default function ModifierProduitScreen() {
 
   return (
     <View style={styles.container}>
-      <AppHeader titre="Modifier le produit" onMenuPress={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <TouchableOpacity onPress={changerPhoto} style={styles.photo}>
+      <AppHeader titre={t('modifier_produit')} onMenuPress={() => router.back()} />
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <TouchableOpacity onPress={changerPhoto} style={styles.photo} activeOpacity={0.75}>
           <ProductThumb photoPath={photo} icone="☐" taille={72} />
-          <Text style={styles.lien}>Changer la photo</Text>
+          <Text style={styles.lien}>📷 {t('changer_photo')}</Text>
         </TouchableOpacity>
-        <Text style={styles.label}>Nom</Text>
-        <TextInput style={styles.input} value={nom} onChangeText={setNom} />
+
+        <Text style={styles.label}>{t('nom_produit')}</Text>
+        <TextInput
+          style={styles.input}
+          value={nom}
+          onChangeText={(v) => { setNom(v); setErreurNom(''); }}
+          placeholder="Ex: Lait demi-écrémé"
+          placeholderTextColor={Theme.colors.muted}
+        />
         {erreurNom ? <Text style={styles.erreur}>{erreurNom}</Text> : null}
-        <Text style={styles.label}>Marque</Text>
-        <TextInput style={styles.input} value={marque} onChangeText={setMarque} />
-        <Text style={styles.label}>Unité</Text>
-        <TextInput style={styles.input} value={unite} onChangeText={setUnite} />
-        <Text style={styles.label}>Catégorie</Text>
-        {categories.map((c: Categorie) => (
-          <TouchableOpacity key={c.id} onPress={() => setCategorieId(c.id)} style={styles.cat}>
-            <Text style={{ color: categorieId === c.id ? Theme.colors.forest : Theme.colors.ink, fontWeight: categorieId === c.id ? '700' : '400' }}>
-              {c.nom}
-            </Text>
-          </TouchableOpacity>
-        ))}
-        <TouchableOpacity style={styles.primary} onPress={enregistrer}>
-          <Text style={styles.primaryText}>Enregistrer les modifications</Text>
+
+        <Text style={styles.label}>{t('marque')}</Text>
+        <TextInput
+          style={styles.input}
+          value={marque}
+          onChangeText={setMarque}
+          placeholder="Ex: Délice"
+          placeholderTextColor={Theme.colors.muted}
+        />
+
+        <Text style={styles.label}>{t('unite')}</Text>
+        <TextInput
+          style={styles.input}
+          value={unite}
+          onChangeText={setUnite}
+          placeholder="Ex: L, kg, pièce..."
+          placeholderTextColor={Theme.colors.muted}
+        />
+
+        <Text style={styles.label}>{t('categorie')}</Text>
+        <View style={styles.catGrid}>
+          {categories.map((c: Categorie) => {
+            const isSelected = categorieId === c.id;
+            return (
+              <TouchableOpacity
+                key={c.id}
+                onPress={() => setCategorieId(c.id)}
+                style={[styles.catChip, isSelected && styles.catChipActive]}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.catChipText,
+                    isSelected && styles.catChipTextActive,
+                  ]}
+                >
+                  {c.nom}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity style={styles.primary} onPress={enregistrer} activeOpacity={0.85}>
+          <Text style={styles.primaryText}>{t('enregistrer_modifications')}</Text>
         </TouchableOpacity>
-        <Text style={styles.regleNote}>
-          Règle : la suppression d'un produit supprime automatiquement tous les achats enregistrés pour ce produit afin d'éviter les données orphelines.
-        </Text>
-        <TouchableOpacity style={styles.danger} onPress={supprimer}>
-          <Text style={styles.primaryText}>Supprimer le produit</Text>
+
+        <TouchableOpacity style={styles.danger} onPress={supprimer} activeOpacity={0.85}>
+          <Text style={styles.dangerText}>{t('supprimer_produit')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -127,45 +171,116 @@ export default function ModifierProduitScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.colors.warm },
-  scroll: { padding: 16, paddingBottom: 48 },
-  vide: { padding: 16, color: Theme.colors.muted },
-  photo: { alignItems: 'flex-start', marginBottom: 16, gap: 8 },
-  lien: { color: Theme.colors.deepGreen, marginTop: 8 },
-  label: { color: Theme.colors.muted, fontSize: 12, marginBottom: 4, marginTop: 8 },
+  container: {
+    flex: 1,
+    backgroundColor: Theme.colors.warm,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  scroll: {
+    padding: 20,
+    paddingBottom: 90,
+  },
+  vide: {
+    fontSize: 16,
+    color: Theme.colors.muted,
+  },
+  photo: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    paddingVertical: 12,
+  },
+  lien: {
+    color: Theme.colors.forest,
+    marginTop: 10,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  label: {
+    color: Theme.colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+    marginTop: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   input: {
     backgroundColor: Theme.colors.white,
     borderRadius: 16,
     minHeight: 52,
     paddingHorizontal: 16,
     color: Theme.colors.ink,
-    fontSize: 16,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    marginBottom: 6,
   },
-  erreur: { color: Theme.colors.coral, marginTop: 4 },
-  cat: { minHeight: 44, justifyContent: 'center' },
+  erreur: {
+    color: Theme.colors.coral,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  catGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  catChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: Theme.colors.white,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  catChipActive: {
+    backgroundColor: Theme.colors.forest,
+    borderColor: Theme.colors.forest,
+  },
+  catChipText: {
+    fontSize: 13,
+    color: Theme.colors.ink,
+    fontWeight: '500',
+  },
+  catChipTextActive: {
+    color: Theme.colors.white,
+    fontWeight: '700',
+  },
   primary: {
     backgroundColor: Theme.colors.forest,
     minHeight: 52,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 24,
+    marginTop: 20,
   },
-  regleNote: {
-    fontSize: 12,
-    color: Theme.colors.muted,
-    lineHeight: 18,
-    marginTop: 16,
-    marginBottom: 4,
-    textAlign: 'center',
+  primaryText: {
+    color: Theme.colors.white,
+    fontWeight: '700',
+    fontSize: 15,
   },
   danger: {
-    backgroundColor: Theme.colors.coral,
+    backgroundColor: '#FEE2E2',
     minHeight: 52,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 12,
   },
-  primaryText: { color: Theme.colors.white, fontWeight: '700' },
+  dangerText: {
+    color: Theme.colors.coral,
+    fontWeight: '700',
+    fontSize: 15,
+  },
 });

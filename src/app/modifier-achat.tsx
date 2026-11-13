@@ -94,9 +94,9 @@ export default function ModifierAchatScreen() {
   if (!user || !achat) {
     return (
       <View style={styles.container}>
-        <AppHeader titre="Modifier la transaction" onMenuPress={() => router.back()} />
+        <AppHeader titre={t('modifier_achat')} onMenuPress={() => router.back()} />
         <View style={styles.center}>
-          <Text style={styles.emptyText}>Transaction introuvable.</Text>
+          <Text style={styles.emptyText}>{t('transaction_introuvable')}</Text>
         </View>
       </View>
     );
@@ -216,13 +216,13 @@ export default function ModifierAchatScreen() {
   return (
     <View style={styles.container}>
       <AppHeader
-        titre={estProduit ? "Modifier l'achat" : 'Modifier la dépense'}
+        titre={estProduit ? t('modifier_achat') : t('modifier_depense')}
         onMenuPress={() => router.back()}
       />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionLabel}>
-          {estProduit ? 'ACHAT DE PRODUIT' : 'DÉPENSE SIMPLE'}
+          {estProduit ? t('achat_produit').toUpperCase() : t('depense_simple').toUpperCase()}
         </Text>
 
         {/* Aperçu produit ou titre dépense */}
@@ -235,12 +235,12 @@ export default function ModifierAchatScreen() {
             />
             <View style={{ flex: 1 }}>
               <Text style={styles.productName}>{achat.produit_nom}</Text>
-              <Text style={styles.productSub}>{achat.magasin_nom || 'Non précisé'}</Text>
+              <Text style={styles.productSub}>{achat.magasin_nom || t('non_budgetise')}</Text>
             </View>
           </View>
         ) : (
           <View style={styles.inputCard}>
-            <Text style={styles.inputLabel}>Description de la dépense</Text>
+            <Text style={styles.inputLabel}>{t('description_depense')}</Text>
             <TextInput
               style={styles.textInput}
               value={description}
@@ -248,7 +248,7 @@ export default function ModifierAchatScreen() {
                 setDescription(txt);
                 setErreurDesc('');
               }}
-              placeholder="Ex: Facture d'électricité, transport..."
+              placeholder="Ex: Facture, transport..."
               placeholderTextColor={Theme.colors.muted}
             />
             {erreurDesc ? <Text style={styles.erreur}>{erreurDesc}</Text> : null}
@@ -258,7 +258,7 @@ export default function ModifierAchatScreen() {
         {/* Montant / Prix total */}
         <View style={styles.inputCard}>
           <Text style={styles.inputLabel}>
-            {estProduit ? 'Prix total payé (DT)' : 'Montant dépensé (DT)'}
+            {estProduit ? t('prix_total_paye') : t('montant_depense')}
           </Text>
           <TextInput
             style={styles.textInput}
@@ -277,7 +277,7 @@ export default function ModifierAchatScreen() {
         {/* Quantité (pour produit) */}
         {estProduit && (
           <View style={styles.inputCard}>
-            <Text style={styles.inputLabel}>Quantité</Text>
+            <Text style={styles.inputLabel}>{t('quantite')}</Text>
             <TextInput
               style={styles.textInput}
               value={quantite}
@@ -296,7 +296,7 @@ export default function ModifierAchatScreen() {
         {/* Prix unitaire calculé (pour produit) */}
         {estProduit && (
           <View style={styles.unitPriceRow}>
-            <Text style={styles.unitPriceLabel}>Nouveau prix unitaire calculé</Text>
+            <Text style={styles.unitPriceLabel}>{t('nouveau_prix_unitaire')}</Text>
             <Text style={styles.unitPriceValue}>{prixUnitaireCalcule} DT</Text>
           </View>
         )}
@@ -304,12 +304,12 @@ export default function ModifierAchatScreen() {
         {/* Magasin */}
         {estProduit && (
           <View style={styles.inputCard}>
-            <Text style={styles.inputLabel}>Magasin</Text>
+            <Text style={styles.inputLabel}>{t('lieu_achat')}</Text>
             <TextInput
               style={styles.textInput}
               value={magasinNom}
               onChangeText={setMagasinNom}
-              placeholder="Ex: Carrefour, Épicerie..."
+              placeholder="Ex: Carrefour, Monoprix, Épicerie..."
               placeholderTextColor={Theme.colors.muted}
             />
           </View>
@@ -322,10 +322,10 @@ export default function ModifierAchatScreen() {
             onPress={() => setModalCatVisible(true)}
             activeOpacity={0.8}
           >
-            <Text style={styles.inputLabel}>Catégorie</Text>
+            <Text style={styles.inputLabel}>{t('categorie_budgetaire')}</Text>
             <View style={styles.catRow}>
               <Text style={styles.catText}>
-                {catChoisie ? `${catChoisie.icone} ${catChoisie.nom}` : 'Sélectionner...'}
+                {catChoisie ? `${catChoisie.icone} ${catChoisie.nom}` : t('selectionner')}
               </Text>
               <Text style={styles.chevron}>▾</Text>
             </View>
@@ -334,7 +334,7 @@ export default function ModifierAchatScreen() {
 
         {/* Date */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>Date (AAAA-MM-JJ)</Text>
+          <Text style={styles.inputLabel}>{t('date_achat_label')}</Text>
           <TextInput
             style={styles.textInput}
             value={dateAchat}
@@ -350,7 +350,7 @@ export default function ModifierAchatScreen() {
 
         {/* Notes */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>Notes (facultatif)</Text>
+          <Text style={styles.inputLabel}>{t('notes_remarques')} ({t('facultatif')})</Text>
           <TextInput
             style={styles.textInput}
             value={notes}
@@ -364,7 +364,7 @@ export default function ModifierAchatScreen() {
         <View style={styles.mintBanner}>
           <Text style={styles.mintIcon}>✓</Text>
           <View style={{ flex: 1 }}>
-            <Text style={styles.mintTitle}>Impact sur le budget</Text>
+            <Text style={styles.mintTitle}>Impact budgétaire</Text>
             <Text style={styles.mintSub}>
               {differenceBudget === 0
                 ? 'Aucune variation du montant total alloué.'
@@ -380,17 +380,17 @@ export default function ModifierAchatScreen() {
 
         {/* Bouton Enregistrer */}
         <TouchableOpacity style={styles.primaryBtn} onPress={handleEnregistrer} activeOpacity={0.85}>
-          <Text style={styles.primaryBtnText}>Enregistrer la modification</Text>
+          <Text style={styles.primaryBtnText}>{t('enregistrer_modifications')}</Text>
         </TouchableOpacity>
 
         {/* Bouton Supprimer */}
         <TouchableOpacity style={styles.dangerBtn} onPress={handleSupprimer} activeOpacity={0.85}>
-          <Text style={styles.dangerBtnText}>Supprimer cette transaction</Text>
+          <Text style={styles.dangerBtnText}>{t('supprimer_transaction')}</Text>
         </TouchableOpacity>
 
         {/* Bouton Annuler */}
         <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.back()} activeOpacity={0.8}>
-          <Text style={styles.secondaryBtnText}>Annuler</Text>
+          <Text style={styles.secondaryBtnText}>{t('annuler')}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -432,7 +432,7 @@ export default function ModifierAchatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.warm },
-  scroll: { padding: 16, paddingBottom: 48 },
+  scroll: { padding: 16, paddingBottom: 90 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   emptyText: { fontSize: 15, color: Theme.colors.muted },
   sectionLabel: {

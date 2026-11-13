@@ -67,7 +67,7 @@ export default function AdminReglagesScreen() {
     <View style={styles.container}>
       {/* Header */}
       <AppHeader
-        titre="Paramètres admin"
+        titre={t('parametres_admin')}
         onMenuPress={ouvrirDrawer}
       />
 
@@ -76,7 +76,7 @@ export default function AdminReglagesScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Label uppercase */}
-        <Text style={styles.sectionLabel}>ADMINISTRATEUR</Text>
+        <Text style={styles.sectionLabel}>{t('administrateur').toUpperCase()}</Text>
 
         {/* CARTE : LANGUE (Figma 43) */}
         <View style={styles.card}>
@@ -84,7 +84,7 @@ export default function AdminReglagesScreen() {
           <View style={styles.langRow}>
             <TouchableOpacity onPress={() => changerLangue('en')}>
               <Text style={[styles.langText, langue === 'en' && styles.langActive]}>
-                Anglais
+                English
               </Text>
             </TouchableOpacity>
             <Text style={styles.langSep}>·</Text>
@@ -116,18 +116,18 @@ export default function AdminReglagesScreen() {
           <View style={styles.bannerHeaderRow}>
             <Text style={styles.checkIcon}>✓</Text>
             <Text style={styles.bannerTitle}>
-              Finances privées inaccessibles
+              {t('statistiques_anonymes')}
             </Text>
           </View>
           <Text style={styles.bannerSub}>
-            Seules les statistiques globales anonymes sont disponibles.
+            {t('aucun_acces_finances_perso')}
           </Text>
         </View>
 
         {/* Lignes d'informations */}
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Rôle</Text>
-          <Text style={styles.infoValue}>Administrateur</Text>
+          <Text style={styles.infoValue}>{t('administrateur')}</Text>
         </View>
 
         <View style={styles.infoRow}>

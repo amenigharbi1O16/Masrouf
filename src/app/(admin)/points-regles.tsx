@@ -97,14 +97,14 @@ export default function AdminPointsReglesScreen() {
       red_from: 100,
     }, user?.id);
 
-    Alert.alert('Succès', 'Les règles de points ont été enregistrées avec succès.');
+    Alert.alert(t('succes_sauvegarde') ?? 'Succès', t('succes_sauvegarde') ?? 'Les règles de points ont été enregistrées avec succès.');
   }
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <AppHeader
-        titre="Règles des points"
+        titre={t('regles_points_admin')}
         onMenuPress={ouvrirDrawer}
       />
 
@@ -114,12 +114,12 @@ export default function AdminPointsReglesScreen() {
       >
         {/* Label uppercase */}
         <Text style={styles.sectionLabel}>
-          ADMINISTRATEUR · RÉCOMPENSER LA RÉGULARITÉ
+          {t('regles_points_admin').toUpperCase()}
         </Text>
 
-        {/* 1. Période réussie · points */}
+        {/* 1. Période réussie */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>Période réussie · points</Text>
+          <Text style={styles.inputLabel}>{t('points_periode_reussie')}</Text>
           <TextInput
             style={styles.textInput}
             keyboardType="numeric"
@@ -128,9 +128,9 @@ export default function AdminPointsReglesScreen() {
           />
         </View>
 
-        {/* 2. Périodes consécutives pour le bonus */}
+        {/* 2. Périodes consécutives */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>Périodes consécutives pour le bonus</Text>
+          <Text style={styles.inputLabel}>{t('periodes_consecutives')}</Text>
           <TextInput
             style={styles.textInput}
             keyboardType="numeric"
@@ -139,9 +139,9 @@ export default function AdminPointsReglesScreen() {
           />
         </View>
 
-        {/* 3. Bonus de série · points */}
+        {/* 3. Bonus de série */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>Bonus de série · points</Text>
+          <Text style={styles.inputLabel}>{t('bonus_serie_points')}</Text>
           <TextInput
             style={styles.textInput}
             keyboardType="numeric"
@@ -151,17 +151,17 @@ export default function AdminPointsReglesScreen() {
         </View>
 
         {/* SECTION SEUILS DES NIVEAUX */}
-        <Text style={styles.sectionTitle}>Seuils des niveaux</Text>
+        <Text style={styles.sectionTitle}>{t('seuils_niveaux')}</Text>
 
         {/* Ligne Débutant statique */}
         <View style={styles.staticRow}>
-          <Text style={styles.staticLabel}>Débutant</Text>
+          <Text style={styles.staticLabel}>{t('niveau_debutant')}</Text>
           <Text style={styles.staticValue}>0 point</Text>
         </View>
 
-        {/* 4. Économe · points minimum */}
+        {/* 4. Économe */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>Économe · points minimum</Text>
+          <Text style={styles.inputLabel}>{t('seuil_econome_pts')}</Text>
           <TextInput
             style={styles.textInput}
             keyboardType="numeric"
@@ -170,9 +170,9 @@ export default function AdminPointsReglesScreen() {
           />
         </View>
 
-        {/* 5. Expert · points minimum */}
+        {/* 5. Expert */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputLabel}>Expert · points minimum</Text>
+          <Text style={styles.inputLabel}>{t('seuil_expert_pts')}</Text>
           <TextInput
             style={styles.textInput}
             keyboardType="numeric"
@@ -181,9 +181,9 @@ export default function AdminPointsReglesScreen() {
           />
         </View>
 
-        {/* Note explicative (Figma 42) */}
+        {/* Note explicative */}
         <Text style={styles.noteText}>
-          Une période réussie se termine sans dépasser son budget. Récompense attribuée une fois par période terminée.
+          Une période réussie se termine sans dépasser son budget. Récompense attribuée automatiquement à la fin de chaque période.
         </Text>
 
         {/* BANNIÈRE MINT DE VALIDATION */}
@@ -206,7 +206,7 @@ export default function AdminPointsReglesScreen() {
           activeOpacity={0.85}
         >
           <Text style={styles.primaryBtnText}>
-            Enregistrer les règles de points
+            {t('enregistrer_regles_points')}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 48,
+    paddingBottom: 90,
   },
 
   sectionLabel: {

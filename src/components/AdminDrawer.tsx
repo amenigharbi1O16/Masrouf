@@ -124,7 +124,7 @@ export default function AdminDrawer({ visible, onClose }: AdminDrawerProps) {
           {/* En-tête profil admin */}
           <View style={styles.profileSection}>
             <View style={styles.adminBadge}>
-              <Text style={styles.adminBadgeText}>ADMINISTRATEUR</Text>
+              <Text style={styles.adminBadgeText}>{t('administrateur').toUpperCase()}</Text>
             </View>
             <Text style={styles.profileName} numberOfLines={1}>
               {user?.nom ?? 'Administrateur'}
@@ -160,7 +160,7 @@ export default function AdminDrawer({ visible, onClose }: AdminDrawerProps) {
               activeOpacity={0.7}
             >
               <Text style={styles.userSwitchIcon}>👤</Text>
-              <Text style={styles.userSwitchText}>Espace Personnel</Text>
+              <Text style={styles.userSwitchText}>{t('espace_personnel')}</Text>
             </TouchableOpacity>
           </ScrollView>
 
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   },
   langBtn: {
     flex: 1,
-    paddingVertical: 6,
+    paddingVertical: 10,
     borderRadius: Theme.radius.sm,
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     color: Theme.colors.forest,
   },
   logoutBtn: {
-    paddingVertical: 10,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   logoutText: {

@@ -73,7 +73,7 @@ export default function AdminDashboardScreen() {
     <View style={styles.container}>
       {/* Header avec bouton hamburger */}
       <AppHeader
-        titre="Vue d'ensemble admin"
+        titre={t('vue_ensemble_admin')}
         onMenuPress={ouvrirDrawer}
       />
 
@@ -83,15 +83,15 @@ export default function AdminDashboardScreen() {
       >
         {/* Label uppercase */}
         <Text style={styles.sectionLabel}>
-          ADMINISTRATEUR · STATISTIQUES GLOBALES
+          {t('administrateur').toUpperCase()} · {t('stats_globales_anonymes').toUpperCase()}
         </Text>
 
         {/* CARTE HERO : COMPTES ACTIFS (Forest Green #102B27) */}
         <View style={styles.heroCard}>
-          <Text style={styles.heroLabel}>COMPTES ACTIFS</Text>
+          <Text style={styles.heroLabel}>{t('comptes_actifs').toUpperCase()}</Text>
           <Text style={styles.heroNumber}>{stats.nbUtilisateursActifs}</Text>
           <Text style={styles.heroSub}>
-            {stats.nbUtilisateurs} au total · {nbSuspendus} suspendus
+            {stats.nbUtilisateurs} total · {nbSuspendus} {t('suspendu').toLowerCase()}
           </Text>
         </View>
 
@@ -100,22 +100,22 @@ export default function AdminDashboardScreen() {
           <View style={styles.bannerHeaderRow}>
             <Text style={styles.checkIcon}>✓</Text>
             <Text style={styles.bannerTitle}>
-              Statistiques anonymes uniquement
+              {t('statistiques_anonymes')}
             </Text>
           </View>
           <Text style={styles.bannerSub}>
-            Aucun accès aux budgets ou transactions personnels.
+            {t('aucun_acces_finances_perso')}
           </Text>
         </View>
 
         {/* LIGNES D'INFORMATIONS RÉFÉRENTIEL */}
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Catégories de produits</Text>
+          <Text style={styles.infoLabel}>{t('categories_produits')}</Text>
           <Text style={styles.infoValue}>{nbCatsProduit}</Text>
         </View>
 
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Catégories de dépenses</Text>
+          <Text style={styles.infoLabel}>{t('categories_depenses')}</Text>
           <Text style={styles.infoValue}>{nbCatsDepense}</Text>
         </View>
 
@@ -126,7 +126,7 @@ export default function AdminDashboardScreen() {
             onPress={() => router.push('/(admin)/utilisateurs')}
             activeOpacity={0.8}
           >
-            <Text style={styles.secondaryBtnText}>Gérer les utilisateurs</Text>
+            <Text style={styles.secondaryBtnText}>{t('gerer_utilisateurs')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -134,7 +134,7 @@ export default function AdminDashboardScreen() {
             onPress={() => router.push('/(admin)/categories')}
             activeOpacity={0.8}
           >
-            <Text style={styles.secondaryBtnText}>Gérer les catégories</Text>
+            <Text style={styles.secondaryBtnText}>{t('gerer_categories')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -142,7 +142,7 @@ export default function AdminDashboardScreen() {
             onPress={() => router.push('/(admin)/types' as any)}
             activeOpacity={0.8}
           >
-            <Text style={styles.secondaryBtnText}>Types de catégories</Text>
+            <Text style={styles.secondaryBtnText}>{t('types_categories')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -150,7 +150,7 @@ export default function AdminDashboardScreen() {
             onPress={() => router.push('/(admin)/pourcentages' as any)}
             activeOpacity={0.8}
           >
-            <Text style={styles.secondaryBtnText}>Pourcentages par défaut</Text>
+            <Text style={styles.secondaryBtnText}>{t('pourcentages_defaut')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -158,7 +158,7 @@ export default function AdminDashboardScreen() {
             onPress={() => router.push('/(admin)/points-regles')}
             activeOpacity={0.8}
           >
-            <Text style={styles.secondaryBtnText}>Règles des points</Text>
+            <Text style={styles.secondaryBtnText}>{t('regles_points_admin')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -166,7 +166,7 @@ export default function AdminDashboardScreen() {
             onPress={() => router.push('/(admin)/reglages')}
             activeOpacity={0.8}
           >
-            <Text style={styles.secondaryBtnText}>Paramètres admin</Text>
+            <Text style={styles.secondaryBtnText}>{t('parametres_admin')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

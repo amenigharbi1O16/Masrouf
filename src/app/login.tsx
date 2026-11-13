@@ -60,14 +60,14 @@ export default function LoginScreen() {
     }
   }
 
-  // Remplissage rapide pour les tests
+  // Remplissage rapide pour les tests de soutenance
   function remplirIdentifiants(role: 'user' | 'admin') {
     if (role === 'admin') {
       setEmail('admin@masrouf.tn');
-      setMotDePasse('Admin123!');
+      setMotDePasse('admin123');
     } else {
       setEmail('user@masrouf.tn');
-      setMotDePasse('User123!');
+      setMotDePasse('user123');
     }
     setErreur('');
   }
@@ -172,17 +172,23 @@ export default function LoginScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* ── RACCOURCIS DE TEST (VISIBLES SEULEMENT EN MODE DÉVELOPPEMENT) ── */}
-        {__DEV__ ? (
-          <View style={styles.demoRow}>
-            <TouchableOpacity style={styles.demoChip} onPress={() => remplirIdentifiants('user')}>
-              <Text style={styles.demoChipText}>👤 user@masrouf.tn</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.demoChip} onPress={() => remplirIdentifiants('admin')}>
-              <Text style={styles.demoChipText}>👑 admin@masrouf.tn</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+        {/* ── IDENTIFIANTS DE TEST RAPIDES (IDÉAL POUR LA DÉMO / SOUTENANCE) ── */}
+        <View style={styles.demoRow}>
+          <TouchableOpacity
+            style={styles.demoChip}
+            onPress={() => remplirIdentifiants('user')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.demoChipText}>👤 user@masrouf.tn</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.demoChip}
+            onPress={() => remplirIdentifiants('admin')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.demoChipText}>👑 admin@masrouf.tn</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ── SÉLECTEUR DE LANGUE ── */}
         <View style={styles.langRow}>
@@ -355,9 +361,12 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.white,
     borderWidth: 1,
     borderColor: Theme.colors.border,
-    borderRadius: 10,
-    paddingVertical: 8,
+    borderRadius: 12,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   demoChipText: {
     fontSize: 12,

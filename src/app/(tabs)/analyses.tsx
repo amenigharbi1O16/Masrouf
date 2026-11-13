@@ -670,7 +670,7 @@ export default function AnalysesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.warm },
-  scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 48 },
+  scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
 
   periodLabel: {
     fontSize: 12,

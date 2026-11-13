@@ -253,7 +253,7 @@ export default function FicheProduitScreen() {
             activeOpacity={0.8}
           >
             <Text style={styles.secondaryBtnText}>
-              Voir l'historique des achats ({historique.length})
+              {t('historique_prix')} ({historique.length})
             </Text>
           </TouchableOpacity>
         )}
@@ -264,7 +264,7 @@ export default function FicheProduitScreen() {
           onPress={() => router.push(`/nouvel-achat?produitId=${produit.id}`)}
           activeOpacity={0.85}
         >
-          <Text style={styles.primaryBtnText}>+ Ajouter un achat</Text>
+          <Text style={styles.primaryBtnText}>{t('ajouter_achat')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -272,7 +272,7 @@ export default function FicheProduitScreen() {
           onPress={() => router.push(`/modifier-produit?id=${produit.id}` as any)}
           activeOpacity={0.8}
         >
-          <Text style={styles.secondaryBtnText}>Modifier le produit</Text>
+          <Text style={styles.secondaryBtnText}>{t('modifier_produit')}</Text>
         </TouchableOpacity>
 
         {/* BOUTON SECONDARY : SUPPRIMER LE PRODUIT */}
@@ -281,7 +281,7 @@ export default function FicheProduitScreen() {
           onPress={handleSupprimer}
           activeOpacity={0.8}
         >
-          <Text style={styles.secondaryBtnText}>Supprimer le produit</Text>
+          <Text style={styles.secondaryBtnText}>{t('supprimer_produit')}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 48,
+    paddingBottom: 90,
   },
   centerContainer: {
     flex: 1,

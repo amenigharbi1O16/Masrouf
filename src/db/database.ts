@@ -570,20 +570,20 @@ function initialiserSettings(): void {
 // INITIALISATION : initialiserComptesDepart
 // ------------------------------------------------------------
 function initialiserComptesDepart(): void {
-  // Administrateur (must_change_password = 1, onboarding_done = 1, hash_version = 1)
+  // Administrateur de test officiel (must_change_password = 0 pour accès direct, onboarding_done = 1, hash_version = 1)
   const adminExiste = db.getFirstSync<{ id: number }>(
     `SELECT id FROM user WHERE email = 'admin@masrouf.tn' COLLATE NOCASE`
   );
   if (!adminExiste) {
     db.runSync(
       `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version)
-       VALUES (?, ?, ?, ?, 'admin', 1, 1, 1, 1)`,
+       VALUES (?, ?, ?, ?, 'admin', 1, 0, 1, 1)`,
       ['Administrateur', 'admin@masrouf.tn', DEFAULT_ADMIN_HASH, DEFAULT_SALT]
     );
   } else {
-    // S'assure que l'administrateur existant a onboarding_done = 1 et hash_version = 1
+    // S'assure que l'administrateur existant a accès direct sans être bloqué par le changement forcé
     db.runSync(
-      `UPDATE user SET onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'admin@masrouf.tn' COLLATE NOCASE`
+      `UPDATE user SET must_change_password = 0, is_active = 1, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'admin@masrouf.tn' COLLATE NOCASE`
     );
   }
 
@@ -603,7 +603,7 @@ function initialiserComptesDepart(): void {
     userIdTest = userExiste.id;
     // S'assure que l'utilisateur test existant conserve ses données avec onboarding_done = 1
     db.runSync(
-      `UPDATE user SET onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'user@masrouf.tn' COLLATE NOCASE`
+      `UPDATE user SET is_active = 1, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'user@masrouf.tn' COLLATE NOCASE`
     );
   }
 

@@ -229,7 +229,7 @@ export default function NouvelAchatScreen() {
     <View style={styles.container}>
       {/* Header avec action retour */}
       <AppHeader
-        titre={mode === 'produit' ? 'Ajouter un achat' : 'Ajouter une dépense'}
+        titre={mode === 'produit' ? t('achat_produit') : t('depense_simple')}
         onMenuPress={() => router.back()}
       />
 
@@ -242,17 +242,19 @@ export default function NouvelAchatScreen() {
           <TouchableOpacity
             style={[styles.toggleBtn, mode === 'produit' && styles.toggleBtnActive]}
             onPress={() => setMode('produit')}
+            activeOpacity={0.8}
           >
             <Text style={[styles.toggleText, mode === 'produit' && styles.toggleTextActive]}>
-              Achat produit
+              {t('achat_produit')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toggleBtn, mode === 'direct' && styles.toggleBtnActive]}
             onPress={() => setMode('direct')}
+            activeOpacity={0.8}
           >
             <Text style={[styles.toggleText, mode === 'direct' && styles.toggleTextActive]}>
-              Dépense simple
+              {t('depense_simple')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -263,7 +265,7 @@ export default function NouvelAchatScreen() {
           /* ==================================================== */
           <View>
             <Text style={styles.sectionLabel}>
-              ENREGISTRER L'ACHAT D'UN PRODUIT
+              {t('achat_produit').toUpperCase()}
             </Text>
 
             {/* Carte aperçu produit sélectionné (Figma 16 top card) */}
@@ -332,7 +334,7 @@ export default function NouvelAchatScreen() {
 
             {/* Prix total · DT */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Prix total · DT</Text>
+              <Text style={styles.inputLabel}>{t('prix_total_paye')}</Text>
               <TextInput
                 style={styles.textInput}
                 placeholder="Ex: 14.500"
@@ -349,7 +351,7 @@ export default function NouvelAchatScreen() {
 
             {/* Quantité */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Quantité</Text>
+              <Text style={styles.inputLabel}>{t('quantite')}</Text>
               <TextInput
                 style={styles.textInput}
                 placeholder="1"
@@ -366,7 +368,7 @@ export default function NouvelAchatScreen() {
 
             {/* Unité */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Unité</Text>
+              <Text style={styles.inputLabel}>{t('unite')}</Text>
               <TextInput
                 style={styles.textInput}
                 value={unite}
@@ -378,7 +380,7 @@ export default function NouvelAchatScreen() {
 
             {/* Magasin */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Magasin</Text>
+              <Text style={styles.inputLabel}>{t('lieu_achat')}</Text>
               <TextInput
                 style={styles.textInput}
                 placeholder="Ex: Monoprix, Carrefour, Épicerie..."
@@ -390,7 +392,7 @@ export default function NouvelAchatScreen() {
 
             {/* Date */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Date</Text>
+              <Text style={styles.inputLabel}>{t('date_achat_label')}</Text>
               <TextInput
                 style={styles.textInput}
                 value={dateAchat}
@@ -400,7 +402,7 @@ export default function NouvelAchatScreen() {
 
             {/* Ligne Prix unitaire calculé (Figma 16) */}
             <View style={styles.unitPriceRow}>
-              <Text style={styles.unitPriceLabel}>Prix unitaire calculé</Text>
+              <Text style={styles.unitPriceLabel}>{t('nouveau_prix_unitaire')}</Text>
               <Text style={styles.unitPriceValue}>
                 {prixUnitaireCalcule} DT / {unite || 'unité'}
               </Text>
@@ -457,15 +459,15 @@ export default function NouvelAchatScreen() {
           /* ==================================================== */
           <View>
             <Text style={styles.sectionLabel}>
-              AUCUN PRODUIT NÉCESSAIRE
+              {t('depense_simple').toUpperCase()}
             </Text>
             <Text style={styles.screenTitle}>
-              Gardez vos essentiels en vue.
+              {t('enregistrer_achat')}
             </Text>
 
             {/* Montant · DT */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Montant · DT</Text>
+              <Text style={styles.inputLabel}>{t('montant_depense')}</Text>
               <TextInput
                 style={styles.textInput}
                 placeholder="Ex: 35.000"
@@ -478,7 +480,7 @@ export default function NouvelAchatScreen() {
 
             {/* Description */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Description</Text>
+              <Text style={styles.inputLabel}>{t('description_depense')}</Text>
               <TextInput
                 style={styles.textInput}
                 placeholder="Ex: Abonnement mensuel de bus, Facture..."
@@ -494,10 +496,10 @@ export default function NouvelAchatScreen() {
               onPress={() => setModalCatVisible(true)}
               activeOpacity={0.8}
             >
-              <Text style={styles.inputLabel}>Catégorie de dépense</Text>
+              <Text style={styles.inputLabel}>{t('categorie_budgetaire')}</Text>
               <View style={styles.catSelectedRow}>
                 <Text style={styles.fieldValue}>
-                  {categorieDirecte ? `${categorieDirecte.icone} ${categorieDirecte.nom}` : 'Sélectionner...'}
+                  {categorieDirecte ? `${categorieDirecte.icone} ${categorieDirecte.nom}` : t('selectionner')}
                 </Text>
                 <Text style={styles.chevronSmall}>▾</Text>
               </View>
@@ -505,7 +507,7 @@ export default function NouvelAchatScreen() {
 
             {/* Date */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Date</Text>
+              <Text style={styles.inputLabel}>{t('date_achat_label')}</Text>
               <TextInput
                 style={styles.textInput}
                 value={dateAchat}
@@ -644,7 +646,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 48,
+    paddingBottom: 90,
   },
 
   // Toggle de mode

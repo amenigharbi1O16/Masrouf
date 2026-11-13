@@ -293,7 +293,7 @@ export default function HomeScreen() {
           onPress={() => router.push('/nouvel-achat')}
           activeOpacity={0.85}
         >
-          <Text style={styles.fabText}>+ {t('ajouter_achat') ?? 'Ajouter un achat'}</Text>
+          <Text style={styles.fabText}>{t('ajouter_achat')}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Theme.colors.warm },
   scroll: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
 
   // Période
