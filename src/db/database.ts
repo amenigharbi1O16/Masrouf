@@ -326,12 +326,12 @@ function initialiserCategories(): void {
   // A) CATÉGORIES DE PRODUITS ACHETÉS (type = 'product')
   const categoriesProduits = [
     // Par défaut
-    { name: 'Alimentation', icon: '🍞', pct: 25, isDef: 1, theme: 'Essentiel' },
-    { name: 'Vêtements et chaussures', icon: '👕', pct: 8, isDef: 1, theme: 'Personnel' },
-    { name: 'Hygiène et soins personnels', icon: '🧼', pct: 4, isDef: 1, theme: 'Vie quotidienne' },
+    { name: 'Alimentation', icon: '🍞', pct: 40, isDef: 1, theme: 'Essentiel' },
+    { name: 'Vêtements et chaussures', icon: '👕', pct: 5, isDef: 1, theme: 'Personnel' },
+    { name: 'Hygiène et soins', icon: '🧼', pct: 4, isDef: 1, theme: 'Vie quotidienne' },
     { name: 'Maison et équipement', icon: '🛋️', pct: 4, isDef: 1, theme: 'Logement' },
-    { name: 'Matériel informatique', icon: '💻', pct: 4, isDef: 1, theme: 'Études et travail' },
-    { name: 'Santé', icon: '💊', pct: 5, isDef: 1, theme: 'Santé' },
+    { name: 'Matériel informatique', icon: '💻', pct: 2, isDef: 1, theme: 'Études et travail' },
+    { name: 'Santé et médicaments', icon: '💊', pct: 5, isDef: 1, theme: 'Santé' },
     // Supplémentaires
     { name: 'Maison et entretien', icon: '🧹', pct: 0, isDef: 0, theme: 'Logement' },
     { name: 'Beauté et coiffure', icon: '💇', pct: 0, isDef: 0, theme: 'Personnel' },
@@ -342,15 +342,15 @@ function initialiserCategories(): void {
   const categoriesDepenses = [
     // Par défaut
     { name: 'Transport', icon: '🚗', pct: 10, isDef: 1, theme: 'Essentiel' },
-    { name: 'Factures', icon: '🧾', pct: 14, isDef: 1, theme: 'Logement' },
-    { name: 'Études', icon: '📚', pct: 10, isDef: 1, theme: 'Études et travail' },
-    { name: 'Loisirs et sorties', icon: '🎮', pct: 5, isDef: 1, theme: 'Personnel' },
-    { name: 'Enfants', icon: '👶', pct: 5, isDef: 1, theme: 'Famille' },
-    { name: 'Aide à la famille', icon: '🤝', pct: 2, isDef: 1, theme: 'Famille' },
-    { name: 'Épargne', icon: '💰', pct: 5, isDef: 1, theme: 'Argent' },
-    { name: 'Dons et charité', icon: '🤲', pct: 1, isDef: 1, theme: 'Argent' },
-    { name: 'Frais bancaires', icon: '🏦', pct: 2, isDef: 1, theme: 'Argent' },
-    { name: 'Autres', icon: '📦', pct: 5, isDef: 1, theme: 'Divers', isSys: 1 }, // Protégée
+    { name: 'Factures', icon: '🧾', pct: 12, isDef: 1, theme: 'Logement' },
+    { name: 'Éducation', icon: '📚', pct: 3, isDef: 1, theme: 'Études et travail' },
+    { name: 'Loisirs', icon: '🎮', pct: 4, isDef: 1, theme: 'Personnel' },
+    { name: 'Enfants', icon: '👶', pct: 2, isDef: 1, theme: 'Famille' },
+    { name: 'Aide familiale', icon: '🤝', pct: 2, isDef: 1, theme: 'Famille' },
+    { name: 'Épargne', icon: '💰', pct: 4, isDef: 1, theme: 'Argent' },
+    { name: 'Dons', icon: '🤲', pct: 1, isDef: 1, theme: 'Argent' },
+    { name: 'Frais bancaires', icon: '🏦', pct: 1, isDef: 1, theme: 'Argent' },
+    { name: 'Autres', icon: '📦', pct: 1, isDef: 1, theme: 'Divers', isSys: 1 },
     // Supplémentaires
     { name: 'Restaurants et cafés', icon: '☕', pct: 0, isDef: 0, theme: 'Vie quotidienne' },
     { name: 'Téléphone et internet', icon: '📱', pct: 0, isDef: 0, theme: 'Vie quotidienne' },
@@ -362,6 +362,27 @@ function initialiserCategories(): void {
     { name: 'Dettes et remboursements', icon: '💳', pct: 0, isDef: 0, theme: 'Argent' },
     { name: 'Imprévus', icon: '⚡', pct: 0, isDef: 0, theme: 'Divers' },
   ];
+
+  const renoms: [string, string][] = [
+    ['Hygiène et soins personnels', 'Hygiène et soins'],
+    ['Santé', 'Santé et médicaments'],
+    ['Études', 'Éducation'],
+    ['Loisirs et sorties', 'Loisirs'],
+    ['Aide à la famille', 'Aide familiale'],
+    ['Dons et charité', 'Dons'],
+  ];
+  for (const [ancien, nouveau] of renoms) {
+    const cible = db.getFirstSync<{ id: number }>(
+      `SELECT id FROM category WHERE name_key = ? COLLATE NOCASE`,
+      [nouveau]
+    );
+    if (!cible) {
+      db.runSync(
+        `UPDATE category SET name_key = ? WHERE name_key = ? COLLATE NOCASE`,
+        [nouveau, ancien]
+      );
+    }
+  }
 
   // Insertion type = 'product'
   for (const c of categoriesProduits) {
@@ -377,8 +398,8 @@ function initialiserCategories(): void {
       );
     } else {
       db.runSync(
-        `UPDATE category SET type = 'product', default_percent = ?, is_default = ?, theme = ? WHERE id = ?`,
-        [c.pct, c.isDef, c.theme, existe.id]
+        `UPDATE category SET type = 'product', theme = ? WHERE id = ?`,
+        [c.theme, existe.id]
       );
     }
   }
@@ -398,8 +419,8 @@ function initialiserCategories(): void {
       );
     } else {
       db.runSync(
-        `UPDATE category SET type = 'expense', default_percent = ?, is_default = ?, is_system = ?, theme = ? WHERE id = ?`,
-        [c.pct, c.isDef, isSys, c.theme, existe.id]
+        `UPDATE category SET type = 'expense', is_system = ?, theme = ? WHERE id = ?`,
+        [isSys, c.theme, existe.id]
       );
     }
   }
@@ -503,7 +524,7 @@ function initialiserSettings(): void {
       INSERT INTO settings
         (points_per_category, points_monthly_bonus, points_streak_bonus,
          threshold_beginner, threshold_saver, threshold_expert)
-      VALUES (10, 50, 20, 0, 100, 300)
+      VALUES (0, 0, 50, 0, 300, 1000)
     `);
   }
 }

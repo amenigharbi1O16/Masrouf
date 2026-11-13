@@ -34,6 +34,7 @@ import {
   getNonBudgetedDepenses,
   getTotalPoints,
   getPointsSettings,
+  couleurSelonConsommation,
   evaluerMoisPrecedent,
   hasAlerteBeenShown,
   logAlerte,
@@ -95,10 +96,11 @@ export default function HomeScreen() {
 
     // Alertes 80% et 100%
     for (const env of envs) {
-      if (env.pourcentage_consomme >= 100 && !hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 100)) {
+      const reglesAlerte = getPointsSettings();
+      if (env.pourcentage_consomme >= reglesAlerte.red_from && !hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 100)) {
         logAlerte(user.id, moisCourant, env.categorie_id, 100);
         Alert.alert(t('alerte_100_titre'), `${t('alerte_100_msg')} ${env.categorie_nom}`);
-      } else if (env.pourcentage_consomme >= 80 && !hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 80)) {
+      } else if (env.pourcentage_consomme >= reglesAlerte.orange_from && !hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 80)) {
         logAlerte(user.id, moisCourant, env.categorie_id, 80);
         Alert.alert(t('alerte_80_titre'), `${t('alerte_80_msg')} ${env.categorie_nom}`);
       }
@@ -113,13 +115,14 @@ export default function HomeScreen() {
   const largeurBarre = Math.min(ratio, 100);
 
   // Couleur de statut budgétaire
-  let couleurBarre: string = Theme.colors.statusGreen;
-  if (ratio >= 100) couleurBarre = Theme.colors.coral;
-  else if (ratio >= 70) couleurBarre = Theme.colors.gold;
+  const teinte = couleurSelonConsommation(ratio);
+  const couleurBarre =
+    teinte === 'corail' ? Theme.colors.coral : teinte === 'or' ? Theme.colors.gold : Theme.colors.statusGreen;
+  const regles = getPointsSettings();
 
-  // Statut de la bannière
+  // Statut de la bannière : or dès 80 %, rouge dès 100 %
   const statut: 'healthy' | 'warning' | 'exceeded' =
-    ratio >= 100 ? 'exceeded' : ratio >= 70 ? 'warning' : 'healthy';
+    ratio >= regles.red_from ? 'exceeded' : ratio >= regles.orange_from ? 'warning' : 'healthy';
 
   // Catégories visibles vs résumé
   const enveloppesVisibles = enveloppes.slice(0, 2);
@@ -191,8 +194,9 @@ export default function HomeScreen() {
               const pct = env.pourcentage_consomme;
               const w = Math.min(pct, 100);
               let col: string = Theme.colors.statusGreen;
-              if (pct >= 100) col = Theme.colors.coral;
-              else if (pct >= 70) col = Theme.colors.gold;
+              const teinteCat = couleurSelonConsommation(pct);
+              if (teinteCat === 'corail') col = Theme.colors.coral;
+              else if (teinteCat === 'or') col = Theme.colors.gold;
 
               return (
                 <View key={env.categorie_id} style={styles.catCard}>

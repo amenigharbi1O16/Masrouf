@@ -71,6 +71,8 @@ export default function AdminDrawer({ visible, onClose }: AdminDrawerProps) {
     { label: t('tableau_de_bord') ?? 'Vue d\'ensemble', route: '/(admin)/dashboard', icon: '📊' },
     { label: t('utilisateurs_admin') ?? 'Utilisateurs', route: '/(admin)/utilisateurs', icon: '👥' },
     { label: t('categories_admin') ?? 'Catégories', route: '/(admin)/categories', icon: '🏷️' },
+    { label: t('types_categories') ?? 'Types de catégories', route: '/(admin)/types', icon: '🔀' },
+    { label: t('pourcentages_defaut') ?? 'Pourcentages par défaut', route: '/(admin)/pourcentages', icon: '%' },
     { label: t('regles_points_admin') ?? 'Règles des points', route: '/(admin)/points-regles', icon: '⭐' },
     { label: t('reglages_admin') ?? 'Paramètres admin', route: '/(admin)/reglages', icon: '⚙️' },
   ];

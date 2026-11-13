@@ -37,7 +37,7 @@ import {
   updateUserActiveStatus,
   resetUserPassword,
   countActiveAdmins,
-  Utilisateur,
+  CompteAdmin,
 } from '../../db/queries';
 
 // Cryptographie & Auth
@@ -56,9 +56,9 @@ export default function AdminUtilisateursScreen() {
   const { t } = useTranslation();
   const { ouvrirDrawer } = useAdminDrawer();
 
-  const [utilisateurs, setUtilisateurs] = useState<Utilisateur[]>([]);
+  const [utilisateurs, setUtilisateurs] = useState<CompteAdmin[]>([]);
   const [recherche, setRecherche] = useState<string>('');
-  const [compteSelectionne, setCompteSelectionne] = useState<Utilisateur | null>(null);
+  const [compteSelectionne, setCompteSelectionne] = useState<CompteAdmin | null>(null);
 
   const recharger = useCallback(() => {
     const list = getAllUsersAdmin(adminConnecte?.id);
@@ -85,7 +85,7 @@ export default function AdminUtilisateursScreen() {
   const nbActifs = utilisateurs.filter((u) => u.is_active === 1).length;
 
   // Action : Basculer Actif / Suspendu (Figma 37)
-  function handleBasculerStatut(u: Utilisateur) {
+  function handleBasculerStatut(u: CompteAdmin) {
     if (!adminConnecte) return;
 
     if (u.id === adminConnecte.id) {
@@ -112,7 +112,7 @@ export default function AdminUtilisateursScreen() {
   }
 
   // Action : Mot de passe temporaire (Figma 38)
-  async function handleReinitialiserMdp(u: Utilisateur) {
+  async function handleReinitialiserMdp(u: CompteAdmin) {
     const mdpTemporaire = generateTemporaryPassword(8);
     const hash = await createPasswordHash(mdpTemporaire);
 

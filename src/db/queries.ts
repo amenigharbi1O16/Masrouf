@@ -94,21 +94,34 @@ export type EnveloppeBudget = {
 };
 
 export type PointsSettings = {
-  points_categorie_respectee: number;
-  points_bonus_mensuel: number;
-  points_bonus_serie: number;
+  points_per_period: number;
+  points_streak_bonus: number;
+  streak_length: number;
   seuil_debutant: number;
   seuil_econome: number;
   seuil_expert: number;
+  green_until: number;
+  orange_from: number;
+  red_from: number;
 };
 
 export type AdminGlobalStats = {
   nbUtilisateurs: number;
   nbUtilisateursActifs: number;
-  nbProduits: number;
-  nbAchats: number;
-  volumeTotalTND: number;
-  topCategorieNom: string;
+  nbSuspendus: number;
+  nbCategoriesProduit: number;
+  nbCategoriesDepense: number;
+};
+
+/** Vue admin d'un compte : jamais de budget ni de hash. */
+export type CompteAdmin = {
+  id: number;
+  nom: string;
+  email: string;
+  role: 'admin' | 'user';
+  is_active: number;
+  must_change_password: number;
+  created_at: string;
 };
 
 export type DepenseParCategorie = {
@@ -296,6 +309,13 @@ export function updateUserActiveStatus(
   adminUserId?: number
 ): void {
   verifierPrivilegeAdmin(adminUserId);
+  if (adminUserId != null && userId === adminUserId && !isActive) {
+    throw new Error('Un administrateur ne peut pas se suspendre lui-même.');
+  }
+  const cible = getUserById(userId);
+  if (cible?.role === 'admin' && !isActive && countActiveAdmins() <= 1) {
+    throw new Error('Il doit rester au moins un administrateur actif.');
+  }
   db.runSync(
     `UPDATE user SET is_active = ? WHERE id = ?`,
     [isActive ? 1 : 0, userId]
@@ -325,8 +345,13 @@ export function resetUserPassword(
 // ------------------------------------------------------------
   export function deleteUserAndData(userId: number, adminUserId?: number): void {
     verifierPrivilegeAdmin(adminUserId);
-    // Les contraintes ON DELETE CASCADE suppriment automatiquement
-    // produits, achats, budgets et logs rattachés à cet utilisateur
+    if (adminUserId != null && userId === adminUserId) {
+      throw new Error('Un administrateur ne peut pas supprimer son propre compte.');
+    }
+    const cible = getUserById(userId);
+    if (cible?.role === 'admin' && cible.is_active === 1 && countActiveAdmins() <= 1) {
+      throw new Error('Il doit rester au moins un administrateur actif.');
+    }
     db.runSync(`DELETE FROM user WHERE id = ?`, [userId]);
   }
 
@@ -965,18 +990,40 @@ export function resetUserPassword(
   // SECTION F — GAMIFICATION & POINTS
   // ============================================================
 
+  const POINTS_DEFAUT: PointsSettings = {
+    points_per_period: 100,
+    points_streak_bonus: 50,
+    streak_length: 3,
+    seuil_debutant: 0,
+    seuil_econome: 300,
+    seuil_expert: 1000,
+    green_until: 79,
+    orange_from: 80,
+    red_from: 100,
+  };
+
   export function getPointsSettings(): PointsSettings {
-    const s = db.getFirstSync<PointsSettings>(`SELECT * FROM reglages_points LIMIT 1`);
-    return (
-      s ?? {
-        points_categorie_respectee: 10,
-        points_bonus_mensuel: 50,
-        points_bonus_serie: 20,
-        seuil_debutant: 0,
-        seuil_econome: 100,
-        seuil_expert: 300,
-      }
+    const s = db.getFirstSync<PointsSettings>(
+      `SELECT
+         points_per_period,
+         points_streak_bonus,
+         streak_length,
+         threshold_beginner as seuil_debutant,
+         threshold_saver as seuil_econome,
+         threshold_expert as seuil_expert,
+         green_until,
+         orange_from,
+         red_from
+       FROM settings LIMIT 1`
     );
+    return s ?? POINTS_DEFAUT;
+  }
+
+  export function couleurSelonConsommation(pourcentage: number): 'vert' | 'or' | 'corail' {
+    const s = getPointsSettings();
+    if (pourcentage >= s.red_from) return 'corail';
+    if (pourcentage >= s.orange_from) return 'or';
+    return 'vert';
   }
 
     export function updatePointsSettings(
@@ -985,27 +1032,35 @@ export function resetUserPassword(
     ): void {
       verifierPrivilegeAdmin(adminUserId);
       db.runSync(
-        `UPDATE reglages_points
-     SET points_categorie_respectee = ?,
-         points_bonus_mensuel = ?,
-         points_bonus_serie = ?,
-         seuil_debutant = ?,
-         seuil_econome = ?,
-         seuil_expert = ?`,
+        `UPDATE settings
+         SET points_per_period = ?,
+             points_streak_bonus = ?,
+             streak_length = ?,
+             points_per_category = 0,
+             points_monthly_bonus = 0,
+             threshold_beginner = ?,
+             threshold_saver = ?,
+             threshold_expert = ?,
+             green_until = ?,
+             orange_from = ?,
+             red_from = ?`,
         [
-          settings.points_categorie_respectee,
-          settings.points_bonus_mensuel,
-          settings.points_bonus_serie,
+          settings.points_per_period,
+          settings.points_streak_bonus,
+          settings.streak_length,
           settings.seuil_debutant,
           settings.seuil_econome,
           settings.seuil_expert,
+          settings.green_until,
+          settings.orange_from,
+          settings.red_from,
         ]
       );
     }
 
     export function getTotalPoints(userId: number): number {
       const result = db.getFirstSync<{ total: number }>(
-        `SELECT COALESCE(SUM(points), 0) as total FROM points_log WHERE utilisateur_id = ?`,
+        `SELECT COALESCE(SUM(points), 0) as total FROM points_log WHERE user_id = ?`,
         [userId]
       );
       return result?.total ?? 0;
@@ -1014,67 +1069,83 @@ export function resetUserPassword(
     // ------------------------------------------------------------
     // evaluerMoisPrecedent : Évaluation automatique au lancement de l'application
     // ------------------------------------------------------------
+    function depenseEntre(userId: number, debut: string, fin: string): number {
+      const row = db.getFirstSync<{ total: number }>(
+        `SELECT COALESCE(SUM(prix_total), 0) as total
+         FROM achats
+         WHERE utilisateur_id = ? AND date_achat >= ? AND date_achat <= ?`,
+        [userId, debut, fin]
+      );
+      return row?.total ?? 0;
+    }
+
+    /**
+     * Une période terminée est notée une seule fois.
+     * Réussite = dépenses <= total. 100 points, puis +50 si les N dernières
+     * périodes (réglage, 3 par défaut) sont toutes réussies.
+     */
     export function evaluerMoisPrecedent(
       userId: number,
-      moisCourant: string
+      _moisCourant: string
     ): { pointsGagnes: number; evalue: boolean; message: string } {
-      const [annee, mois] = moisCourant.split('-').map(Number);
-      const moisPrec = mois === 1 ? 12 : mois - 1;
-      const anneePrec = mois === 1 ? annee - 1 : annee;
-      const moisPrecedent = `${anneePrec}-${String(moisPrec).padStart(2, '0')}`;
-
-      const budget = getMonthlyBudget(userId, moisPrecedent);
-
-      // Si pas de budget défini ou mois déjà évalué -> rien à faire
-      if (!budget || budget.est_evalue === 1) {
+      const aujourdhui = new Date().toISOString().slice(0, 10);
+      const aNoter = db.getAllSync<{
+        id: number;
+        start_date: string;
+        end_date: string;
+        total: number;
+      }>(
+        `SELECT id, start_date, end_date, total
+         FROM budget
+         WHERE user_id = ? AND end_date < ? AND is_evaluated = 0
+         ORDER BY end_date ASC`,
+        [userId, aujourdhui]
+      );
+      if (aNoter.length === 0) {
         return { pointsGagnes: 0, evalue: false, message: '' };
       }
 
       const settings = getPointsSettings();
-      const enveloppes = getEnveloppesBudget(userId, moisPrecedent);
+      let pointsGagnes = 0;
+      let message = '';
 
-      let points = 0;
-      let categoriesReussies = 0;
+      for (const budget of aNoter) {
+        const depense = depenseEntre(userId, budget.start_date, budget.end_date);
+        const reussie = depense <= budget.total;
+        let points = reussie ? settings.points_per_period : 0;
 
-      for (const env of enveloppes) {
-        if (env.montant_depense <= env.montant_alloue) {
-          points += settings.points_categorie_respectee;
-          categoriesReussies++;
-        }
-      }
-
-      const grandChelem = categoriesReussies === enveloppes.length && enveloppes.length > 0;
-      if (grandChelem) {
-        points += settings.points_bonus_mensuel;
-      }
-
-      // Enregistre dans le journal des points
-      if (points > 0) {
         db.runSync(
-          `INSERT INTO points_log (utilisateur_id, mois, raison, points)
-       VALUES (?, ?, ?, ?)`,
-          [
-            userId,
-            moisPrecedent,
-            grandChelem ? 'Mois parfait (Bonus Grand Chelem)' : 'Budgets respectés',
-            points,
-          ]
+          `UPDATE budget SET is_evaluated = 1, succeeded = ? WHERE id = ? AND user_id = ?`,
+          [reussie ? 1 : 0, budget.id, userId]
         );
+
+        if (reussie) {
+          const serie = db.getFirstSync<{ n: number }>(
+            `SELECT COUNT(*) as n FROM (
+               SELECT succeeded FROM budget
+               WHERE user_id = ? AND end_date <= ?
+               ORDER BY end_date DESC
+               LIMIT ?
+             ) WHERE succeeded = 1`,
+            [userId, budget.end_date, settings.streak_length]
+          );
+          if ((serie?.n ?? 0) >= settings.streak_length) {
+            points += settings.points_streak_bonus;
+          }
+        }
+
+        if (points > 0) {
+          db.runSync(
+            `INSERT INTO points_log (user_id, month, reason, points, budget_id)
+             VALUES (?, ?, ?, ?, ?)`,
+            [userId, budget.start_date, reussie ? 'periode_reussie' : 'periode_terminee', points, budget.id]
+          );
+        }
+        pointsGagnes += points;
+        message = reussie ? 'periode_reussie' : 'periode_depassee';
       }
 
-      // Marque le mois comme évalué pour ne jamais recommencer
-      db.runSync(
-        `UPDATE monthly_budgets SET est_evalue = 1 WHERE id = ?`,
-        [budget.id]
-      );
-
-      return {
-        pointsGagnes: points,
-        evalue: true,
-        message: grandChelem
-          ? 'Félicitations ! Vous avez respecté toutes vos enveloppes ce mois-ci !'
-          : `Bravo ! Vous avez respecté ${categoriesReussies} enveloppe(s) budgétaire(s).`,
-      };
+      return { pointsGagnes, evalue: true, message };
     }
 
     // ------------------------------------------------------------
@@ -1086,12 +1157,14 @@ export function resetUserPassword(
       categorieId: number,
       seuil: number
     ): boolean {
+      const budget = getMonthlyBudget(userId, mois);
+      if (!budget) return false;
       const r = db.getFirstSync<{ id: number }>(
-        `SELECT id FROM alertes_log
-     WHERE utilisateur_id = ? AND mois = ? AND categorie_id = ? AND seuil = ?`,
-        [userId, mois, categorieId, seuil]
+        `SELECT id FROM alert_log
+         WHERE user_id = ? AND budget_id = ? AND category_id = ? AND level = ?`,
+        [userId, budget.id, categorieId, seuil]
       );
-      return r !== null;
+      return r != null;
     }
 
     export function logAlerte(
@@ -1100,10 +1173,12 @@ export function resetUserPassword(
       categorieId: number,
       seuil: number
     ): void {
+      const budget = getMonthlyBudget(userId, mois);
+      if (!budget) return;
       db.runSync(
-        `INSERT OR IGNORE INTO alertes_log (utilisateur_id, mois, categorie_id, seuil)
-     VALUES (?, ?, ?, ?)`,
-        [userId, mois, categorieId, seuil]
+        `INSERT OR IGNORE INTO alert_log (user_id, month, category_id, level, budget_id)
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, mois, categorieId, seuil, budget.id]
       );
     }
 
@@ -1120,55 +1195,61 @@ export function resetUserPassword(
     FROM user
     WHERE role = 'user'
   `);
-
-        const prodsCount = db.getFirstSync<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM produits`);
-        const achatsCount = db.getFirstSync<{ cnt: number; vol: number }>(`
-    SELECT COUNT(*) as cnt, COALESCE(SUM(prix_total), 0) as vol FROM achats
+        const cats = db.getFirstSync<{ produits: number; depenses: number }>(`
+    SELECT
+      COALESCE(SUM(CASE WHEN type = 'product' THEN 1 ELSE 0 END), 0) as produits,
+      COALESCE(SUM(CASE WHEN type = 'expense' THEN 1 ELSE 0 END), 0) as depenses
+    FROM category
+    WHERE is_active = 1
   `);
-
-        const topCat = db.getFirstSync<{ nom: string }>(`
-    SELECT c.nom
-    FROM achats a
-    LEFT JOIN produits p ON a.produit_id = p.id
-    LEFT JOIN categories c ON COALESCE(p.categorie_id, a.categorie_id) = c.id
-    GROUP BY c.id
-    ORDER BY COUNT(a.id) DESC
-    LIMIT 1
-  `);
-
+        const total = usersCount?.total ?? 0;
+        const actifs = usersCount?.actifs ?? 0;
         return {
-          nbUtilisateurs: usersCount?.total ?? 0,
-          nbUtilisateursActifs: usersCount?.actifs ?? 0,
-          nbProduits: prodsCount?.cnt ?? 0,
-          nbAchats: achatsCount?.cnt ?? 0,
-          volumeTotalTND: achatsCount?.vol ?? 0,
-          topCategorieNom: topCat?.nom ?? 'Non définie',
+          nbUtilisateurs: total,
+          nbUtilisateursActifs: actifs,
+          nbSuspendus: Math.max(0, total - actifs),
+          nbCategoriesProduit: cats?.produits ?? 0,
+          nbCategoriesDepense: cats?.depenses ?? 0,
         };
       }
 
-        export function getAllUsersAdmin(adminUserId?: number): Utilisateur[] {
+        export function getAllUsersAdmin(adminUserId?: number): CompteAdmin[] {
           verifierPrivilegeAdmin(adminUserId);
-          const rows = db.getAllSync<any>(
-            `SELECT id, name as nom, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel, langue, created_at
-     FROM user
-     ORDER BY role DESC, name ASC`
+          return db.getAllSync<CompteAdmin>(
+            `SELECT id, name as nom, email, role, is_active, must_change_password, created_at
+             FROM user
+             ORDER BY role DESC, name ASC`
           );
-          return rows.map((row) => ({
-            id: row.id,
-            nom: row.nom,
-            email: row.email,
-            password_hash: row.password_hash,
-            salt: row.salt ?? '',
-            role: row.role,
-            is_active: row.is_active,
-            must_change_password: row.must_change_password,
-            onboarding_done: row.onboarding_done ?? 0,
-            hash_version: row.hash_version ?? 1,
-            budget_mensuel: row.budget_mensuel ?? 0,
-            langue: row.langue ?? 'fr',
-            created_at: row.created_at,
-          }));
         }
+
+          export function setCategoryType(
+            id: number,
+            type: 'product' | 'expense',
+            adminUserId?: number
+          ): void {
+            verifierPrivilegeAdmin(adminUserId);
+            db.runSync(`UPDATE category SET type = ? WHERE id = ?`, [type, id]);
+          }
+
+          export function saveDefaultPercents(
+            lignes: { id: number; percent: number }[],
+            adminUserId?: number
+          ): void {
+            verifierPrivilegeAdmin(adminUserId);
+            const somme = lignes.reduce((s, l) => s + l.percent, 0);
+            if (Math.abs(somme - 100) > 0.05) {
+              throw new Error('Le total des pourcentages doit être exactement 100.');
+            }
+            for (const ligne of lignes) {
+              if (ligne.percent < 0 || ligne.percent > 100) {
+                throw new Error('Chaque pourcentage doit être entre 0 et 100.');
+              }
+              db.runSync(
+                `UPDATE category SET default_percent = ?, is_default = 1 WHERE id = ?`,
+                [ligne.percent, ligne.id]
+              );
+            }
+          }
 
           export function addCategoryAdmin(
             nom: string,

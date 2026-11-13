@@ -36,7 +36,6 @@ import { router, useFocusEffect } from 'expo-router';
 // Fonctions SQLite
 import {
   getAdminGlobalStats,
-  getAllCategories,
   AdminGlobalStats,
 } from '../../db/queries';
 
@@ -55,27 +54,20 @@ export default function AdminDashboardScreen() {
   const [stats, setStats] = useState<AdminGlobalStats>({
     nbUtilisateurs: 0,
     nbUtilisateursActifs: 0,
-    nbProduits: 0,
-    nbAchats: 0,
-    volumeTotalTND: 0,
-    topCategorieNom: '...',
+    nbSuspendus: 0,
+    nbCategoriesProduit: 0,
+    nbCategoriesDepense: 0,
   });
-
-  const [nbCatsProduit, setNbCatsProduit] = useState<number>(6);
-  const [nbCatsDepense, setNbCatsDepense] = useState<number>(10);
 
   useFocusEffect(
     useCallback(() => {
-      const s = getAdminGlobalStats(user?.id);
-      setStats(s);
-
-      const cats = getAllCategories(false);
-      setNbCatsProduit(cats.filter((c) => c.type === 'product').length);
-      setNbCatsDepense(cats.filter((c) => c.type === 'expense').length);
+      setStats(getAdminGlobalStats(user?.id));
     }, [user?.id])
   );
 
-  const nbSuspendus = Math.max(0, stats.nbUtilisateurs - stats.nbUtilisateursActifs);
+  const nbSuspendus = stats.nbSuspendus;
+  const nbCatsProduit = stats.nbCategoriesProduit;
+  const nbCatsDepense = stats.nbCategoriesDepense;
 
   return (
     <View style={styles.container}>
@@ -147,7 +139,7 @@ export default function AdminDashboardScreen() {
 
           <TouchableOpacity
             style={styles.secondaryBtn}
-            onPress={() => router.push('/(admin)/categories')}
+            onPress={() => router.push('/(admin)/types' as any)}
             activeOpacity={0.8}
           >
             <Text style={styles.secondaryBtnText}>Types de catégories</Text>
@@ -155,7 +147,7 @@ export default function AdminDashboardScreen() {
 
           <TouchableOpacity
             style={styles.secondaryBtn}
-            onPress={() => router.push('/(admin)/categories')}
+            onPress={() => router.push('/(admin)/pourcentages' as any)}
             activeOpacity={0.8}
           >
             <Text style={styles.secondaryBtnText}>Pourcentages par défaut</Text>

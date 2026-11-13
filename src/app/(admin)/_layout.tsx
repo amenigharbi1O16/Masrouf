@@ -69,6 +69,8 @@ export default function AdminLayout() {
           <Tabs.Screen name="dashboard" />
           <Tabs.Screen name="utilisateurs" />
           <Tabs.Screen name="categories" />
+          <Tabs.Screen name="types" />
+          <Tabs.Screen name="pourcentages" />
           <Tabs.Screen name="points-regles" />
           <Tabs.Screen name="reglages" />
         </Tabs>

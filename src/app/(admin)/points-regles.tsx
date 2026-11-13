@@ -56,8 +56,9 @@ export default function AdminPointsReglesScreen() {
 
   useEffect(() => {
     const s = getPointsSettings();
-    setPtsPeriode(String(s.points_bonus_mensuel || 100));
-    setPtsBonusSerie(String(s.points_bonus_serie || 50));
+    setPtsPeriode(String(s.points_per_period || 100));
+    setNbConsecutifs(String(s.streak_length || 3));
+    setPtsBonusSerie(String(s.points_streak_bonus || 50));
     setSeuilEconome(String(s.seuil_econome || 300));
     setSeuilExpert(String(s.seuil_expert || 1000));
   }, []);
@@ -83,13 +84,17 @@ export default function AdminPointsReglesScreen() {
       return;
     }
 
+    const serie = parseInt(nbConsecutifs, 10);
     updatePointsSettings({
-      points_categorie_respectee: 10,
-      points_bonus_mensuel: pPer,
-      points_bonus_serie: pSerie,
+      points_per_period: pPer,
+      points_streak_bonus: pSerie,
+      streak_length: serie > 0 ? serie : 3,
       seuil_debutant: 0,
       seuil_econome: sEco,
       seuil_expert: sExp,
+      green_until: 79,
+      orange_from: 80,
+      red_from: 100,
     }, user?.id);
 
     Alert.alert('Succès', 'Les règles de points ont été enregistrées avec succès.');

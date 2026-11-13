@@ -189,6 +189,53 @@ export function migrateDatabase(db: SQLiteDatabase): void {
   ajouterColonne(db, `ALTER TABLE settings ADD COLUMN green_until INTEGER NOT NULL DEFAULT 79;`);
   ajouterColonne(db, `ALTER TABLE settings ADD COLUMN orange_from INTEGER NOT NULL DEFAULT 80;`);
   ajouterColonne(db, `ALTER TABLE settings ADD COLUMN red_from INTEGER NOT NULL DEFAULT 100;`);
+  ajouterColonne(db, `ALTER TABLE settings ADD COLUMN streak_length INTEGER NOT NULL DEFAULT 3;`);
+
+  if (!dejaFaite(db, 'settings_design_v1')) {
+    db.execSync(`
+      UPDATE settings SET
+        points_per_period = 100,
+        points_streak_bonus = 50,
+        streak_length = 3,
+        points_per_category = 0,
+        points_monthly_bonus = 0,
+        threshold_beginner = 0,
+        threshold_saver = 300,
+        threshold_expert = 1000,
+        green_until = 79,
+        orange_from = 80,
+        red_from = 100;
+    `);
+    marquer(db, 'settings_design_v1');
+  }
+
+  if (!dejaFaite(db, 'categories_screen41_v1')) {
+    const officiels: [string, number, string][] = [
+      ['Alimentation', 40, 'product'],
+      ['Vêtements et chaussures', 5, 'product'],
+      ['Hygiène et soins', 4, 'product'],
+      ['Maison et équipement', 4, 'product'],
+      ['Matériel informatique', 2, 'product'],
+      ['Santé et médicaments', 5, 'product'],
+      ['Transport', 10, 'expense'],
+      ['Factures', 12, 'expense'],
+      ['Éducation', 3, 'expense'],
+      ['Loisirs', 4, 'expense'],
+      ['Enfants', 2, 'expense'],
+      ['Aide familiale', 2, 'expense'],
+      ['Épargne', 4, 'expense'],
+      ['Dons', 1, 'expense'],
+      ['Frais bancaires', 1, 'expense'],
+      ['Autres', 1, 'expense'],
+    ];
+    for (const [nom, pct, type] of officiels) {
+      db.runSync(
+        `UPDATE category SET default_percent = ?, is_default = 1, type = ? WHERE name_key = ? COLLATE NOCASE`,
+        [pct, type, nom]
+      );
+    }
+    marquer(db, 'categories_screen41_v1');
+  }
 
   if (!dejaFaite(db, 'month_budget_to_budget_v1')) {
     // Un mois civil devient une période du 1er au dernier jour.
