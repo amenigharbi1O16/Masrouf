@@ -130,3 +130,4 @@ Il est utilisé partout :
 Pour ne pas saturer l'espace disque du téléphone de l'utilisateur :
 1. **Remplacement de photo** : Lorsqu'un utilisateur modifie un produit et choisit une nouvelle photo, l'ancienne photo permanente est immédiatement effacée du stockage via `supprimerPhotoProduit(ancienNom)`.
 2. **Suppression de produit** : Lorsqu'un produit est supprimé du catalogue, son fichier photo associé est automatiquement supprimé du disque.
+

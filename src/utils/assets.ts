@@ -43,3 +43,4 @@ export function getLocalizedAsset(cle: string, langue: string = 'fr'): ImageSour
   const premiere = Object.values(groupe)[0];
   return premiere || require('../../assets/images/icon.png');
 }
+

@@ -69,3 +69,4 @@ assert.strictEqual(totalDT, 42.5);
 console.log('✓ Test 5 validé (zéro erreur d\'arrondi grâce aux millimes)');
 
 console.log('TOUS LES TESTS MATHEMATIQUES ANALYSES SONT SUCCES !');
+

@@ -127,3 +127,4 @@ Toutes les requêtes de l'application sont centralisées dans `src/db/queries.ts
    }
    ```
 3. Appeler la fonction dans `migrateDatabase(db)`.
+

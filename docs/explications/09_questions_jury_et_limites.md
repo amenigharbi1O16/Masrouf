@@ -9,6 +9,7 @@ Ce document prépare l'étudiant à sa soutenance orale devant son professeur ou
 ### Question 1 : « Pourquoi avoir choisi une architecture 100 % locale plutôt qu'une API REST avec une base PostgreSQL dans le Cloud ? »
 - **Réponse simple et percutante** :  
   *« C'est un choix délibéré répondant à deux impératifs majeurs : la **confidentialité absolue** et la **disponibilité totale**. Les dépenses quotidiennes et les habitudes d'achat relèvent de la vie privée intime. En conservant 100 % des données dans SQLite sur le téléphone :
+
   1. Aucun tiers ni serveur distant ne peut être piraté ou exploiter les données des utilisateurs.
   2. L'application fonctionne sans aucune latence, instantanément, même dans les zones sans réseau (supermarchés en sous-sol, marchés de plein air, zones rurales).
   3. L'application ne coûte rien en hébergement serveur et ne tombe jamais en panne réseau. »*
@@ -71,3 +72,4 @@ Tout projet d'ingénierie comporte des compromis techniques. Pouvoir les explici
 ### 4. Sauvegarde en Cas de Perte du Téléphone
 - **La limite** : Si l'utilisateur perd ou casse son smartphone sans avoir au préalable exporté sa base ou effectué une sauvegarde système (Google Drive / iCloud Backup), ses données financières locales sont perdues avec l'appareil.
 - **La mitigation** : La commande `VACUUM INTO` génère des copies de sauvegarde intègres facilement exportables par l'utilisateur.
+

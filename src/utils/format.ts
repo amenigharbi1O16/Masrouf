@@ -89,3 +89,4 @@ export function formatPeriode(debutIso: string, finIso: string, langue: string =
     return `${debutIso} – ${finIso}`;
   }
 }
+

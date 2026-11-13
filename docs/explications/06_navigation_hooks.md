@@ -126,3 +126,4 @@ Pour naviguer entre les écrans, nous utilisons l'objet `router` importé depuis
 - **Rôle** : Piloter l'état d'ouverture du tiroir latéral de navigation (78 % de l'écran).
 - **Ce qu'il expose** : `isOpen`, `openDrawer()`, `closeDrawer()`, `toggleDrawer()`.
 - **Effet sur l'écran** : Fait glisser le menu latéral avec une animation fluide et applique un fondu sombre sur le reste de la page.
+

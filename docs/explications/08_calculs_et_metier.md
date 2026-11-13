@@ -153,3 +153,4 @@ Le module `src/utils/format.ts` applique la règle :
 - Bannières d'en-tête exportées en résolutions complètes `@1x`, `@2x`, `@3x` pour chaque langue (`banner_fr.png`, `banner_ar.png`, `banner_en.png`).
 - Manuels d'utilisation de 4 pages standard au format PDF-1.4 embarqués localement dans `assets/manuals/`.
 - Ouverture directe dans la visionneuse système via `src/utils/pdf.ts`.
+

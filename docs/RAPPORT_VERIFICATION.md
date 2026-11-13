@@ -204,3 +204,4 @@ Pour évaluer l'application de façon complète, suivez cette séquence guidée 
 2. Parcourez le tableau de bord et les statistiques :
    - Vous constatez des totaux globaux, des moyennes et des volumes anonymes.
    - Il est rigoureusement impossible d'accéder au détail des achats d'un utilisateur ou aux commerces qu'il fréquente.
+

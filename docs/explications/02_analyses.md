@@ -169,3 +169,4 @@ Les messages ne contiennent **aucun texte en dur**. Le moteur de traduction remp
 "conclusion_depassement": "Warning: envelope exceeded for: {categories}.",
 "conclusion_total_baisse": "Great budget discipline: your overall spending decreased by {pourcentage}%."
 ```
+

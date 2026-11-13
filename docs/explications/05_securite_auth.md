@@ -157,3 +157,4 @@ Techniquement, aucune fonction sous `src/app/(admin)/` n'exécute de requête SQ
 | Consulter les statistiques macro anonymisées | ❌ Non | ✅ Oui |
 | Accéder au menu tiroir utilisateur (`/(tabs)`) | ✅ Oui | ❌ Redirigé vers `/(admin)` |
 | Accéder à l'espace de gestion (`/(admin)`) | ❌ Strictement interdit | ✅ Oui |
+

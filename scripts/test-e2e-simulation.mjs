@@ -138,3 +138,4 @@ assert.strictEqual('nomsProduitsIndividuels' in adminVue, false);
 console.log('✓ Test confidentialité admin validé');
 
 console.log('TOUS LES TESTS E2E SIMULATION SONT PASSÉS AVEC SUCCÈS !');
+

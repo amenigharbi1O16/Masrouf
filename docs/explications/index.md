@@ -78,3 +78,4 @@ L'ensemble de la documentation a été rédigé en français simple, structuré 
    → Expliquez la règle du nom relatif décrite dans `03_photos.md`.
 5. **Si le prof vous challenge sur les limites du système ou vos choix techniques :**
    → Piochez les réponses clé en main dans `09_questions_jury_et_limites.md`.
+

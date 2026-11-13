@@ -225,3 +225,4 @@ Le tiroir latéral (**AppDrawer**) s'ouvre sur simple pression de l'icône menu 
 - **41. Répartition par défaut (`repartition-defaut.tsx`)** : Définition des pourcentages modèles de répartition du budget recommandés aux nouveaux arrivants (somme rigoureusement égale à 100 %).
 - **42. Barème des points (`points-regles.tsx`)** : Configuration des points de gamification accordés lors des actions des utilisateurs.
 - **43. Paramètres système & Audit (`reglages.tsx`)** : Options de maintenance locale, consultation du manuel PDF administrateur et déconnexion.
+

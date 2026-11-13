@@ -111,3 +111,4 @@ Ce document détaille pour chaque paquet : son utilité, la raison de son choix,
 - **Pourquoi on l'a choisi** : Léger, synchrone et rapide, il supporte le basculement instantané entre Français, Arabe et Anglais sans redémarrer l'application.
 - **Fichiers concernés** : `src/utils/i18n.ts`, `src/i18n/fr.json`, `src/i18n/ar.json`, `src/i18n/en.json`.
 - **Si on l'enlevait** : L'application n'aurait plus de support multilingue et afficherait des clés de traduction brutes.
+

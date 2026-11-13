@@ -547,3 +547,4 @@ const styles = StyleSheet.create({
   modalItemIcon: { fontSize: 20 },
   modalItemName: { fontSize: 15, fontWeight: '600', color: Theme.colors.ink },
 });
+

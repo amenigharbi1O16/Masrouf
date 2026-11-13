@@ -454,3 +454,4 @@ console.log('PDFs generated successfully in assets/manuals/:');
 console.log('- manuel_fr.pdf (' + fs.statSync(path.join(destDir, 'manuel_fr.pdf')).size + ' bytes)');
 console.log('- manuel_en.pdf (' + fs.statSync(path.join(destDir, 'manuel_en.pdf')).size + ' bytes)');
 console.log('- manuel_ar.pdf (' + fs.statSync(path.join(destDir, 'manuel_ar.pdf')).size + ' bytes)');
+

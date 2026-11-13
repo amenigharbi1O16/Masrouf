@@ -68,3 +68,4 @@ export async function ouvrirManuelUtilisation(langue: Langue = 'fr'): Promise<vo
     );
   }
 }
+

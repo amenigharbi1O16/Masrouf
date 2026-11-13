@@ -720,6 +720,11 @@ function creerVuesDeRetroCompatibilite(): void {
 
     // 4. Vue produits + triggers
     db.execSync(`
+      DROP TRIGGER IF EXISTS trg_produits_insert;
+      DROP TRIGGER IF EXISTS trg_produits_update;
+      DROP TRIGGER IF EXISTS trg_produits_delete;
+      DROP VIEW IF EXISTS produits;
+
       CREATE VIEW IF NOT EXISTS produits AS
       SELECT
         id,
@@ -728,6 +733,7 @@ function creerVuesDeRetroCompatibilite(): void {
         unit as unite,
         category_id as categorie_id,
         user_id as created_by,
+        photo_path,
         photo_path as photo_uri,
         created_at
       FROM product;
@@ -742,7 +748,7 @@ function creerVuesDeRetroCompatibilite(): void {
           COALESCE(NEW.unite, 'pièce'),
           NEW.categorie_id,
           NEW.created_by,
-          COALESCE(NEW.photo_uri, '')
+          COALESCE(NEW.photo_path, NEW.photo_uri, '')
         );
       END;
 
@@ -754,7 +760,7 @@ function creerVuesDeRetroCompatibilite(): void {
           brand = COALESCE(NEW.marque, brand),
           unit = COALESCE(NEW.unite, unit),
           category_id = COALESCE(NEW.categorie_id, category_id),
-          photo_path = COALESCE(NEW.photo_uri, photo_path)
+          photo_path = COALESCE(NEW.photo_path, NEW.photo_uri, photo_path)
         WHERE id = OLD.id;
       END;
 

@@ -146,6 +146,56 @@ function creerVuesPrixTotal(db: SQLiteDatabase): void {
         COALESCE(NEW.notes, '')
       WHERE NEW.produit_id IS NULL;
     END;
+
+    DROP TRIGGER IF EXISTS trg_produits_insert;
+    DROP TRIGGER IF EXISTS trg_produits_update;
+    DROP TRIGGER IF EXISTS trg_produits_delete;
+    DROP VIEW IF EXISTS produits;
+
+    CREATE VIEW produits AS
+    SELECT
+      id,
+      name as nom,
+      brand as marque,
+      unit as unite,
+      category_id as categorie_id,
+      user_id as created_by,
+      photo_path,
+      photo_path as photo_uri,
+      created_at
+    FROM product;
+
+    CREATE TRIGGER trg_produits_insert
+    INSTEAD OF INSERT ON produits
+    BEGIN
+      INSERT INTO product (name, brand, unit, category_id, user_id, photo_path)
+      VALUES (
+        NEW.nom,
+        COALESCE(NEW.marque, ''),
+        COALESCE(NEW.unite, 'pièce'),
+        NEW.categorie_id,
+        NEW.created_by,
+        COALESCE(NEW.photo_path, NEW.photo_uri, '')
+      );
+    END;
+
+    CREATE TRIGGER trg_produits_update
+    INSTEAD OF UPDATE ON produits
+    BEGIN
+      UPDATE product SET
+        name = COALESCE(NEW.nom, name),
+        brand = COALESCE(NEW.marque, brand),
+        unit = COALESCE(NEW.unite, unit),
+        category_id = COALESCE(NEW.categorie_id, category_id),
+        photo_path = COALESCE(NEW.photo_path, NEW.photo_uri, photo_path)
+      WHERE id = OLD.id;
+    END;
+
+    CREATE TRIGGER trg_produits_delete
+    INSTEAD OF DELETE ON produits
+    BEGIN
+      DELETE FROM product WHERE id = OLD.id;
+    END;
   `);
 }
 
