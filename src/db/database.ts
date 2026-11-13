@@ -177,16 +177,26 @@ export function initDatabase(): void {
     -- 12. TABLE SETTINGS : Barème des points administrable
     CREATE TABLE IF NOT EXISTS settings (
       id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      points_per_period   INTEGER NOT NULL DEFAULT 100,
       points_per_category INTEGER NOT NULL DEFAULT 10,
       points_monthly_bonus INTEGER NOT NULL DEFAULT 50,
       points_streak_bonus INTEGER NOT NULL DEFAULT 20,
+      streak_length       INTEGER NOT NULL DEFAULT 3,
       threshold_beginner  INTEGER NOT NULL DEFAULT 0,
       threshold_saver     INTEGER NOT NULL DEFAULT 100,
-      threshold_expert    INTEGER NOT NULL DEFAULT 300
+      threshold_expert    INTEGER NOT NULL DEFAULT 300,
+      green_until         INTEGER NOT NULL DEFAULT 79,
+      orange_from         INTEGER NOT NULL DEFAULT 80,
+      red_from            INTEGER NOT NULL DEFAULT 100
     );
   `);
 
   // Colonnes ajoutées de façon sécurisée (idempotente) si la base existait déjà
+  try { db.execSync(`ALTER TABLE settings ADD COLUMN points_per_period INTEGER NOT NULL DEFAULT 100;`); } catch { }
+  try { db.execSync(`ALTER TABLE settings ADD COLUMN green_until INTEGER NOT NULL DEFAULT 79;`); } catch { }
+  try { db.execSync(`ALTER TABLE settings ADD COLUMN orange_from INTEGER NOT NULL DEFAULT 80;`); } catch { }
+  try { db.execSync(`ALTER TABLE settings ADD COLUMN red_from INTEGER NOT NULL DEFAULT 100;`); } catch { }
+  try { db.execSync(`ALTER TABLE settings ADD COLUMN streak_length INTEGER NOT NULL DEFAULT 3;`); } catch { }
   try { db.execSync(`ALTER TABLE user ADD COLUMN budget_mensuel REAL NOT NULL DEFAULT 0;`); } catch { }
   try { db.execSync(`ALTER TABLE user ADD COLUMN langue TEXT NOT NULL DEFAULT 'fr';`); } catch { }
   try { db.execSync(`ALTER TABLE user ADD COLUMN salt TEXT NOT NULL DEFAULT '';`); } catch { }
@@ -522,9 +532,10 @@ function initialiserSettings(): void {
   if (!existe || existe.cnt === 0) {
     db.runSync(`
       INSERT INTO settings
-        (points_per_category, points_monthly_bonus, points_streak_bonus,
-         threshold_beginner, threshold_saver, threshold_expert)
-      VALUES (0, 0, 50, 0, 300, 1000)
+        (points_per_period, points_per_category, points_monthly_bonus, points_streak_bonus,
+         streak_length, threshold_beginner, threshold_saver, threshold_expert,
+         green_until, orange_from, red_from)
+      VALUES (100, 0, 0, 50, 3, 0, 300, 1000, 79, 80, 100)
     `);
   }
 }

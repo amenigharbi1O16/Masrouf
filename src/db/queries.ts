@@ -1167,20 +1167,24 @@ export function resetUserPassword(
   };
 
   export function getPointsSettings(): PointsSettings {
-    const s = db.getFirstSync<PointsSettings>(
-      `SELECT
-         points_per_period,
-         points_streak_bonus,
-         streak_length,
-         threshold_beginner as seuil_debutant,
-         threshold_saver as seuil_econome,
-         threshold_expert as seuil_expert,
-         green_until,
-         orange_from,
-         red_from
-       FROM settings LIMIT 1`
-    );
-    return s ?? POINTS_DEFAUT;
+    try {
+      const s = db.getFirstSync<PointsSettings>(
+        `SELECT
+           points_per_period,
+           points_streak_bonus,
+           streak_length,
+           threshold_beginner as seuil_debutant,
+           threshold_saver as seuil_econome,
+           threshold_expert as seuil_expert,
+           green_until,
+           orange_from,
+           red_from
+         FROM settings LIMIT 1`
+      );
+      return s ?? POINTS_DEFAUT;
+    } catch {
+      return POINTS_DEFAUT;
+    }
   }
 
   export function couleurSelonConsommation(pourcentage: number): 'vert' | 'or' | 'corail' {
