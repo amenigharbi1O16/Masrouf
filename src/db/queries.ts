@@ -400,7 +400,7 @@ export function resetUserPassword(
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
        COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
-       p.photo_path as produit_photo,
+       (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
        COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
      FROM achats a
      LEFT JOIN produits p   ON a.produit_id   = p.id
@@ -423,7 +423,7 @@ export function resetUserPassword(
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
        COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
-       p.photo_path as produit_photo,
+       (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
        COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
      FROM achats a
      LEFT JOIN produits p   ON a.produit_id   = p.id
@@ -529,7 +529,7 @@ export function resetUserPassword(
          a.date_achat, a.mois, a.notes,
          COALESCE(p.nom, 'Produit')     as produit_nom,
          COALESCE(c.icone, '📦')        as produit_icone,
-         p.photo_path as produit_photo,
+         (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
          COALESCE(m.nom, 'Non précisé') as magasin_nom
        FROM achats a
        LEFT JOIN produits p   ON a.produit_id   = p.id
@@ -549,7 +549,7 @@ export function resetUserPassword(
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, 'Produit')     as produit_nom,
        COALESCE(c.icone, '📦')        as produit_icone,
-       p.photo_path as produit_photo,
+       (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
        COALESCE(m.nom, 'Non précisé') as magasin_nom
      FROM achats a
      LEFT JOIN produits p   ON a.produit_id   = p.id
@@ -608,6 +608,7 @@ export function resetUserPassword(
          a.date_achat, a.mois, a.notes,
          COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
          COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+         (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
          COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
        FROM achats a
        LEFT JOIN produits p ON a.produit_id = p.id
@@ -662,7 +663,7 @@ export function resetUserPassword(
            a.date_achat, a.mois, a.notes,
            COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
            COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
-           p.photo_path as produit_photo,
+           (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
            COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
          FROM achats a
          LEFT JOIN produits p ON a.produit_id = p.id

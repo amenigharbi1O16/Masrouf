@@ -203,6 +203,13 @@ function creerVuesPrixTotal(db: SQLiteDatabase): void {
  * Point d'entrée. Relançable : chaque étape est notée dans schema_migrations.
  */
 export function migrateDatabase(db: SQLiteDatabase): void {
+  // 1. Recréer immédiatement les vues achats et produits
+  try {
+    creerVuesPrixTotal(db);
+  } catch (err) {
+    console.warn('[Migration] Recréation initiale des vues :', err);
+  }
+
   db.execSync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -233,7 +240,9 @@ export function migrateDatabase(db: SQLiteDatabase): void {
     );
   `);
 
+  ajouterColonne(db, `ALTER TABLE alert_log ADD COLUMN user_id INTEGER;`);
   ajouterColonne(db, `ALTER TABLE alert_log ADD COLUMN budget_id INTEGER REFERENCES budget(id) ON DELETE CASCADE;`);
+  ajouterColonne(db, `ALTER TABLE points_log ADD COLUMN user_id INTEGER;`);
   ajouterColonne(db, `ALTER TABLE points_log ADD COLUMN budget_id INTEGER REFERENCES budget(id) ON DELETE CASCADE;`);
   ajouterColonne(db, `ALTER TABLE settings ADD COLUMN points_per_period INTEGER NOT NULL DEFAULT 100;`);
   ajouterColonne(db, `ALTER TABLE settings ADD COLUMN green_until INTEGER NOT NULL DEFAULT 79;`);
@@ -319,25 +328,29 @@ export function migrateDatabase(db: SQLiteDatabase): void {
       );
     `);
 
-    db.execSync(`
-      UPDATE alert_log
-      SET budget_id = (
-        SELECT b.id FROM budget b
-        WHERE b.user_id = alert_log.user_id
-          AND b.start_date = alert_log.month || '-01'
-      )
-      WHERE budget_id IS NULL;
-    `);
+    try {
+      db.execSync(`
+        UPDATE alert_log
+        SET budget_id = (
+          SELECT b.id FROM budget b
+          WHERE b.user_id = alert_log.user_id
+            AND b.start_date = alert_log.month || '-01'
+        )
+        WHERE budget_id IS NULL AND alert_log.user_id IS NOT NULL;
+      `);
+    } catch { }
 
-    db.execSync(`
-      UPDATE points_log
-      SET budget_id = (
-        SELECT b.id FROM budget b
-        WHERE b.user_id = points_log.user_id
-          AND b.start_date = points_log.month || '-01'
-      )
-      WHERE budget_id IS NULL;
-    `);
+    try {
+      db.execSync(`
+        UPDATE points_log
+        SET budget_id = (
+          SELECT b.id FROM budget b
+          WHERE b.user_id = points_log.user_id
+            AND b.start_date = points_log.month || '-01'
+        )
+        WHERE budget_id IS NULL AND points_log.user_id IS NOT NULL;
+      `);
+    } catch { }
 
     marquer(db, 'month_budget_to_budget_v1');
   }

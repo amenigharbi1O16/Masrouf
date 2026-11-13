@@ -202,6 +202,10 @@ export function initDatabase(): void {
   try { db.execSync(`ALTER TABLE user ADD COLUMN salt TEXT NOT NULL DEFAULT '';`); } catch { }
   try { db.execSync(`ALTER TABLE user ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0;`); } catch { }
   try { db.execSync(`ALTER TABLE user ADD COLUMN hash_version INTEGER NOT NULL DEFAULT 1;`); } catch { }
+  try { db.execSync(`ALTER TABLE points_log ADD COLUMN user_id INTEGER;`); } catch { }
+  try { db.execSync(`ALTER TABLE points_log ADD COLUMN budget_id INTEGER;`); } catch { }
+  try { db.execSync(`ALTER TABLE alert_log ADD COLUMN user_id INTEGER;`); } catch { }
+  try { db.execSync(`ALTER TABLE alert_log ADD COLUMN budget_id INTEGER;`); } catch { }
 
   // Sauvegarde physique de précaution de la base masrouf.db
   sauvegarderBaseDeDonnees();
