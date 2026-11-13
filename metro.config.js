@@ -11,9 +11,6 @@ if (!config.resolver.assetExts.includes('pdf')) {
   config.resolver.assetExts.push('pdf');
 }
 
-// 2. Éviter les alertes package exports pour les bibliothèques cryptographiques
-config.resolver.unstable_enablePackageExports = false;
-
 // 2. Ajouter les en-têtes Cross-Origin indispensables pour SharedArrayBuffer / wa-sqlite
 config.server = config.server || {};
 config.server.enhanceMiddleware = (middleware) => {
