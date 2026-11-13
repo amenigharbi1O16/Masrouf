@@ -27,7 +27,7 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 
 // Données SQLite — produits et dernier prix unitaire
-import { getAllProduits, Produit } from '../../db/queries';
+import { getAllProduits, getAchatsDuJour, Achat, Produit } from '../../db/queries';
 
 // Design System, Authentification & Internationalisation
 import { Theme } from '../../constants/theme';
@@ -35,6 +35,7 @@ import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
 import { useDrawer } from './_layout';
 import AppHeader from '../../components/AppHeader';
+import ProductThumb from '../../components/ProductThumb';
 
 export default function ProduitsScreen() {
   const { user } = useAuth();
@@ -43,6 +44,7 @@ export default function ProduitsScreen() {
 
   // Liste complète des produits chargés depuis SQLite
   const [produits, setProduits] = useState<Produit[]>([]);
+  const [achatsDuJour, setAchatsDuJour] = useState<Achat[]>([]);
 
   // Texte tapé dans la barre de recherche
   const [recherche, setRecherche] = useState<string>('');
@@ -55,8 +57,9 @@ export default function ProduitsScreen() {
   // ----------------------------------------------------------
   useFocusEffect(
     useCallback(() => {
-      const donnees = getAllProduits(user?.id);
-      setProduits(donnees);
+      if (!user) return;
+      setProduits(getAllProduits(user.id));
+      setAchatsDuJour(getAchatsDuJour(user.id));
     }, [user?.id])
   );
 
@@ -91,10 +94,12 @@ export default function ProduitsScreen() {
       onPress={() => router.push(`/produit/${item.id}`)}
       activeOpacity={0.7}
     >
-      {/* Icône catégorie sur fond mint */}
-      <View style={styles.avatar}>
-        <Text style={styles.avatarIcon}>{item.categorie_icone || '🛍️'}</Text>
-      </View>
+      <ProductThumb
+        photoPath={item.photo_uri}
+        icone={item.categorie_icone || '🛍️'}
+        taille={48}
+        style={styles.avatar}
+      />
 
       {/* Informations textuelles du produit */}
       <View style={styles.productInfo}>
@@ -138,6 +143,20 @@ export default function ProduitsScreen() {
             <Text style={styles.sectionLabel}>
               {t('vos_essentiels') ?? 'VOS ESSENTIELS DU QUOTIDIEN'}
             </Text>
+
+            {achatsDuJour.length > 0 && (
+              <View style={styles.todayBlock}>
+                <Text style={styles.todayTitle}>Achats du jour</Text>
+                {achatsDuJour.slice(0, 5).map((a) => (
+                  <View key={a.id} style={styles.todayRow}>
+                    <Text style={styles.todayName} numberOfLines={1}>
+                      {a.produit_nom}
+                    </Text>
+                    <Text style={styles.todayAmount}>{a.prix_total.toFixed(3)} DT</Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
             {/* Carte de recherche */}
             <View style={styles.searchCard}>
@@ -261,6 +280,26 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 16,
   },
+  todayBlock: {
+    backgroundColor: Theme.colors.white,
+    borderRadius: Theme.radius.lg,
+    padding: 16,
+    marginBottom: 16,
+    ...Theme.shadows.card,
+  },
+  todayTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Theme.colors.ink,
+    marginBottom: 8,
+  },
+  todayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 40,
+  },
+  todayName: { flex: 1, color: Theme.colors.ink, fontSize: 14 },
+  todayAmount: { color: Theme.colors.ink, fontWeight: '700', fontSize: 14 },
 
   // Carte blanche de recherche
   searchCard: {
@@ -356,7 +395,7 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.mint,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginEnd: 14,
   },
   avatarIcon: {
     fontSize: 22,

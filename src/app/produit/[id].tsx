@@ -38,6 +38,7 @@ import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import {
   getProduitById,
   getAchatsByProduit,
+  getMagasinMoinsCher,
   deleteProduit,
   Produit,
   Achat,
@@ -48,6 +49,8 @@ import { Theme } from '../../constants/theme';
 import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
 import AppHeader from '../../components/AppHeader';
+import ProductThumb from '../../components/ProductThumb';
+import { supprimerFichierPhoto } from '../../utils/photos';
 
 export default function FicheProduitScreen() {
   const { user } = useAuth();
@@ -57,15 +60,21 @@ export default function FicheProduitScreen() {
   const [produit, setProduit] = useState<Produit | null>(null);
   const [historique, setHistorique] = useState<Achat[]>([]);
   const [modalHistoriqueVisible, setModalHistoriqueVisible] = useState<boolean>(false);
+  const [moinsCher, setMoinsCher] = useState<{
+    magasin: string;
+    prix_unitaire: number;
+    date_achat: string;
+  } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      if (id) {
+      if (id && user) {
         const pId = Number(id);
         const p = getProduitById(pId);
         setProduit(p);
-        const achats = getAchatsByProduit(pId, user?.id);
+        const achats = getAchatsByProduit(pId, user.id);
         setHistorique(achats);
+        setMoinsCher(getMagasinMoinsCher(pId, user.id));
       }
     }, [id, user?.id])
   );
@@ -120,6 +129,7 @@ export default function FicheProduitScreen() {
         {
           text: 'Garder l\'historique',
           onPress: () => {
+            supprimerFichierPhoto(produit.photo_uri);
             deleteProduit(produit.id, 'reassign');
             router.back();
           },
@@ -128,6 +138,7 @@ export default function FicheProduitScreen() {
           text: 'Tout supprimer',
           style: 'destructive',
           onPress: () => {
+            supprimerFichierPhoto(produit.photo_uri);
             deleteProduit(produit.id, 'cascade');
             router.back();
           },
@@ -153,6 +164,12 @@ export default function FicheProduitScreen() {
 
         {/* HERO CARD MINT (Figma 13) */}
         <View style={styles.heroMintCard}>
+          <ProductThumb
+            photoPath={produit.photo_uri}
+            icone={produit.categorie_icone || '☐'}
+            taille={72}
+            style={{ marginBottom: 12 }}
+          />
           <Text style={styles.heroLabel}>{produit.nom.toUpperCase()}</Text>
           <Text style={styles.heroBrand}>{produit.marque || 'Sans marque'}</Text>
           <Text style={styles.heroSub}>
@@ -178,9 +195,18 @@ export default function FicheProduitScreen() {
         </View>
 
         <View style={styles.dataRow}>
-          <Text style={styles.dataLabel}>Magasin</Text>
+          <Text style={styles.dataLabel}>Magasin (dernier achat)</Text>
           <Text style={styles.dataValue}>
             {dernierAchat ? dernierAchat.magasin_nom : '—'}
+          </Text>
+        </View>
+
+        <View style={styles.dataRow}>
+          <Text style={styles.dataLabel}>Magasin le moins cher</Text>
+          <Text style={styles.dataValue}>
+            {moinsCher
+              ? `${moinsCher.magasin} · ${moinsCher.prix_unitaire.toFixed(3)} DT`
+              : '—'}
           </Text>
         </View>
 
@@ -241,6 +267,14 @@ export default function FicheProduitScreen() {
           <Text style={styles.primaryBtnText}>+ Ajouter un achat</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={() => router.push(`/modifier-produit?id=${produit.id}` as any)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.secondaryBtnText}>Modifier le produit</Text>
+        </TouchableOpacity>
+
         {/* BOUTON SECONDARY : SUPPRIMER LE PRODUIT */}
         <TouchableOpacity
           style={[styles.secondaryBtn, styles.deleteBtn]}
@@ -267,7 +301,15 @@ export default function FicheProduitScreen() {
           </View>
           <ScrollView contentContainerStyle={styles.modalScroll}>
             {historique.map((a) => (
-              <View key={a.id} style={styles.historyCard}>
+              <TouchableOpacity
+                key={a.id}
+                style={styles.historyCard}
+                onPress={() => {
+                  setModalHistoriqueVisible(false);
+                  router.push({ pathname: '/modifier-achat' as any, params: { id: a.id } });
+                }}
+                activeOpacity={0.7}
+              >
                 <View style={styles.historyTop}>
                   <Text style={styles.historyStore}>{a.magasin_nom}</Text>
                   <Text style={styles.historyTotal}>{a.prix_total.toFixed(3)} DT</Text>
@@ -278,7 +320,7 @@ export default function FicheProduitScreen() {
                     {a.quantite} × {a.prix_unitaire.toFixed(3)} DT
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </ScrollView>
         </View>

@@ -50,6 +50,8 @@ import { Theme } from '../constants/theme';
 import { useAuth } from '../utils/auth';
 import { useTranslation } from '../utils/i18n';
 import AppHeader from '../components/AppHeader';
+import ProductThumb from '../components/ProductThumb';
+import { choisirPhotoProduit } from '../utils/photos';
 
 const MOIS_ABR = [
   'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
@@ -77,6 +79,10 @@ export default function NouveauProduitScreen() {
   const [unite, setUnite] = useState<string>('pièce');
   const [magasinNom, setMagasinNom] = useState<string>('');
   const [dateAchat, setDateAchat] = useState<string>(dateFormatee);
+  const [photoNom, setPhotoNom] = useState<string>('');
+  const [erreurNom, setErreurNom] = useState('');
+  const [erreurPrix, setErreurPrix] = useState('');
+  const [erreurQte, setErreurQte] = useState('');
 
   // Modale de sélection de catégorie
   const [modalCatVisible, setModalCatVisible] = useState<boolean>(false);
@@ -99,11 +105,19 @@ export default function NouveauProduitScreen() {
   // ----------------------------------------------------------
   // ENREGISTREMENT DU PRODUIT ET DE L'ACHAT INITIAL
   // ----------------------------------------------------------
+  async function handleChoisirPhoto() {
+    const nomFichier = await choisirPhotoProduit();
+    if (nomFichier) setPhotoNom(nomFichier);
+  }
+
   function handleEnregistrer() {
     if (!user) return;
+    setErreurNom('');
+    setErreurPrix('');
+    setErreurQte('');
 
     if (!nom.trim()) {
-      Alert.alert(t('erreur') ?? 'Attention', t('erreur_champ_requis') ?? 'Veuillez saisir le nom du produit.');
+      setErreurNom('Saisissez le nom du produit.');
       return;
     }
 
@@ -112,39 +126,45 @@ export default function NouveauProduitScreen() {
       return;
     }
 
-    // 1. Insertion du produit dans SQLite
+    const montantPrix = parseFloat(prix.replace(',', '.'));
+    const qte = parseFloat(quantite.replace(',', '.'));
+    if (prix.trim() && (isNaN(montantPrix) || montantPrix < 0)) {
+      setErreurPrix('Le prix doit être un nombre positif ou zéro.');
+      return;
+    }
+    if (quantite.trim() && (isNaN(qte) || qte <= 0)) {
+      setErreurQte('La quantité doit être supérieure à zéro.');
+      return;
+    }
+
     const produitId = insertProduit({
       nom: nom.trim(),
       marque: marque.trim(),
       unite: unite.trim() || 'pièce',
       categorie_id: categorieChoisie.id,
       created_by: user.id,
+      photo_uri: photoNom,
     });
-
-    // 2. Si un prix a été saisi, insertion de l'achat correspondant
-    const montantPrix = parseFloat(prix.replace(',', '.'));
-    const qte = parseFloat(quantite.replace(',', '.')) || 1;
 
     if (!isNaN(montantPrix) && montantPrix > 0) {
       let magId: number | null = null;
       if (magasinNom.trim()) {
         magId = findOrCreateMagasin(magasinNom.trim());
       }
-
+      const quantiteValide = !isNaN(qte) && qte > 0 ? qte : 1;
       insertAchat({
         produit_id: produitId,
         utilisateur_id: user.id,
         magasin_id: magId,
         categorie_id: categorieChoisie.id,
-        prix_unitaire: montantPrix / qte,
-        quantite: qte,
+        prix_unitaire: montantPrix / quantiteValide,
+        quantite: quantiteValide,
         prix_total: montantPrix,
         mois: moisCle,
         notes: marque.trim() ? `Marque : ${marque.trim()}` : '',
       });
     }
 
-    // Retour à l'écran précédent
     router.back();
   }
 
@@ -198,10 +218,17 @@ export default function NouveauProduitScreen() {
         <TouchableOpacity
           style={styles.inputCard}
           activeOpacity={0.8}
-          onPress={() => Alert.alert('Photo', 'La photo est facultative.')}
+          onPress={handleChoisirPhoto}
         >
           <Text style={styles.inputLabel}>Photo · facultative</Text>
-          <Text style={styles.photoAddText}>+ Ajouter une photo</Text>
+          {photoNom ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <ProductThumb photoPath={photoNom} icone="☐" taille={56} />
+              <Text style={styles.photoAddText}>Changer la photo</Text>
+            </View>
+          ) : (
+            <Text style={styles.photoAddText}>+ Ajouter une photo</Text>
+          )}
         </TouchableOpacity>
 
         {/* 4. Catégorie de produit */}

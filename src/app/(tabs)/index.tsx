@@ -47,6 +47,7 @@ import { useAuth } from '../../utils/auth';
 import { useTranslation } from '../../utils/i18n';
 import { useDrawer } from './_layout';
 import AppHeader from '../../components/AppHeader';
+import ProductThumb from '../../components/ProductThumb';
 
 export default function HomeScreen() {
   const { user, refreshUser } = useAuth();
@@ -202,7 +203,7 @@ export default function HomeScreen() {
                 <View key={env.categorie_id} style={styles.catCard}>
                   <View style={styles.catCardHeader}>
                     <View style={styles.catIconBox}>
-                      <Text style={{ fontSize: 18, color: Theme.colors.forest }}>☐</Text>
+                      <Text style={{ fontSize: 18, color: Theme.colors.forest }}>{env.categorie_icone || '🏷️'}</Text>
                     </View>
                     <Text style={styles.catName}>{env.categorie_nom}</Text>
                     <Text style={styles.catAmounts}>
@@ -233,10 +234,18 @@ export default function HomeScreen() {
               <>
                 <Text style={styles.sectionTitle}>{t('transactions_recentes') ?? 'Transactions récentes'}</Text>
                 {achatsRecents.map((a) => (
-                  <View key={a.id} style={styles.transactionRow}>
-                    <View style={styles.transactionIconBox}>
-                      <Text style={{ fontSize: 16, color: Theme.colors.forest }}>☐</Text>
-                    </View>
+                  <TouchableOpacity
+                    key={a.id}
+                    style={styles.transactionRow}
+                    onPress={() => router.push({ pathname: '/modifier-achat' as any, params: { id: a.id } })}
+                    activeOpacity={0.7}
+                  >
+                    <ProductThumb
+                      photoPath={a.produit_photo}
+                      icone={a.produit_icone || '📦'}
+                      taille={36}
+                      style={{ marginRight: 12 }}
+                    />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.transactionName}>{a.produit_nom}</Text>
                       <Text style={styles.transactionMeta}>
@@ -246,7 +255,7 @@ export default function HomeScreen() {
                     <Text style={styles.transactionAmount}>
                       -{formatDT(a.prix_total)}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </>
             )}

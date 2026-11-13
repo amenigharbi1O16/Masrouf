@@ -172,15 +172,17 @@ export default function LoginScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* ── RACCOURCIS DE TEST ── */}
-        <View style={styles.demoRow}>
-          <TouchableOpacity style={styles.demoChip} onPress={() => remplirIdentifiants('user')}>
-            <Text style={styles.demoChipText}>👤 Utilisateur test</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.demoChip} onPress={() => remplirIdentifiants('admin')}>
-            <Text style={styles.demoChipText}>👑 Admin test</Text>
-          </TouchableOpacity>
-        </View>
+        {/* ── RACCOURCIS DE TEST (VISIBLES SEULEMENT EN MODE DÉVELOPPEMENT) ── */}
+        {__DEV__ ? (
+          <View style={styles.demoRow}>
+            <TouchableOpacity style={styles.demoChip} onPress={() => remplirIdentifiants('user')}>
+              <Text style={styles.demoChipText}>👤 user@masrouf.tn</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.demoChip} onPress={() => remplirIdentifiants('admin')}>
+              <Text style={styles.demoChipText}>👑 admin@masrouf.tn</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {/* ── SÉLECTEUR DE LANGUE ── */}
         <View style={styles.langRow}>

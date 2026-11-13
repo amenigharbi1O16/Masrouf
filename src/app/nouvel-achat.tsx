@@ -41,6 +41,8 @@ import {
   insertAchat,
   findOrCreateMagasin,
   getEnveloppesBudget,
+  suggestProduits,
+  getAchatsByProduit,
   Produit,
   Magasin,
   Categorie,
@@ -52,6 +54,7 @@ import { Theme } from '../constants/theme';
 import { useAuth } from '../utils/auth';
 import { useTranslation } from '../utils/i18n';
 import AppHeader from '../components/AppHeader';
+import ProductThumb from '../components/ProductThumb';
 
 const MOIS_ABR = [
   'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
@@ -80,11 +83,14 @@ export default function NouvelAchatScreen() {
 
   // Champs de saisie MODE PRODUIT
   const [produitChoisi, setProduitChoisi] = useState<Produit | null>(null);
+  const [saisieProduit, setSaisieProduit] = useState('');
   const [prixTotal, setPrixTotal] = useState<string>('');
   const [quantite, setQuantite] = useState<string>('1');
   const [unite, setUnite] = useState<string>('');
   const [magasinNom, setMagasinNom] = useState<string>('');
   const [dateAchat, setDateAchat] = useState<string>(dateFormatee);
+  const [erreurPrix, setErreurPrix] = useState('');
+  const [erreurQte, setErreurQte] = useState('');
 
   // Champs de saisie MODE DÉPENSE DIRECTE
   const [montantDirect, setMontantDirect] = useState<string>('');
@@ -112,11 +118,13 @@ export default function NouvelAchatScreen() {
       const trouvé = p.find((item) => item.id === Number(params.produitId));
       if (trouvé) {
         setProduitChoisi(trouvé);
+        setSaisieProduit(trouvé.nom);
         setUnite(trouvé.unite);
         setMode('produit');
       }
     } else if (p.length > 0) {
       setProduitChoisi(p[0]);
+      setSaisieProduit(p[0].nom);
       setUnite(p[0].unite);
     }
 
@@ -130,9 +138,15 @@ export default function NouvelAchatScreen() {
   }, [user, params.produitId, params.mode]);
 
   // Calcul du prix unitaire en direct
-  const prixNum = parseFloat(prixTotal.replace(',', '.')) || 0;
-  const qteNum = parseFloat(quantite.replace(',', '.')) || 1;
-  const prixUnitaireCalcule = qteNum > 0 ? (prixNum / qteNum).toFixed(3) : '0.000';
+  const prixNum = parseFloat(prixTotal.replace(',', '.'));
+  const qteNum = parseFloat(quantite.replace(',', '.'));
+  const prixUnitaireCalcule =
+    !isNaN(prixNum) && !isNaN(qteNum) && qteNum > 0 ? (prixNum / qteNum).toFixed(3) : '0.000';
+  const suggestions = user ? suggestProduits(user.id, saisieProduit) : [];
+  const dernierAchat =
+    user && produitChoisi ? getAchatsByProduit(produitChoisi.id, user.id)[0] : undefined;
+  const unitesCompatibles = !dernierAchat || !produitChoisi || unite.trim() === produitChoisi.unite;
+  const nouveauUnitaire = !isNaN(prixNum) && !isNaN(qteNum) && qteNum > 0 ? prixNum / qteNum : 0;
 
   // Recherche de produits dans la modale
   const produitsFiltres = produits.filter((p) =>
@@ -152,12 +166,18 @@ export default function NouvelAchatScreen() {
     if (!user) return;
 
     if (mode === 'produit') {
+      setErreurPrix('');
+      setErreurQte('');
       if (!produitChoisi) {
-        Alert.alert(t('erreur') ?? 'Attention', 'Veuillez choisir un produit.');
+        Alert.alert(t('erreur') ?? 'Attention', 'Choisissez un produit dans les suggestions.');
         return;
       }
-      if (prixNum <= 0) {
-        Alert.alert(t('erreur') ?? 'Attention', 'Veuillez saisir un prix valide.');
+      if (prixTotal.trim() === '' || isNaN(prixNum) || prixNum <= 0) {
+        setErreurPrix('Saisissez un prix total supérieur à zéro.');
+        return;
+      }
+      if (quantite.trim() === '' || isNaN(qteNum) || qteNum <= 0) {
+        setErreurQte('La quantité doit être supérieure à zéro.');
         return;
       }
 
@@ -270,16 +290,45 @@ export default function NouvelAchatScreen() {
             )}
 
             {/* Champ Produit */}
-            <TouchableOpacity
-              style={styles.inputCard}
-              onPress={() => setModalProdVisible(true)}
-              activeOpacity={0.8}
-            >
+            <View style={styles.inputCard}>
               <Text style={styles.inputLabel}>Produit</Text>
-              <Text style={styles.fieldValue}>
-                {produitChoisi ? produitChoisi.nom : 'Choisir un produit...'}
-              </Text>
-            </TouchableOpacity>
+              <TextInput
+                style={styles.textInput}
+                value={saisieProduit}
+                placeholder="Tapez un nom…"
+                placeholderTextColor={Theme.colors.muted}
+                onChangeText={(texte) => {
+                  setSaisieProduit(texte);
+                  if (!produitChoisi || produitChoisi.nom !== texte) {
+                    setProduitChoisi(null);
+                  }
+                }}
+              />
+            </View>
+            {suggestions.length > 0 && saisieProduit.trim().length > 0 && (
+              <View style={styles.inputCard}>
+                {suggestions.map((p) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: 10 }}
+                    onPress={() => {
+                      setProduitChoisi(p);
+                      setSaisieProduit(p.nom);
+                      setUnite(p.unite);
+                    }}
+                  >
+                    <ProductThumb photoPath={p.photo_uri} icone={p.categorie_icone} taille={36} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.previewName}>{p.nom}</Text>
+                      <Text style={styles.previewSub}>{p.categorie_nom}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {!produitChoisi && saisieProduit.trim().length > 1 && suggestions.length > 0 && (
+              <Text style={styles.hintText}>Ce nom ressemble à un produit déjà enregistré.</Text>
+            )}
 
             {/* Prix total · DT */}
             <View style={styles.inputCard}>
@@ -290,8 +339,12 @@ export default function NouvelAchatScreen() {
                 placeholderTextColor={Theme.colors.muted}
                 keyboardType="decimal-pad"
                 value={prixTotal}
-                onChangeText={setPrixTotal}
+                onChangeText={(v) => {
+                  setPrixTotal(v);
+                  setErreurPrix('');
+                }}
               />
+              {erreurPrix ? <Text style={{ color: Theme.colors.coral, marginTop: 6 }}>{erreurPrix}</Text> : null}
             </View>
 
             {/* Quantité */}
@@ -303,8 +356,12 @@ export default function NouvelAchatScreen() {
                 placeholderTextColor={Theme.colors.muted}
                 keyboardType="numeric"
                 value={quantite}
-                onChangeText={setQuantite}
+                onChangeText={(v) => {
+                  setQuantite(v);
+                  setErreurQte('');
+                }}
               />
+              {erreurQte ? <Text style={{ color: Theme.colors.coral, marginTop: 6 }}>{erreurQte}</Text> : null}
             </View>
 
             {/* Unité */}
@@ -352,6 +409,26 @@ export default function NouvelAchatScreen() {
             <Text style={styles.hintText}>
               Prix unitaire = prix total ÷ quantité. Comparez au précédent achat avant de valider.
             </Text>
+
+            {produitChoisi && prixNum > 0 && qteNum > 0 && (
+              <View style={styles.previewCard}>
+                {!dernierAchat ? (
+                  <Text style={styles.previewName}>Premier achat de ce produit</Text>
+                ) : !unitesCompatibles ? (
+                  <Text style={styles.previewName}>
+                    {dernierAchat.prix_unitaire.toFixed(3)} DT / {produitChoisi.unite} puis {nouveauUnitaire.toFixed(3)} DT / {unite}. Unités différentes : pas de pourcentage.
+                  </Text>
+                ) : (
+                  <Text style={styles.previewName}>
+                    {(nouveauUnitaire - dernierAchat.prix_unitaire) <= 0 ? '↓' : '↑'}{' '}
+                    {(nouveauUnitaire - dernierAchat.prix_unitaire).toFixed(3)} DT /{' '}
+                    {dernierAchat.prix_unitaire > 0
+                      ? `${(((nouveauUnitaire - dernierAchat.prix_unitaire) / dernierAchat.prix_unitaire) * 100).toFixed(1)} %`
+                      : '—'}
+                  </Text>
+                )}
+              </View>
+            )}
 
             {/* Boutons d'action */}
             <TouchableOpacity

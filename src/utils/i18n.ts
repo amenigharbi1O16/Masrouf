@@ -48,23 +48,35 @@ const traductions: Record<Langue, Record<string, string>> = { fr, ar, en };
 
 // ------------------------------------------------------------
 // FONCTION : translate
-// RÔLE : Traduit une clé avec langue de secours française garantie.
+// RÔLE : Traduit une clé avec langue de secours française garantie
+//        et interpolation de paramètres {cle}.
 // ------------------------------------------------------------
-export function translate(cle: string, langue: Langue): string {
+export function translate(
+  cle: string,
+  langue: Langue,
+  params?: Record<string, string | number>
+): string {
   // 1. Recherche dans la langue demandée
-  const texte = traductions[langue]?.[cle];
-  if (texte && texte.trim().length > 0) {
-    return texte;
-  }
+  let texte = traductions[langue]?.[cle];
 
-  // 2. Repli garanti sur le français
-  const repliFrancais = traductions['fr']?.[cle];
-  if (repliFrancais && repliFrancais.trim().length > 0) {
-    return repliFrancais;
+  // 2. Repli garanti sur le français si clé absente ou vide
+  if (!texte || texte.trim().length === 0) {
+    texte = traductions['fr']?.[cle];
   }
 
   // 3. Dernier recours si même le français n'a pas la clé
-  return cle;
+  if (!texte) {
+    return cle;
+  }
+
+  // 4. Remplacement des paramètres {nomParam}
+  if (params) {
+    for (const [paramKey, val] of Object.entries(params)) {
+      texte = texte.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(val));
+    }
+  }
+
+  return texte;
 }
 
 // ------------------------------------------------------------
@@ -156,7 +168,7 @@ export function useTranslation() {
   };
 
   return {
-    t: (cle: string) => translate(cle, langueActive),
+    t: (cle: string, params?: Record<string, string | number>) => translate(cle, langueActive, params),
     langue: langueActive,
     isRTL: langueActive === 'ar',
     changerLangue,

@@ -69,6 +69,7 @@ export type Achat = {
   produit_id: number | null;
   produit_nom: string;
   produit_icone: string;
+  produit_photo?: string | null;
   utilisateur_id: number;
   magasin_id: number | null;
   magasin_nom: string;
@@ -399,6 +400,7 @@ export function resetUserPassword(
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
        COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+       p.photo_path as produit_photo,
        COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
      FROM achats a
      LEFT JOIN produits p   ON a.produit_id   = p.id
@@ -421,6 +423,7 @@ export function resetUserPassword(
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
        COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+       p.photo_path as produit_photo,
        COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
      FROM achats a
      LEFT JOIN produits p   ON a.produit_id   = p.id
@@ -526,6 +529,7 @@ export function resetUserPassword(
          a.date_achat, a.mois, a.notes,
          COALESCE(p.nom, 'Produit')     as produit_nom,
          COALESCE(c.icone, '📦')        as produit_icone,
+         p.photo_path as produit_photo,
          COALESCE(m.nom, 'Non précisé') as magasin_nom
        FROM achats a
        LEFT JOIN produits p   ON a.produit_id   = p.id
@@ -545,6 +549,7 @@ export function resetUserPassword(
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, 'Produit')     as produit_nom,
        COALESCE(c.icone, '📦')        as produit_icone,
+       p.photo_path as produit_photo,
        COALESCE(m.nom, 'Non précisé') as magasin_nom
      FROM achats a
      LEFT JOIN produits p   ON a.produit_id   = p.id
@@ -572,6 +577,163 @@ export function resetUserPassword(
     return result.lastInsertRowId;
   }
 
+  /** Sans accents ni majuscules, pour les suggestions pendant la frappe. */
+  function normaliserTexte(valeur: string): string {
+    return valeur
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  export function suggestProduits(userId: number, saisie: string, limite: number = 8): Produit[] {
+    const terme = normaliserTexte(saisie);
+    if (!terme) return [];
+    return getAllProduits(userId)
+      .filter((p) => {
+        const nom = normaliserTexte(p.nom);
+        const marque = normaliserTexte(p.marque ?? '');
+        return nom.includes(terme) || marque.includes(terme);
+      })
+      .slice(0, limite);
+  }
+
+  export function getAchatsDuJour(userId: number, isoDate?: string): Achat[] {
+    const jour = isoDate ?? new Date().toISOString().slice(0, 10);
+    return db.getAllSync<Achat>(
+      `SELECT
+         a.id, a.produit_id, a.utilisateur_id, a.magasin_id, a.categorie_id,
+         COALESCE(a.titre, '') as titre,
+         a.prix_unitaire, a.quantite, a.prix_total,
+         a.date_achat, a.mois, a.notes,
+         COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
+         COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+         COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
+       FROM achats a
+       LEFT JOIN produits p ON a.produit_id = p.id
+       LEFT JOIN categories cp ON p.categorie_id = cp.id
+       LEFT JOIN categories cd ON a.categorie_id = cd.id
+       LEFT JOIN magasins m ON a.magasin_id = m.id
+       WHERE a.utilisateur_id = ? AND a.date_achat = ?
+       ORDER BY a.id DESC`,
+      [userId, jour]
+    );
+  }
+
+  export function getMagasinMoinsCher(
+    produitId: number,
+    userId: number
+  ): { magasin: string; prix_unitaire: number; date_achat: string } | null {
+    return (
+      db.getFirstSync(
+        `SELECT COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin,
+                a.prix_unitaire,
+                a.date_achat
+         FROM achats a
+         LEFT JOIN magasins m ON a.magasin_id = m.id
+         WHERE a.produit_id = ? AND a.utilisateur_id = ? AND a.quantite > 0
+         ORDER BY a.prix_unitaire ASC, a.date_achat DESC
+         LIMIT 1`,
+        [produitId, userId]
+      ) ?? null
+    );
+  }
+
+  export function updateProduit(
+    id: number,
+    userId: number,
+    data: { nom: string; marque: string; unite: string; categorie_id: number; photo_uri?: string }
+  ): void {
+    db.runSync(
+      `UPDATE product
+       SET name = ?, brand = ?, unit = ?, category_id = ?, photo_path = COALESCE(?, photo_path)
+       WHERE id = ? AND user_id = ?`,
+      [data.nom, data.marque, data.unite, data.categorie_id, data.photo_uri ?? null, id, userId]
+    );
+  }
+
+  export function getAchatById(id: number, userId: number): Achat | null {
+    return (
+      db.getFirstSync<Achat>(
+        `SELECT
+           a.id, a.produit_id, a.utilisateur_id, a.magasin_id, a.categorie_id,
+           COALESCE(a.titre, '') as titre,
+           a.prix_unitaire, a.quantite, a.prix_total,
+           a.date_achat, a.mois, a.notes,
+           COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
+           COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+           p.photo_path as produit_photo,
+           COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
+         FROM achats a
+         LEFT JOIN produits p ON a.produit_id = p.id
+         LEFT JOIN categories cp ON p.categorie_id = cp.id
+         LEFT JOIN categories cd ON a.categorie_id = cd.id
+         LEFT JOIN magasins m ON a.magasin_id = m.id
+         WHERE a.id = ? AND a.utilisateur_id = ?`,
+        [id, userId]
+      ) ?? null
+    );
+  }
+
+  export function updateAchat(
+    id: number,
+    userId: number,
+    data: {
+      prix_total: number;
+      quantite: number;
+      date_achat: string;
+      magasin?: string;
+      notes?: string;
+      label?: string;
+      categorie_id?: number | null;
+    }
+  ): void {
+    if (id >= 1000000) {
+      const expenseId = id - 1000000;
+      db.runSync(
+        `UPDATE expense
+         SET amount = ?, label = COALESCE(?, label), date = ?, month = substr(?, 1, 7),
+             category_id = COALESCE(?, category_id), notes = COALESCE(?, notes)
+         WHERE id = ? AND user_id = ?`,
+        [
+          data.prix_total,
+          data.label ?? null,
+          data.date_achat,
+          data.date_achat,
+          data.categorie_id ?? null,
+          data.notes ?? null,
+          expenseId,
+          userId,
+        ]
+      );
+      return;
+    }
+    const store = data.magasin?.trim() || 'Non précisé';
+    db.runSync(
+      `UPDATE purchase
+       SET price = ?, quantity = ?, date = ?, month = substr(?, 1, 7), store = ?, notes = COALESCE(?, notes)
+       WHERE id = ? AND user_id = ?`,
+      [
+        data.prix_total,
+        data.quantite,
+        data.date_achat,
+        data.date_achat,
+        store,
+        data.notes ?? null,
+        id,
+        userId,
+      ]
+    );
+  }
+
+  export function deleteAchat(id: number, userId: number): void {
+    if (id >= 1000000) {
+      db.runSync(`DELETE FROM expense WHERE id = ? AND user_id = ?`, [id - 1000000, userId]);
+      return;
+    }
+    db.runSync(`DELETE FROM purchase WHERE id = ? AND user_id = ?`, [id, userId]);
+  }
+
   // ------------------------------------------------------------
   // deleteProduit : Supprime un produit du catalogue.
   // Paramètre mode :
@@ -585,6 +747,8 @@ export function resetUserPassword(
   ): void {
     const p = getProduitById(produitId);
     if (!p) return;
+    // Le fichier photo est effacé par l'appelant (supprimerFichierPhoto)
+    // pour garder la couche SQL indépendante du système de fichiers.
 
     if (mode === 'reassign') {
       const catAutres = db.getFirstSync<{ id: number }>(
@@ -605,7 +769,7 @@ export function resetUserPassword(
           [
             a.user_id,
             catFallbackId,
-            a.price * a.quantity,
+            a.price,
             `${p.nom} (produit supprimé)`,
             a.date,
             a.month,
@@ -1391,4 +1555,292 @@ export function getTopProduitsParDepense(
     return [];
   }
 }
+
+// ============================================================
+// SECTION H — ANALYSES BUDGÉTAIRES PAR PÉRIODE PRÉCISE
+// Calculs en millimes entiers pour une précision comptable absolue
+// ============================================================
+
+export type CategoriePeriodeStat = {
+  categorie_id: number;
+  categorie_nom: string;
+  categorie_icone: string;
+  type: 'product' | 'expense';
+  total_millimes: number;
+  total_dt: number;
+  part_pourcentage: number;
+  montant_alloue: number;
+  pourcentage_consomme: number;
+  depense_precedente_dt: number;
+  ecart_dt: number;
+  ecart_pct: number | null; // null si période précédente était à 0
+  est_nouveau: boolean;
+};
+
+/**
+ * Calcule le total dépensé sur une période (en millimes entiers et DT).
+ */
+export function getTotalPeriode(
+  userId: number,
+  startDate: string,
+  endDate: string
+): { totalDT: number; totalMillimes: number } {
+  const row = db.getFirstSync<{ total_millimes: number }>(
+    `SELECT COALESCE(SUM(CAST(ROUND(a.prix_total * 1000) AS INTEGER)), 0) as total_millimes
+     FROM achats a
+     WHERE a.utilisateur_id = ?
+       AND a.date_achat >= ?
+       AND a.date_achat <= ?`,
+    [userId, startDate, endDate]
+  );
+  const totalMillimes = row?.total_millimes ?? 0;
+  return {
+    totalMillimes,
+    totalDT: totalMillimes / 1000,
+  };
+}
+
+/**
+ * Retourne le détail de toutes les catégories dépensées pour une période donnée,
+ * avec la part du total, la comparaison avec la période précédente, et l'enveloppe budgétaire.
+ */
+export function getAnalysesParCategoriePeriode(
+  userId: number,
+  startDate: string,
+  endDate: string,
+  prevStartDate: string,
+  prevEndDate: string,
+  budgetId?: number | null
+): {
+  categories: CategoriePeriodeStat[];
+  totalCourantDT: number;
+  totalPrecedentDT: number;
+  nonBudgetiseDT: number;
+  sousTotalProduitsDT: number;
+  sousTotalDepensesDT: number;
+} {
+  // 1. Totaux globaux en millimes
+  const totalCourant = getTotalPeriode(userId, startDate, endDate);
+  const totalPrecedent = getTotalPeriode(userId, prevStartDate, prevEndDate);
+
+  // 2. Dépenses par catégorie sur la période courante
+  const depensesCourantes = db.getAllSync<{
+    cat_id: number;
+    cat_nom: string;
+    cat_icone: string;
+    cat_type: string;
+    somme_millimes: number;
+  }>(
+    `SELECT
+       COALESCE(c.id, 0) as cat_id,
+       COALESCE(c.name_key, 'Non catégorisé') as cat_nom,
+       COALESCE(c.icon, '📦') as cat_icone,
+       COALESCE(c.type, 'product') as cat_type,
+       SUM(CAST(ROUND(a.prix_total * 1000) AS INTEGER)) as somme_millimes
+     FROM achats a
+     LEFT JOIN category c ON a.categorie_id = c.id
+     WHERE a.utilisateur_id = ?
+       AND a.date_achat >= ?
+       AND a.date_achat <= ?
+     GROUP BY c.id
+     HAVING SUM(CAST(ROUND(a.prix_total * 1000) AS INTEGER)) > 0
+     ORDER BY somme_millimes DESC`,
+    [userId, startDate, endDate]
+  );
+
+  // 3. Dépenses par catégorie sur la période précédente (pour calculer l'écart)
+  const depensesPrecedentesMap = new Map<number, number>();
+  const depensesPrec = db.getAllSync<{
+    cat_id: number;
+    somme_millimes: number;
+  }>(
+    `SELECT
+       COALESCE(c.id, 0) as cat_id,
+       SUM(CAST(ROUND(a.prix_total * 1000) AS INTEGER)) as somme_millimes
+     FROM achats a
+     LEFT JOIN category c ON a.categorie_id = c.id
+     WHERE a.utilisateur_id = ?
+       AND a.date_achat >= ?
+       AND a.date_achat <= ?
+     GROUP BY c.id`,
+    [userId, prevStartDate, prevEndDate]
+  );
+  for (const dp of depensesPrec) {
+    depensesPrecedentesMap.set(dp.cat_id, dp.somme_millimes / 1000);
+  }
+
+  // 4. Enveloppes du budget couvrant
+  const enveloppesMap = new Map<number, number>();
+  if (budgetId) {
+    const envs = db.getAllSync<{ category_id: number; amount: number }>(
+      `SELECT category_id, amount FROM envelope WHERE budget_id = ?`,
+      [budgetId]
+    );
+    for (const e of envs) {
+      enveloppesMap.set(e.category_id, e.amount);
+    }
+  }
+
+  let sousTotalProduitsMillimes = 0;
+  let sousTotalDepensesMillimes = 0;
+  let nonBudgetiseMillimes = 0;
+
+  const categoriesResultat: CategoriePeriodeStat[] = depensesCourantes.map((dc) => {
+    const totalDT = dc.somme_millimes / 1000;
+    const partPct = totalCourant.totalMillimes > 0
+      ? Math.round((dc.somme_millimes / totalCourant.totalMillimes) * 1000) / 10
+      : 0;
+
+    const depPrecDT = depensesPrecedentesMap.get(dc.cat_id) ?? 0;
+    const ecartDT = totalDT - depPrecDT;
+    const ecartPct = depPrecDT > 0 ? ((ecartDT / depPrecDT) * 100) : null;
+    const estNouveau = depPrecDT === 0;
+
+    const montantAlloue = enveloppesMap.get(dc.cat_id) ?? 0;
+    const pctConsomme = montantAlloue > 0 ? (totalDT / montantAlloue) * 100 : 0;
+
+    const isExpense = dc.cat_type === 'expense';
+    if (isExpense) {
+      sousTotalDepensesMillimes += dc.somme_millimes;
+    } else {
+      sousTotalProduitsMillimes += dc.somme_millimes;
+    }
+
+    if (budgetId && montantAlloue === 0) {
+      nonBudgetiseMillimes += dc.somme_millimes;
+    }
+
+    return {
+      categorie_id: dc.cat_id,
+      categorie_nom: dc.cat_nom,
+      categorie_icone: dc.cat_icone,
+      type: (dc.cat_type === 'expense' ? 'expense' : 'product') as 'product' | 'expense',
+      total_millimes: dc.somme_millimes,
+      total_dt: totalDT,
+      part_pourcentage: partPct,
+      montant_alloue: montantAlloue,
+      pourcentage_consomme: pctConsomme,
+      depense_precedente_dt: depPrecDT,
+      ecart_dt: ecartDT,
+      ecart_pct: ecartPct !== null ? Math.round(ecartPct * 10) / 10 : null,
+      est_nouveau: estNouveau,
+    };
+  });
+
+  return {
+    categories: categoriesResultat,
+    totalCourantDT: totalCourant.totalDT,
+    totalPrecedentDT: totalPrecedent.totalDT,
+    nonBudgetiseDT: nonBudgetiseMillimes / 1000,
+    sousTotalProduitsDT: sousTotalProduitsMillimes / 1000,
+    sousTotalDepensesDT: sousTotalDepensesMillimes / 1000,
+  };
+}
+
+export type DepenseIndividuelle = {
+  id: number;
+  titre: string;
+  magasin: string;
+  date_achat: string;
+  montant_dt: number;
+  icone: string;
+};
+
+/**
+ * Plus grosses dépenses individuelles par montant décroissant.
+ */
+export function getTopDepensesIndividuellesPeriode(
+  userId: number,
+  startDate: string,
+  endDate: string,
+  limit: number = 5
+): DepenseIndividuelle[] {
+  return db.getAllSync<DepenseIndividuelle>(
+    `SELECT
+       a.id,
+       COALESCE(p.nom, a.titre, 'Dépense') as titre,
+       COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin,
+       a.date_achat,
+       a.prix_total as montant_dt,
+       COALESCE(cp.icone, cd.icone, '📦') as icone
+     FROM achats a
+     LEFT JOIN produits p ON a.produit_id = p.id
+     LEFT JOIN categories cp ON p.categorie_id = cp.id
+     LEFT JOIN categories cd ON a.categorie_id = cd.id
+     LEFT JOIN magasins m ON a.magasin_id = m.id
+     WHERE a.utilisateur_id = ?
+       AND a.date_achat >= ?
+       AND a.date_achat <= ?
+     ORDER BY a.prix_total DESC
+     LIMIT ?`,
+    [userId, startDate, endDate, limit]
+  );
+}
+
+export type ProduitDepensePeriode = {
+  produit_id: number;
+  produit_nom: string;
+  photo_uri?: string;
+  total_dt: number;
+  quantite_totale: number;
+  unite: string;
+};
+
+/**
+ * Produits classés par somme dépensée sur la période.
+ */
+export function getTopProduitsPeriode(
+  userId: number,
+  startDate: string,
+  endDate: string,
+  limit: number = 5
+): ProduitDepensePeriode[] {
+  return db.getAllSync<ProduitDepensePeriode>(
+    `SELECT
+       p.id as produit_id,
+       p.nom as produit_nom,
+       p.photo_path as photo_uri,
+       SUM(a.prix_total) as total_dt,
+       SUM(a.quantite) as quantite_totale,
+       p.unite as unite
+     FROM achats a
+     JOIN produits p ON a.produit_id = p.id
+     WHERE a.utilisateur_id = ?
+       AND a.date_achat >= ?
+       AND a.date_achat <= ?
+     GROUP BY p.id
+     ORDER BY total_dt DESC
+     LIMIT ?`,
+    [userId, startDate, endDate, limit]
+  );
+}
+
+export type PointPrixProduit = {
+  date: string;
+  label: string;
+  prix_unitaire: number;
+  magasin: string;
+};
+
+/**
+ * Courbe d'évolution du prix d'un produit (historique complet des achats).
+ */
+export function getEvolutionPrixProduit(
+  produitId: number,
+  userId: number
+): PointPrixProduit[] {
+  return db.getAllSync<PointPrixProduit>(
+    `SELECT
+       a.date_achat as date,
+       substr(a.date_achat, 6, 5) as label,
+       a.prix_unitaire,
+       COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin
+     FROM achats a
+     LEFT JOIN magasins m ON a.magasin_id = m.id
+     WHERE a.produit_id = ? AND a.utilisateur_id = ?
+     ORDER BY a.date_achat ASC`,
+    [produitId, userId]
+  );
+}
+
 

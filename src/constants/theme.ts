@@ -16,7 +16,7 @@
 //   - Gold / Status Orange  : #E9B66B (Alerte budget 70-99 %)
 //   - Coral / Status Red    : #DC7770 (Budget dépassé ≥ 100 %)
 //   - Ink / Text Primary    : #102B27 (Texte principal)
-//   - Muted / Text Secondary: #6B7B75 (Texte secondaire, descriptions)
+//   - Muted / Text Secondary: #61746D (Texte secondaire, descriptions)
 // ============================================================
 
 const palette = {
@@ -45,9 +45,9 @@ const palette = {
   // Typographie et niveaux de gris
   ink: '#102B27',
   textPrimary: '#102B27',
-  textSecondary: '#6B7B75',
-  textMuted: '#6B7B75',
-  muted: '#6B7B75',
+  textSecondary: '#61746D',
+  textMuted: '#61746D',
+  muted: '#61746D',
   subtle: '#9CA8A3',
   textLight: '#9CA8A3',
 

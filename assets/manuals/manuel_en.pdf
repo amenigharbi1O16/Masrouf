@@ -1,0 +1,184 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Length 1029 >>
+stream
+BT
+/F2 18 Tf
+50 790 Td (Masrouf - User Manual) Tj
+/F1 12 Tf
+0 -24 Td (100% Local Family Budget Tracking App) Tj
+0 -20 Td
+/F2 13 Tf
+0 -24 Td (1. Introduction & Total Privacy) Tj
+/F1 10 Tf
+0 -16 Td (Masrouf is a mobile personal budget application built for Tunisian families.) Tj
+0 -16 Td (It runs 100% locally on your phone using SQLite: no internet, no external server.) Tj
+0 -16 Td (All your financial data remains confidential on your physical device.) Tj
+0 -16 Td (Masrouf features two separate roles: Standard User and Administrator.) Tj
+0 -8 Td
+/F2 13 Tf
+0 -24 Td (2. Onboarding & Registration) Tj
+/F1 10 Tf
+0 -16 Td (Create your personal account using the registration form upon first launch.) Tj
+0 -16 Td (A three-step onboarding assistant walks you through without forcing a budget.) Tj
+0 -16 Td (Pick your preferred expense categories from the built-in system categories.) Tj
+0 -16 Td (You will then arrive at the clean home dashboard in its initial zero state.) Tj
+0 -8 Td
+/F1 9 Tf
+0 -40 Td (Masrouf - Page 1 / 4) Tj
+ET
+endstream
+endobj
+4 0 obj
+<< /Type /Page
+/Parent 11 0 R
+/MediaBox [0 0 595 842]
+/Resources << /Font << /F1 1 0 R /F2 2 0 R >> >>
+/Contents 3 0 R >>
+endobj
+5 0 obj
+<< /Length 1140 >>
+stream
+BT
+/F2 18 Tf
+50 790 Td (Budget Envelopes & Purchases) Tj
+/F1 12 Tf
+0 -24 Td (Envelope allocations and daily expense logging) Tj
+0 -20 Td
+/F2 13 Tf
+0 -24 Td (3. Creating and Allocating Budget) Tj
+/F1 10 Tf
+0 -16 Td (Define a total budget in Tunisian Dinars for your selected custom date range.) Tj
+0 -16 Td (Distribute the sum into your active envelopes with real-time balance check.) Tj
+0 -16 Td (Total envelope allocations cannot exceed the specified overall budget.) Tj
+0 -16 Td (Use "Copy Previous Period" to quickly re-apply your favorite budget distribution.) Tj
+0 -8 Td
+/F2 13 Tf
+0 -24 Td (4. Logging Purchases and Simple Expenses) Tj
+/F1 10 Tf
+0 -16 Td (Record purchases in two visually distinct modes:) Tj
+0 -16 Td (- Product Purchase: product catalog selection, quantity, and total price.) Tj
+0 -16 Td (- Simple Expense: recurring bills, transit, rent, or utilities without products.) Tj
+0 -16 Td (Instant suggestions help you pick existing items without creating duplicates.) Tj
+0 -16 Td (Unit price is calculated in real time and compared to your last recorded purchase.) Tj
+0 -8 Td
+/F1 9 Tf
+0 -40 Td (Masrouf - Page 2 / 4) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page
+/Parent 11 0 R
+/MediaBox [0 0 595 842]
+/Resources << /Font << /F1 1 0 R /F2 2 0 R >> >>
+/Contents 5 0 R >>
+endobj
+7 0 obj
+<< /Length 983 >>
+stream
+BT
+/F2 18 Tf
+50 790 Td (Product Catalog & Price Insights) Tj
+/F1 12 Tf
+0 -24 Td (Permanent photos, price history, and best store detection) Tj
+0 -20 Td
+/F2 13 Tf
+0 -24 Td (5. Product Catalog and Camera Photos) Tj
+/F1 10 Tf
+0 -16 Td (The catalog features "Today's Purchases" at the top alongside instant search.) Tj
+0 -16 Td (Attach real photos to products via camera snapshot or gallery picker.) Tj
+0 -16 Td (The shared ProductThumb component displays the image or fallback icon.) Tj
+0 -16 Td (Images are copied to the permanent app directory with stable filenames.) Tj
+0 -8 Td
+/F2 13 Tf
+0 -24 Td (6. Product Details & Best Store Indicator) Tj
+/F1 10 Tf
+0 -16 Td (The product sheet highlights the cheapest store where you bought the item.) Tj
+0 -16 Td (A price history curve plots past unit prices across your recorded transactions.) Tj
+0 -16 Td (Color banners tell you whether your latest purchase saved money or cost more.) Tj
+0 -8 Td
+/F1 9 Tf
+0 -40 Td (Masrouf - Page 3 / 4) Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page
+/Parent 11 0 R
+/MediaBox [0 0 595 842]
+/Resources << /Font << /F1 1 0 R /F2 2 0 R >> >>
+/Contents 7 0 R >>
+endobj
+9 0 obj
+<< /Length 1006 >>
+stream
+BT
+/F2 18 Tf
+50 790 Td (Analytics, Points & Administration) Tj
+/F1 12 Tf
+0 -24 Td (Precise financial metrics, automated rules, and governance) Tj
+0 -20 Td
+/F2 13 Tf
+0 -24 Td (7. Analytics & Rule-based Conclusions) Tj
+/F1 10 Tf
+0 -16 Td (The Analytics screen compares the current period against a prior identical span.) Tj
+0 -16 Td (A proportional segmented bar visualizes your main expense categories.) Tj
+0 -16 Td (An automatic rule engine \(no AI\) summarizes key habits and exceeded envelopes.) Tj
+0 -16 Td (Calculations run in integer millimes to eliminate any floating-point rounding errors.) Tj
+0 -8 Td
+/F2 13 Tf
+0 -24 Td (8. Points Gamification & Admin Space) Tj
+/F1 10 Tf
+0 -16 Td (Earn points when keeping within budget: Beginner, Saver, and Expert ranks.) Tj
+0 -16 Td (The Admin space provides anonymous global metrics and category management.) Tj
+0 -16 Td (Administrators have strictly no access to individual user budgets or purchases.) Tj
+0 -8 Td
+/F1 9 Tf
+0 -40 Td (Masrouf - Page 4 / 4) Tj
+ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page
+/Parent 11 0 R
+/MediaBox [0 0 595 842]
+/Resources << /Font << /F1 1 0 R /F2 2 0 R >> >>
+/Contents 9 0 R >>
+endobj
+11 0 obj
+<< /Type /Pages
+/Kids [4 0 R 6 0 R 8 0 R 10 0 R]
+/Count 4 >>
+endobj
+12 0 obj
+<< /Type /Catalog /Pages 11 0 R >>
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000160 00000 n 
+0000001241 00000 n 
+0000001378 00000 n 
+0000002570 00000 n 
+0000002707 00000 n 
+0000003741 00000 n 
+0000003878 00000 n 
+0000004936 00000 n 
+0000005074 00000 n 
+0000005151 00000 n 
+trailer
+<< /Size 13
+/Root 12 0 R >>
+startxref
+5202
+%%EOF

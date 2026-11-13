@@ -125,37 +125,12 @@ export default function RootLayout() {
         <Stack.Screen name="(admin)" options={{ headerShown: false }} />
 
         {/* Modales Fonctionnelles */}
-        <Stack.Screen
-          name="nouvel-achat"
-          options={{
-            presentation: 'modal',
-            headerShown: true,
-            title: 'Enregistrer une dépense',
-          }}
-        />
-        <Stack.Screen
-          name="nouveau-produit"
-          options={{
-            presentation: 'modal',
-            headerShown: true,
-            title: 'Nouveau Produit',
-          }}
-        />
-        <Stack.Screen
-          name="budget-mois"
-          options={{
-            presentation: 'modal',
-            headerShown: true,
-            title: 'Budget par enveloppes',
-          }}
-        />
-        <Stack.Screen
-          name="produit/[id]"
-          options={{
-            headerShown: true,
-            title: 'Fiche Produit',
-          }}
-        />
+        <Stack.Screen name="nouvel-achat" options={{ headerShown: false }} />
+        <Stack.Screen name="nouveau-produit" options={{ headerShown: false }} />
+        <Stack.Screen name="modifier-produit" options={{ headerShown: false }} />
+        <Stack.Screen name="modifier-achat" options={{ headerShown: false }} />
+        <Stack.Screen name="budget-mois" options={{ headerShown: false }} />
+        <Stack.Screen name="produit/[id]" options={{ headerShown: false }} />
       </Stack>
     </AuthProvider>
   );

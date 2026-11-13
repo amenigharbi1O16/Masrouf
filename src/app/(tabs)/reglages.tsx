@@ -41,6 +41,7 @@ import { getAllCategories, Categorie } from '../../db/queries';
 import { Theme } from '../../constants/theme';
 import { useAuth } from '../../utils/auth';
 import { useTranslation, Langue } from '../../utils/i18n';
+import { ouvrirManuelUtilisation } from '../../utils/pdf';
 import { useDrawer } from './_layout';
 import AppHeader from '../../components/AppHeader';
 
@@ -161,6 +162,19 @@ export default function ReglagesScreen() {
         >
           <Text style={styles.secondaryBtnText}>
             {t('changer_mot_de_passe') ?? 'Changer le mot de passe'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* ========================================================= */}
+        {/* BOUTON SECONDARY MINT : MANUEL D'UTILISATION (PDF)        */}
+        {/* ========================================================= */}
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={() => ouvrirManuelUtilisation(langue)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.secondaryBtnText}>
+            📄 {t('manuel_utilisation')}
           </Text>
         </TouchableOpacity>
 
