@@ -1,16 +1,19 @@
 import React from 'react';
+import { useTranslation } from '@/utils/i18n';
 import { DrawerItem, SideDrawer } from './SideDrawer';
 
-const ITEMS: DrawerItem[] = [
-  { label: 'Overview', icon: 'speedometer-outline', href: '/(admin)/dashboard' },
-  { label: 'Users', icon: 'people-outline', href: '/(admin)/utilisateurs' },
-  { label: 'Categories', icon: 'pricetags-outline', href: '/(admin)/categories' },
-  { label: 'Category types', icon: 'layers-outline', href: '/(admin)/types' },
-  { label: 'Default percentages', icon: 'pie-chart-outline', href: '/(admin)/pourcentages' },
-  { label: 'Points rules', icon: 'trophy-outline', href: '/(admin)/points-regles' },
-  { label: 'Settings', icon: 'settings-outline', href: '/(admin)/reglages' },
-];
-
 export function AdminDrawer() {
-  return <SideDrawer items={ITEMS} subtitle="Administrator" />;
+  const { t } = useTranslation();
+
+  const items: DrawerItem[] = [
+    { label: t('vue_ensemble_admin'), icon: 'speedometer-outline', href: '/(admin)/dashboard' },
+    { label: t('utilisateurs_admin'), icon: 'people-outline', href: '/(admin)/utilisateurs' },
+    { label: t('categories_admin'), icon: 'pricetags-outline', href: '/(admin)/categories' },
+    { label: t('types_categories'), icon: 'layers-outline', href: '/(admin)/types' },
+    { label: t('pourcentages_defaut'), icon: 'pie-chart-outline', href: '/(admin)/pourcentages' },
+    { label: t('regles_points_admin'), icon: 'trophy-outline', href: '/(admin)/points-regles' },
+    { label: t('reglages_admin'), icon: 'settings-outline', href: '/(admin)/reglages' },
+  ];
+
+  return <SideDrawer items={items} subtitle={t('administrateur')} />;
 }

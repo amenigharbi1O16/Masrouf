@@ -15,6 +15,7 @@ export function dt(n: number, decimals = 3): string {
   return `${safe < 0 ? '−' : ''}${withCommas}${dec ? '.' + dec : ''}`;
 }
 export const money = (n: number, decimals = 3) => `${dt(n, decimals)} DT`;
+export const formatDT = (n: number, decimals = 3) => `${dt(n, decimals)} DT`;
 /** Compact amount: 320 stays "320", 14.5 becomes "14.500" */
 export const short = (n: number) => (Math.round(n * 1000) % 1000 === 0 ? dt(n, 0) : dt(n, 3));
 

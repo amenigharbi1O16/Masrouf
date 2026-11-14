@@ -1,15 +1,18 @@
 import React from 'react';
+import { useTranslation } from '@/utils/i18n';
 import { DrawerItem, SideDrawer } from './SideDrawer';
 
-const ITEMS: DrawerItem[] = [
-  { label: 'Home', icon: 'home-outline', href: '/(tabs)' },
-  { label: 'Products', icon: 'bag-outline', href: '/(tabs)/produits' },
-  { label: 'Calendar', icon: 'calendar-outline', href: '/(tabs)/calendrier' },
-  { label: 'Analytics', icon: 'stats-chart-outline', href: '/(tabs)/analyses' },
-  { label: 'Points', icon: 'trophy-outline', href: '/points' },
-  { label: 'Settings', icon: 'settings-outline', href: '/(tabs)/reglages' },
-];
-
 export function AppDrawer() {
-  return <SideDrawer items={ITEMS} subtitle="Personal account" />;
+  const { t } = useTranslation();
+
+  const items: DrawerItem[] = [
+    { label: t('accueil'), icon: 'home-outline', href: '/(tabs)' },
+    { label: t('produits'), icon: 'bag-outline', href: '/(tabs)/produits' },
+    { label: t('calendrier'), icon: 'calendar-outline', href: '/(tabs)/calendrier' },
+    { label: t('analyses'), icon: 'stats-chart-outline', href: '/(tabs)/analyses' },
+    { label: t('points'), icon: 'trophy-outline', href: '/points' },
+    { label: t('reglages'), icon: 'settings-outline', href: '/(tabs)/reglages' },
+  ];
+
+  return <SideDrawer items={items} subtitle={t('compte_personnel')} />;
 }

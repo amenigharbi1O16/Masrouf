@@ -24,7 +24,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { I18nManager, Platform } from 'react-native';
+import { Alert, I18nManager, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 // Importation des 3 fichiers de ressources de traduction
@@ -37,9 +37,21 @@ import { useAuth } from './auth';
 import { updateLangue } from '../db/queries';
 
 // ------------------------------------------------------------
-// TYPE : Langues supportées par Masrouf
+// TYPE ET CONFIGURATION DES LANGUES SUPPORTÉES
 // ------------------------------------------------------------
 export type Langue = 'fr' | 'ar' | 'en';
+
+export interface LangueConfig {
+  code: Langue;
+  nomNatif: string;
+  isRTL: boolean;
+}
+
+export const LANGUES_DISPONIBLES: LangueConfig[] = [
+  { code: 'fr', nomNatif: 'Français', isRTL: false },
+  { code: 'ar', nomNatif: 'العربية', isRTL: true },
+  { code: 'en', nomNatif: 'English', isRTL: false },
+];
 
 const PRE_LOGIN_LANG_KEY = 'masrouf_langue_pre_login';
 
@@ -180,7 +192,7 @@ export async function setLanguePreLogin(langue: Langue): Promise<void> {
 //        changerLangue() avec synchronisation instantanée SQLite / stockage.
 // ------------------------------------------------------------
 export function useTranslation() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, setLanguage } = useAuth();
   const [langueLocale, setLangueLocale] = useState<Langue>('fr');
 
   useEffect(() => {
@@ -203,13 +215,25 @@ export function useTranslation() {
   ) as Langue;
 
   const changerLangue = async (nouvelleLangue: Langue) => {
+    const directionChangee = (langueActive === 'ar') !== (nouvelleLangue === 'ar');
     appliquerDirectionLangue(nouvelleLangue);
     await setLanguePreLogin(nouvelleLangue);
     setLangueLocale(nouvelleLangue);
 
     if (user) {
       updateLangue(Number(user.id) || 1, nouvelleLangue);
+      if (setLanguage) {
+        setLanguage(nouvelleLangue);
+      }
       await refreshUser();
+    }
+
+    if (directionChangee && Platform.OS !== 'web') {
+      Alert.alert(
+        translate('changement_langue_titre', nouvelleLangue),
+        translate(nouvelleLangue === 'ar' ? 'redemarrage_rtl_message' : 'redemarrage_ltr_message', nouvelleLangue),
+        [{ text: translate('compris', nouvelleLangue) }]
+      );
     }
   };
 

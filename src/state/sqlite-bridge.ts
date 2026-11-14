@@ -309,6 +309,9 @@ export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
     if (patch.onboarded !== undefined) {
       db.runSync('UPDATE user SET onboarding_done = ? WHERE id = ?', [patch.onboarded ? 1 : 0, numId]);
     }
+    if (patch.langue !== undefined) {
+      db.runSync('UPDATE user SET langue = ? WHERE id = ?', [patch.langue, numId]);
+    }
   } catch (e) {
     console.warn('sqliteUpdateUser error:', e);
   }

@@ -81,6 +81,29 @@
   9. `08_calculs_et_metier.md` : Cycle d'un achat, formules de deltas, thèmes et formateurs.
   10. `09_questions_jury_et_limites.md` : Questions pièges du jury avec réponses et limites réelles.
 
+### Bloc 7 — Sélecteur de langue universel, Écran Analyses & Design Figma Onboarding (Terminé)
+- **Sélecteur de langue universel (`LanguageSelector.tsx`)** :
+  - Centralisation de `LANGUES_DISPONIBLES` dans `src/utils/i18n.ts` avec les 3 noms natifs invariables (« Français », « العربية », « English ») et `isRTL`.
+  - Intégré en haut de l'écran de connexion (`login.tsx`) et dans les Réglages (`reglages.tsx`).
+  - Persistance double : avant connexion dans le stockage persistant (`SecureStore` / `localStorage`), et sur le compte utilisateur (`user.langue` en SQLite).
+  - Gestion du sens de lecture avec alerte de redémarrage pour basculement RTL/LTR.
+  - Tiroir latéral `SideDrawer.tsx` adapté : ouverture à droite en arabe, à gauche en FR/EN.
+- **Design Onboarding & Sélection des catégories (`onboarding.tsx` & `CategoryPicker.tsx`)** :
+  - Alignement au pixel près sur la maquette Figma (`media_1794611625011_2178f8d5.png`) : lignes épurées sans bordures de cartes, fond beige chaud `#F5F3ED`, libellés d'action « ✓ Selected » et « Select » en vert foncé.
+  - Récapitulatif dynamique avec modification possible et validation menant directement à l'accueil sans écran blanc.
+- **Écran Analyses complet (`analyses.tsx`)** :
+  - Zéro donnée en dur : 100 % dérivé des requêtes SQLite sur la période active.
+  - En-tête avec sélecteur de période cliquable ouvrant le calendrier.
+  - Carte de résumé avec total dépensé (`formatDT`), comparaison avec la période précédente de même durée (symétrique), flèche de tendance, couleur d'économie (vert) ou de hausse (corail), et gestion propre de la période précédente vide (zéro division par zéro).
+  - Diagramme horizontal segmenté proportionnel et légende triée par dépense décroissante avec regroupement automatique des catégories au-delà de 5 sous « Autres ».
+  - Tableau détaillé avec montants actuels, précédents, pourcentages d'évolution, barres de consommation des enveloppes budgétaires et bouton « Voir plus » / « Voir moins ».
+  - Carte de conclusions automatisées basées sur des règles réelles (catégorie la plus dépensée, plus forte hausse, plus forte baisse, respect du budget global).
+  - Deux blocs finaux : classement des plus grosses dépenses individuelles et courbe d'évolution du prix unitaire d'un produit sélectionnable (`PriceChart`).
+- **Validation** :
+  - 365 clés de traduction rigoureusement synchronisées à 100 % dans `fr.json`, `en.json` et `ar.json`.
+  - `npx tsc --noEmit` : 0 erreur.
+  - Bancs de tests validés : `test-analyses-and-i18n.mjs`, `test-analyses.mjs`, `test-migration.mjs`, `test-admin-privacy.mjs`, `test-e2e-simulation.mjs`.
+
 ---
 
 ## Conclusion

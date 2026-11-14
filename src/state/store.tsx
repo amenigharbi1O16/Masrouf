@@ -47,6 +47,7 @@ export interface Actions {
   setDefaultPercentages(p: Record<string, number>): void;
   setPointsRules(r: PointsRules): void;
   setSettings(s: AppSettings): void;
+  setLanguage(langue: 'fr' | 'ar' | 'en'): void;
 }
 
 interface Ctx { db: DB; ready: boolean; me: User | null; actions: Actions }
@@ -309,6 +310,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       setSettings(s) {
         update((d) => ({ ...d, settings: s }));
+      },
+
+      setLanguage(langue) {
+        if (meId()) {
+          patchUser(meId(), { langue });
+        }
       },
     };
   }, [update]);

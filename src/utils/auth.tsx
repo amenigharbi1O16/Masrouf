@@ -11,6 +11,7 @@ export function useAuth() {
     register: actions.register,
     logout: actions.logout,
     changePassword: actions.changePassword,
+    setLanguage: actions.setLanguage,
     refreshUser: async () => {},
   };
 }
