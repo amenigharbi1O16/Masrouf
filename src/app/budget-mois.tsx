@@ -1,614 +1,94 @@
-// ============================================================
-// FICHIER : src/app/budget-mois.tsx
-// RÔLE    : Écran de création et répartition du budget — Design Figma 09, 10 & 11.
-//
-// CE QUI EST AFFICHÉ SUR L'ÉCRAN :
-//   Étape 1 : "Créer un budget" (Figma 09) :
-//     • Header : ‹ retour + "Créer un budget" + profil
-//     • Label "UNE PÉRIODE QUI VOUS CONVIENT" (uppercase, muted)
-//     • Titre "Donnez un but à chaque dinar." (bold, ink)
-//     • Sous-titre "Choisissez librement les dates, sans vous limiter au mois civil."
-//     • Cartes blanches : Date de début, Date de fin, Budget total · DT
-//     • Bannière mint de validation des dates
-//     • Bouton primary forest : "Répartir par catégorie"
-//     • Bouton secondary mint : "Annuler"
-//
-//   Étape 2 : "Répartir le budget / Modifier" (Figma 10 & 11) :
-//     • Header : ‹ retour + "Répartir le budget" + profil
-//     • Ligne d'en-tête : "01–30 NOV. 2026 · 30 JOURS"
-//     • Lignes récapitulatives : Budget total, Réparti, Non réparti
-//     • Cartes blanches par enveloppe (Alimentation · DT, Factures · DT...)
-//     • Bannière mint : "✓ X DT restent non répartis"
-//     • Bouton primary forest : "Créer mon budget" / "Enregistrer les modifications"
-// ============================================================
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import { Screen } from '@/components/Screen';
+import { AlertBanner, Button, Eyebrow, Input, SectionTitle } from '@/components/ui';
+import { allocated, currentBudget } from '@/state/selectors';
+import { useStore } from '@/state/store';
+import { addDays, daysBetween, fmtRange, isValidISO, money, todayISO, toNum } from '@/utils/format';
 
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-} from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+/** Create budget (default) and Modify budget (?mode=edit[&id=...]). */
+export default function BudgetPeriodScreen() {
+  const router = useRouter();
+  const { mode, id } = useLocalSearchParams<{ mode?: string; id?: string }>();
+  const { db, me, actions } = useStore();
+  const editing = mode === 'edit';
+  const existing = useMemo(() => {
+    if (!editing || !me) return null;
+    return db.budgets.find((b) => b.id === id && b.userId === me.id) ?? currentBudget(db, me.id);
+  }, [editing, id, db, me]);
 
-// Fonctions SQLite
-import {
-  getAllCategories,
-  getMonthlyBudget,
-  enregistrerBudget,
-  brouillonPeriodePrecedente,
-  getEnveloppesBudget,
-  canDecreaseBudget,
-  getUserCategories,
-  Categorie,
-} from '../db/queries';
+  const [start, setStart] = useState(existing?.start ?? todayISO());
+  const [end, setEnd] = useState(existing?.end ?? addDays(todayISO(), 29));
+  const [total, setTotal] = useState(existing ? String(existing.total) : '');
+  const [alloc, setAlloc] = useState<Record<string, string>>(
+    Object.fromEntries(Object.entries(existing?.allocations ?? {}).map(([k, v]) => [k, String(v)])),
+  );
+  const [error, setError] = useState('');
 
-// Design System & Contexte
-import { Theme } from '../constants/theme';
-import { useAuth } from '../utils/auth';
-import { useTranslation } from '../utils/i18n';
-import AppHeader from '../components/AppHeader';
-
-const MOIS_NOMS = [
-  'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
-  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
-];
-
-type EnveloppeItem = {
-  categorie_id: number;
-  categorie_nom: string;
-  categorie_icone: string;
-  montant: number;
-  pourcentage: number;
-};
-
-function versIso(date: Date): string {
-  const mois = String(date.getMonth() + 1).padStart(2, '0');
-  const jour = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${mois}-${jour}`;
-}
-
-export default function BudgetMoisScreen() {
-  const { user } = useAuth();
-  const { t, traduireCategorie } = useTranslation();
-  const params = useLocalSearchParams<{ copier?: string }>();
-
-  const maintenant = new Date();
-  const annee = maintenant.getFullYear();
-  const moisIndex = maintenant.getMonth();
-  const moisCle = `${annee}-${String(moisIndex + 1).padStart(2, '0')}`;
-  const dernierJour = new Date(annee, moisIndex + 1, 0).getDate();
-  const debutMoisIso = versIso(new Date(annee, moisIndex, 1));
-  const finMoisIso = versIso(new Date(annee, moisIndex, dernierJour));
-
-  // Étape courante : 'periode' (Figma 09) ou 'repartition' (Figma 10 / 11)
-  const [etape, setEtape] = useState<'periode' | 'repartition'>('periode');
-  const [estEdition, setEstEdition] = useState<boolean>(false);
-
-  // Étape 1 : Dates et total
-  const [dateDebut, setDateDebut] = useState<string>(debutMoisIso);
-  const [dateFin, setDateFin] = useState<string>(finMoisIso);
-  const [erreurDates, setErreurDates] = useState<string>('');
-  const [budgetTotalTexte, setBudgetTotalTexte] = useState<string>('');
-
-  // Étape 2 : Répartition
-  const [enveloppes, setEnveloppes] = useState<EnveloppeItem[]>([]);
-
-  useEffect(() => {
-    if (!user) return;
-    const existant = getMonthlyBudget(user.id, moisCle);
-
-    if (params.copier === '1') {
-      const brouillon = brouillonPeriodePrecedente(user.id, dateDebut);
-      if (!brouillon) {
-        setErreurDates(t('aucune_periode_precedente') ?? 'Aucune période précédente à copier.');
-        return;
-      }
-      setBudgetTotalTexte(String(brouillon.total));
-      setEnveloppes(
-        brouillon.enveloppes.map((e) => {
-          const cat = getAllCategories(false).find((c) => c.id === e.categorie_id);
-          return {
-            categorie_id: e.categorie_id,
-            categorie_nom: cat?.nom ?? '',
-            categorie_icone: cat?.icone ?? '',
-            montant: e.montant,
-            pourcentage: e.pourcentage,
-          };
-        })
-      );
-      setEtape('repartition');
-      return;
-    }
-
-    if (existant && existant.montant_total > 0) {
-      setEstEdition(true);
-      setDateDebut(existant.start_date);
-      setDateFin(existant.end_date);
-      setBudgetTotalTexte(String(existant.montant_total));
-      const envs = getEnveloppesBudget(user.id, moisCle);
-      setEnveloppes(
-        envs.map((e) => ({
-          categorie_id: e.categorie_id,
-          categorie_nom: e.categorie_nom,
-          categorie_icone: e.categorie_icone,
-          montant: e.montant_alloue,
-          pourcentage: e.pourcentage_alloue,
-        }))
-      );
-      // Si un budget existe déjà, on démarre directement en vue répartition (Figma 11)
-      setEtape('repartition');
-    } else {
-      setEstEdition(false);
-      const budgetBase = 0;
-      setBudgetTotalTexte('');
-
-      const toutesCats = getAllCategories(true);
-      // Récupération des catégories choisies par l'utilisateur lors de l'onboarding (persistées en SQLite)
-      const userSelectedCatIds = user ? getUserCategories(user.id) : [];
-      let catsChoisies: Categorie[] = [];
-
-      if (userSelectedCatIds.length > 0) {
-        catsChoisies = toutesCats.filter((c) => userSelectedCatIds.includes(c.id));
-      }
-      if (catsChoisies.length === 0) {
-        const defauts = toutesCats.filter((c) => c.est_defaut === 1);
-        catsChoisies = defauts.length > 0 ? defauts : toutesCats.slice(0, 5);
-      }
-
-      const envsInit = catsChoisies.map((c) => ({
-        categorie_id: c.id,
-        categorie_nom: c.nom,
-        categorie_icone: c.icone,
-        montant: Math.round((budgetBase * (c.pourcentage_defaut || 20)) / 100),
-        pourcentage: c.pourcentage_defaut || 20,
-      }));
-      setEnveloppes(envsInit);
-    }
-  }, [user, moisCle, params.copier]);
-
-  const budgetTotalNum = parseFloat(budgetTotalTexte.replace(',', '.')) || 0;
-  const sommeRepartie = enveloppes.reduce((acc, cur) => acc + cur.montant, 0);
-  const nonReparti = Math.max(0, budgetTotalNum - sommeRepartie);
-  const estEnDepassement = sommeRepartie > budgetTotalNum;
-
-  // Modification du montant d'une enveloppe
-  function handleChangerMontant(catId: number, texte: string) {
-    const val = parseFloat(texte.replace(',', '.')) || 0;
-    setEnveloppes((prev) =>
-      prev.map((e) => {
-        if (e.categorie_id === catId) {
-          const pct = budgetTotalNum > 0 ? Math.round((val / budgetTotalNum) * 100) : 0;
-          return { ...e, montant: val, pourcentage: pct };
-        }
-        return e;
-      })
+  if (!me) return null;
+  if (editing && !existing) {
+    return (
+      <Screen title="Modify budget" back>
+        <AlertBanner tone="info" title="No budget to modify" detail="Create a budget period first." />
+        <Button label="Create a budget" onPress={() => router.replace('/budget-mois')} />
+      </Screen>
     );
   }
 
-  // Sauvegarde finale dans SQLite
-  function handleSauvegarder() {
-    if (!user) return;
+  const totalN = toNum(total);
+  const allocN = Object.fromEntries(Object.entries(alloc).map(([k, v]) => [k, Number.isFinite(toNum(v)) ? toNum(v) : 0]));
+  const allocSum = allocated({ allocations: allocN });
 
-    if (budgetTotalNum <= 0) {
-      Alert.alert(t('erreur') ?? 'Attention', 'Veuillez définir un budget total valide.');
-      return;
-    }
+  const validate = (): string => {
+    if (!isValidISO(start) || !isValidISO(end)) return 'Use the format YYYY-MM-DD for both dates.';
+    if (end < start) return 'The end date must be on or after the start date.';
+    if (!Number.isFinite(totalN) || totalN <= 0) return 'Enter a total budget greater than 0.';
+    if (editing && allocSum > totalN) return `Allocated amounts exceed the total by ${money(allocSum - totalN)}.`;
+    return '';
+  };
 
-    if (estEnDepassement) {
-      Alert.alert(
-        t('erreur') ?? 'Attention',
-        'La somme des enveloppes dépasse le montant total alloué.'
-      );
-      return;
-    }
-
-    // Règle anti-triche : vérifie si on baisse sous le montant déjà dépensé
-    for (const env of enveloppes) {
-      const autorise = canDecreaseBudget(user.id, moisCle, env.categorie_id, env.montant);
-      if (!autorise) {
-        Alert.alert(
-          'Règle budgétaire',
-          `Vous ne pouvez pas baisser l'enveloppe « ${env.categorie_nom} » sous le montant déjà dépensé ce mois-ci.`
-        );
-        return;
-      }
-    }
-
-    const existant = getMonthlyBudget(user.id, moisCle);
-    const resultat = enregistrerBudget(
-      user.id,
-      dateDebut,
-      dateFin,
-      budgetTotalNum,
-      enveloppes.map((e) => ({
-        categorie_id: e.categorie_id,
-        montant: e.montant,
-        pourcentage: e.pourcentage,
-      })),
-      estEdition ? existant?.id : undefined
-    );
-
-    if (!resultat.ok) {
-      const messages: Record<typeof resultat.code, string> = {
-        dates: 'La date de fin doit être le même jour ou après la date de début.',
-        chevauchement: 'Cette période chevauche un budget déjà enregistré.',
-        total: 'Le budget total doit être supérieur à zéro.',
-        somme: 'La somme des enveloppes dépasse le total.',
-      };
-      Alert.alert(t('erreur') ?? 'Attention', messages[resultat.code]);
-      return;
-    }
-
+  const next = () => {
+    const e = validate();
+    if (e) { setError(e); return; }
+    router.push({ pathname: '/allocation-budget', params: { start, end, total: String(totalN) } } as never);
+  };
+  const save = () => {
+    const e = validate();
+    if (e || !existing) { setError(e); return; }
+    actions.saveBudget({ id: existing.id, start, end, total: totalN, allocations: Object.fromEntries(Object.entries(allocN).filter(([, v]) => v > 0)) });
     router.back();
-  }
+  };
 
+  const validRange = isValidISO(start) && isValidISO(end) && end >= start;
   return (
-    <View style={styles.container}>
-      {/* Header avec action retour */}
-      <AppHeader
-        titre={
-          etape === 'periode'
-            ? 'Créer un budget'
-            : estEdition
-            ? 'Modifier le budget'
-            : 'Répartir le budget'
-        }
-        onMenuPress={() => {
-          if (etape === 'repartition' && !estEdition) {
-            setEtape('periode');
-          } else {
-            router.back();
-          }
-        }}
-      />
-
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {etape === 'periode' ? (
-          /* ==================================================== */
-          /* ÉTAPE 1 : DÉFINITION DE LA PÉRIODE ET DU BUDGET (Figma 09) */
-          /* ==================================================== */
-          <View>
-            <Text style={styles.sectionLabel}>
-              UNE PÉRIODE QUI VOUS CONVIENT
-            </Text>
-            <Text style={styles.screenTitle}>
-              Donnez un but à chaque dinar.
-            </Text>
-            <Text style={styles.screenSubtitle}>
-              Choisissez librement les dates, sans vous limiter au mois civil.
-            </Text>
-
-            {/* Date de début */}
-            <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Date de début</Text>
-              <TextInput
-                style={styles.textInput}
-                value={dateDebut}
-                onChangeText={setDateDebut}
-              />
-            </View>
-
-            {/* Date de fin */}
-            <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Date de fin</Text>
-              <TextInput
-                style={styles.textInput}
-                value={dateFin}
-                onChangeText={setDateFin}
-              />
-            </View>
-
-            {/* Budget total · DT */}
-            <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Budget total · DT</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Ex: 1,200.000"
-                placeholderTextColor={Theme.colors.muted}
-                keyboardType="decimal-pad"
-                value={budgetTotalTexte}
-                onChangeText={setBudgetTotalTexte}
-              />
-            </View>
-
-            {/* Bannière validation (Figma 09) */}
-            <View style={styles.mintBanner}>
-              <View style={styles.bannerHeaderRow}>
-                <Text style={styles.checkIcon}>{dateFin >= dateDebut && dateDebut.length === 10 ? '✓' : '!'}</Text>
-                <Text style={styles.bannerTitle}>
-                  {erreurDates || (dateFin >= dateDebut ? 'Vos dates sont valides' : 'La fin est avant le début')}
-                </Text>
-              </View>
-              <Text style={styles.bannerSub}>
-                {dateFin >= dateDebut
-                  ? `${Math.round((Date.parse(dateFin) - Date.parse(dateDebut)) / 86400000) + 1} jours`
-                  : 'Corrigez les dates au format AAAA-MM-JJ.'}
-              </Text>
-            </View>
-
-            {/* Boutons d'action */}
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={() => {
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(dateDebut) || !/^\d{4}-\d{2}-\d{2}$/.test(dateFin) || dateFin < dateDebut) {
-                  setErreurDates('La fin doit être le même jour ou après le début.');
-                  return;
-                }
-                setErreurDates('');
-                setEtape('repartition');
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryBtnText}>Répartir par catégorie</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.secondaryBtn}
-              onPress={() => router.back()}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.secondaryBtnText}>
-                {t('annuler') ?? 'Annuler'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          /* ==================================================== */
-          /* ÉTAPE 2 : RÉPARTITION PAR CATÉGORIE (Figma 10 & 11)   */
-          /* ==================================================== */
-          <View>
-            {/* Ligne en-tête dates (Figma 10) */}
-            <Text style={styles.periodHeader}>
-              01–{dernierJour} {MOIS_NOMS[moisIndex].toUpperCase()} {annee} · {dernierJour} JOURS
-            </Text>
-
-            {/* Lignes récapitulatives */}
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Budget total</Text>
-              <Text style={styles.summaryValue}>
-                {budgetTotalNum.toFixed(3)} DT
-              </Text>
-            </View>
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Réparti</Text>
-              <Text style={styles.summaryValue}>
-                {sommeRepartie.toFixed(3)} DT
-              </Text>
-            </View>
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Non réparti</Text>
-              <Text
-                style={[
-                  styles.summaryValue,
-                  estEnDepassement && { color: Theme.colors.coral },
-                ]}
-              >
-                {estEnDepassement
-                  ? `Dépassement de ${(sommeRepartie - budgetTotalNum).toFixed(3)} DT`
-                  : `${nonReparti.toFixed(3)} DT`}
-              </Text>
-            </View>
-
-            {/* Cartes blanches des enveloppes de catégories */}
-            <View style={{ marginTop: 16 }}>
-              {enveloppes.map((env) => (
-                <View key={env.categorie_id} style={styles.inputCard}>
-                  <Text style={styles.inputLabel}>
-                    {env.categorie_icone} {traduireCategorie(env.categorie_nom)} · DT
-                  </Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="0.000"
-                    placeholderTextColor={Theme.colors.muted}
-                    keyboardType="decimal-pad"
-                    value={String(env.montant)}
-                    onChangeText={(txt) => handleChangerMontant(env.categorie_id, txt)}
-                  />
-                </View>
-              ))}
-            </View>
-
-            {/* Bannière de confirmation (Figma 10) */}
-            <View
-              style={[
-                styles.mintBanner,
-                estEnDepassement && styles.warningBanner,
-              ]}
-            >
-              <View style={styles.bannerHeaderRow}>
-                <Text style={styles.checkIcon}>{estEnDepassement ? '⚠️' : '✓'}</Text>
-                <Text style={styles.bannerTitle}>
-                  {estEnDepassement
-                    ? 'Le total dépasse votre budget total'
-                    : `${nonReparti.toFixed(3)} DT restent non répartis`}
-                </Text>
-              </View>
-              <Text style={styles.bannerSub}>
-                {estEnDepassement
-                  ? 'Ajustez les montants de vos enveloppes pour ne pas dépasser.'
-                  : 'À répartir plus tard. Le total ne peut dépasser le budget.'}
-              </Text>
-            </View>
-
-            {/* Bouton de validation */}
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={handleSauvegarder}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryBtnText}>
-                {estEdition ? 'Enregistrer les modifications' : 'Créer mon budget'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Bouton retour étape période */}
-            <TouchableOpacity
-              style={styles.secondaryBtn}
-              onPress={() => setEtape('periode')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.secondaryBtnText}>
-                ‹ Modifier la période
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
-    </View>
+    <Screen title={editing ? 'Modify budget' : 'Create budget'} back>
+      <Eyebrow>{editing && existing ? `CURRENT PERIOD  ·  ${fmtRange(existing.start, existing.end)}` : 'A PERIOD THAT WORKS FOR YOU'}</Eyebrow>
+      {!editing && <SectionTitle>Give every dinar a direction.</SectionTitle>}
+      {error ? <AlertBanner tone="danger" title="Check this budget" detail={error} /> : null}
+      <Input label="Start date" value={start} onChangeText={(t) => { setStart(t); setError(''); }} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
+      <Input label="End date" value={end} onChangeText={(t) => { setEnd(t); setError(''); }} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
+      <Input label="Total budget · DT" value={total} onChangeText={(t) => { setTotal(t); setError(''); }} keyboardType="decimal-pad" placeholder="1200.000" />
+      {editing ? (
+        <>
+          <SectionTitle>Category allocation</SectionTitle>
+          {Object.keys(alloc).map((cid) => (
+            <Input key={cid} label={db.categories.find((c) => c.id === cid)?.name ?? cid} value={alloc[cid]} onChangeText={(t) => setAlloc((a) => ({ ...a, [cid]: t }))} keyboardType="decimal-pad" />
+          ))}
+          <AlertBanner
+            tone={allocSum > (totalN || 0) ? 'danger' : 'info'}
+            title={`Allocated ${money(allocSum)}  ·  Unallocated ${money(Math.max(0, (totalN || 0) - allocSum))}`}
+            detail="Unallocated funds are allowed. Allocated amounts cannot exceed the total."
+          />
+          <Button label="Save changes" onPress={save} disabled={!validRange} />
+          <Button label="Cancel" variant="secondary" onPress={() => router.back()} />
+        </>
+      ) : (
+        <>
+          <AlertBanner tone="info" title={validRange ? `${daysBetween(start, end)} days selected` : 'Choose any start and end dates'} detail="Not just a calendar month — pick the period that fits your pay cycle." />
+          <Button label="Allocate by category" onPress={next} />
+          <Button label="Cancel" variant="secondary" onPress={() => router.back()} />
+        </>
+      )}
+    </Screen>
   );
 }
-
-// ------------------------------------------------------------
-// STYLES — Design Figma 09, 10 & 11
-// ------------------------------------------------------------
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.warm,
-  },
-  scroll: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 90,
-  },
-
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Theme.colors.muted,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  screenTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Theme.colors.ink,
-    marginBottom: 6,
-  },
-  screenSubtitle: {
-    fontSize: 14,
-    color: Theme.colors.muted,
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-
-  // Cartes blanches de saisie
-  inputCard: {
-    backgroundColor: Theme.colors.white,
-    borderRadius: Theme.radius.lg,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 10,
-    ...Theme.shadows.card,
-  },
-  inputLabel: {
-    fontSize: 11,
-    color: Theme.colors.muted,
-    marginBottom: 4,
-  },
-  textInput: {
-    fontSize: 15,
-    color: Theme.colors.ink,
-    fontWeight: '600',
-    padding: 0,
-  },
-
-  // Bannière mint de validation
-  mintBanner: {
-    backgroundColor: Theme.colors.mint,
-    borderRadius: Theme.radius.lg,
-    padding: 16,
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  warningBanner: {
-    backgroundColor: 'rgba(220, 119, 112, 0.15)',
-  },
-  bannerHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  checkIcon: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Theme.colors.deepGreen,
-  },
-  bannerTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Theme.colors.deepGreen,
-  },
-  bannerSub: {
-    fontSize: 13,
-    color: Theme.colors.forest,
-  },
-
-  // Étape 2 : Ligne de période
-  periodHeader: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Theme.colors.muted,
-    letterSpacing: 0.8,
-    marginBottom: 16,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Theme.colors.border,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: Theme.colors.muted,
-  },
-  summaryValue: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: Theme.colors.ink,
-  },
-
-  // Boutons
-  primaryBtn: {
-    backgroundColor: Theme.colors.forest,
-    borderRadius: Theme.radius.full,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-    marginBottom: 12,
-    ...Theme.shadows.button,
-  },
-  primaryBtnText: {
-    color: Theme.colors.white,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  secondaryBtn: {
-    backgroundColor: Theme.colors.mint,
-    borderRadius: Theme.radius.full,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryBtnText: {
-    color: Theme.colors.deepGreen,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-});

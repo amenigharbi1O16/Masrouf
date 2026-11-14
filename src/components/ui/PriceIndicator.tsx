@@ -1,126 +1,42 @@
-// ============================================================
-// FICHIER : src/components/ui/PriceIndicator.tsx
-// MISSION : Comparaison de prix unitaire réutilisable :
-//           - Montant et pourcentage avec flèche et couleur
-//           - 'Premier achat de ce produit' si premier achat
-//           - Prix sans pourcentage si les unités sont incompatibles
-// ============================================================
-
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { Theme } from '../../constants/theme';
-import { formatDT, formatPourcentage } from '../../utils/format';
+import { StyleSheet, Text, View } from 'react-native';
+import { colors, radius } from '@/constants/theme';
+import { dt } from '@/utils/format';
+import type { PriceChange } from '@/state/selectors';
 
-type Props = {
-  nouveauPrix: number;
-  ancienPrix?: number | null;
-  uniteNouvelle?: string;
-  uniteAncienne?: string;
-  langue?: string;
-  style?: ViewStyle;
-};
+interface Props { change: PriceChange | null; unitLabel: string }
 
-export default function PriceIndicator({
-  nouveauPrix,
-  ancienPrix,
-  uniteNouvelle = '',
-  uniteAncienne = '',
-  langue = 'fr',
-  style,
-}: Props) {
-  // Cas 1 : Premier achat
-  if (ancienPrix === null || ancienPrix === undefined || ancienPrix <= 0) {
+/** Shows whether the unit price went down, up or stayed the same. null = first purchase. */
+export function PriceIndicator({ change, unitLabel }: Props) {
+  if (!change) {
     return (
-      <View style={[styles.container, styles.firstPurchase, style]}>
-        <Text style={styles.firstPurchaseText}>Premier achat de ce produit</Text>
+      <View style={[styles.box, { backgroundColor: colors.mint }]}>
+        <Ionicons name="sparkles" size={20} color={colors.green} />
+        <Text style={[styles.text, { color: colors.green }]}>First purchase — no earlier price to compare.</Text>
       </View>
     );
   }
-
-  // Cas 2 : Unités incompatibles
-  const unitesIncompatibles =
-    uniteNouvelle.trim() !== '' &&
-    uniteAncienne.trim() !== '' &&
-    uniteNouvelle.trim().toLowerCase() !== uniteAncienne.trim().toLowerCase();
-
-  if (unitesIncompatibles) {
-    return (
-      <View style={[styles.container, styles.incompatible, style]}>
-        <Text style={styles.incompatibleText}>
-          Précédent : {formatDT(ancienPrix, langue)} / {uniteAncienne} → Nouveau : {formatDT(nouveauPrix, langue)} / {uniteNouvelle} (unités différentes)
+  const cfg = {
+    down: { bg: colors.mint, fg: colors.green, icon: 'trending-down' as const, label: 'Cheaper than last time' },
+    up: { bg: colors.coralSoft, fg: '#9B3B35', icon: 'trending-up' as const, label: 'More expensive than last time' },
+    same: { bg: colors.goldSoft, fg: '#8A5A12', icon: 'remove' as const, label: 'Same price as last time' },
+  }[change.direction];
+  const sign = change.diff > 0 ? '+' : change.diff < 0 ? '−' : '';
+  return (
+    <View style={[styles.box, { backgroundColor: cfg.bg }]}>
+      <Ionicons name={cfg.icon} size={22} color={cfg.fg} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.text, { color: cfg.fg, fontWeight: '600' }]}>{cfg.label}</Text>
+        <Text style={[styles.text, { color: cfg.fg, fontSize: 12 }]}>
+          {sign}{dt(Math.abs(change.diff))} DT / {unitLabel}  ·  {sign}{Math.abs(change.pct).toFixed(1)}%
         </Text>
       </View>
-    );
-  }
-
-  // Cas 3 : Comparaison normale
-  const deltaMontant = nouveauPrix - ancienPrix;
-  const aBaisse = deltaMontant <= 0;
-  const deltaPct = ancienPrix > 0 ? (Math.abs(deltaMontant) / ancienPrix) * 100 : 0;
-
-  return (
-    <View
-      style={[
-        styles.container,
-        aBaisse ? styles.cheaper : styles.expensive,
-        style,
-      ]}
-    >
-      <Text style={[styles.icon, { color: aBaisse ? Theme.colors.deepGreen : Theme.colors.coral }]}>
-        {aBaisse ? '↓' : '↑'}
-      </Text>
-      <Text
-        style={[
-          styles.text,
-          { color: aBaisse ? Theme.colors.deepGreen : Theme.colors.coral },
-        ]}
-      >
-        {aBaisse ? '-' : '+'}{formatDT(Math.abs(deltaMontant), langue)} (
-        {aBaisse ? '-' : '+'}{formatPourcentage(deltaPct)})
-      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: Theme.radius.md,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.xs,
-  },
-  cheaper: {
-    backgroundColor: Theme.colors.mint,
-  },
-  expensive: {
-    backgroundColor: Theme.colors.statusRedBg,
-  },
-  firstPurchase: {
-    backgroundColor: Theme.colors.mint,
-  },
-  incompatible: {
-    backgroundColor: Theme.colors.warm,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  icon: {
-    fontSize: Theme.font.section,
-    fontWeight: '800',
-  },
-  text: {
-    fontSize: Theme.font.small,
-    fontWeight: '700',
-  },
-  firstPurchaseText: {
-    fontSize: Theme.font.small,
-    fontWeight: '700',
-    color: Theme.colors.deepGreen,
-  },
-  incompatibleText: {
-    fontSize: Theme.font.small,
-    color: Theme.colors.muted,
-  },
+  box: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: radius.card },
+  text: { fontSize: 14, lineHeight: 20 },
 });
-

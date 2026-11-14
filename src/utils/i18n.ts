@@ -208,7 +208,7 @@ export function useTranslation() {
     setLangueLocale(nouvelleLangue);
 
     if (user) {
-      updateLangue(user.id, nouvelleLangue);
+      updateLangue(Number(user.id) || 1, nouvelleLangue);
       await refreshUser();
     }
   };

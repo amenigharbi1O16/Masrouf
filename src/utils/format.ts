@@ -1,92 +1,77 @@
-// ============================================================
-// FICHIER : src/utils/format.ts
-// MISSION : Formatage centralisé unique pour toute l'application :
-//           - Montants en Dinars Tunisiens (3 décimales obligatoires)
-//           - Pourcentages (1 décimale, gestion division par zéro)
-//           - Dates et périodes
-//           - Chiffres occidentaux (123...) et unité collée en arabe (د.ت)
-// ============================================================
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+export const monthName = (i: number) => MONTHS[i];
+export const monthShort = (i: number) => MONTHS[i].slice(0, 3);
 
-/**
- * Formate un montant en Dinars Tunisiens (DT) avec exactement 3 décimales.
- * @param montant Montant en DT (ex: 14.5)
- * @param langue Code langue actuel ('fr', 'ar', 'en')
- */
-export function formatDT(montant: number | null | undefined, langue: string = 'fr'): string {
-  const valeur = typeof montant === 'number' && !isNaN(montant) ? montant : 0;
-  const fixe = valeur.toFixed(3);
-
-  // En arabe : chiffres occidentaux conservés pour lisibilité financière, unité collée
-  if (langue === 'ar') {
-    return `${fixe}د.ت`;
-  }
-  return `${fixe} DT`;
+export function uid(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-/**
- * Formate un pourcentage avec 1 décimale et arrondi propre.
- * @param pct Valeur du pourcentage (ex: 42.678)
- * @param avecSigne Si true, ajoute '+' pour les valeurs positives
- */
-export function formatPourcentage(pct: number | null | undefined, avecSigne: boolean = false): string {
-  if (pct === null || pct === undefined || isNaN(pct)) return '0.0 %';
-  const fixe = pct.toFixed(1);
-  if (avecSigne && pct > 0) {
-    return `+${fixe} %`;
-  }
-  return `${fixe} %`;
+/** 1234.5 -> "1,234.500" */
+export function dt(n: number, decimals = 3): string {
+  const safe = Number.isFinite(n) ? n : 0;
+  const fixed = Math.abs(safe).toFixed(decimals);
+  const [int, dec] = fixed.split('.');
+  const withCommas = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${safe < 0 ? '−' : ''}${withCommas}${dec ? '.' + dec : ''}`;
+}
+export const money = (n: number, decimals = 3) => `${dt(n, decimals)} DT`;
+/** Compact amount: 320 stays "320", 14.5 becomes "14.500" */
+export const short = (n: number) => (Math.round(n * 1000) % 1000 === 0 ? dt(n, 0) : dt(n, 3));
+
+export function toNum(s: string): number {
+  const n = parseFloat(String(s).replace(',', '.').replace(/\s/g, ''));
+  return Number.isFinite(n) ? n : NaN;
 }
 
-/**
- * Noms de mois abrégés selon la langue
- */
-const MOIS_ABR: Record<string, string[]> = {
-  fr: ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'],
-  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  ar: ['جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 'جوان', 'جويلية', 'أوت', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'],
-};
+export const pad = (n: number) => String(n).padStart(2, '0');
+export const toISO = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 
-/**
- * Formate une date ISO (AAAA-MM-JJ) de manière lisible et localisée.
- */
-export function formatDate(dateIso: string | null | undefined, langue: string = 'fr'): string {
-  if (!dateIso) return '—';
-  try {
-    const [annee, moisStr, jourStr] = dateIso.split('-');
-    const mIndex = parseInt(moisStr, 10) - 1;
-    const j = parseInt(jourStr, 10);
-    const noms = MOIS_ABR[langue] || MOIS_ABR.fr;
-    const moisNom = noms[mIndex] || moisStr;
-
-    if (langue === 'ar') {
-      return `${j} ${moisNom} ${annee}`;
-    }
-    return `${j} ${moisNom} ${annee}`;
-  } catch {
-    return dateIso;
-  }
+export function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/**
- * Formate une période (ex: "01–30 nov. 2026")
- */
-export function formatPeriode(debutIso: string, finIso: string, langue: string = 'fr'): string {
-  if (!debutIso || !finIso) return '—';
-  try {
-    const [, m1, j1] = debutIso.split('-');
-    const [a2, m2, j2] = finIso.split('-');
-    const noms = MOIS_ABR[langue] || MOIS_ABR.fr;
-    const mIndex = parseInt(m2, 10) - 1;
-    const moisNom = noms[mIndex] || m2;
-
-    if (m1 === m2) {
-      return `${j1}–${j2} ${moisNom} ${a2}`;
-    }
-    const m1Index = parseInt(m1, 10) - 1;
-    const m1Nom = noms[m1Index] || m1;
-    return `${j1} ${m1Nom} – ${j2} ${moisNom} ${a2}`;
-  } catch {
-    return `${debutIso} – ${finIso}`;
-  }
+export function isValidISO(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const x = new Date(Date.UTC(y, m - 1, d));
+  return x.getUTCFullYear() === y && x.getUTCMonth() === m - 1 && x.getUTCDate() === d;
 }
 
+export function parseISO(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+export function addDays(iso: string, n: number): string {
+  const d = parseISO(iso);
+  d.setUTCDate(d.getUTCDate() + n);
+  return toISO(d);
+}
+
+/** inclusive number of days */
+export function daysBetween(a: string, b: string): number {
+  return Math.round((parseISO(b).getTime() - parseISO(a).getTime()) / 86400000) + 1;
+}
+
+export function fmtDate(iso: string): string {
+  if (!isValidISO(iso)) return iso;
+  const d = parseISO(iso);
+  return `${d.getUTCDate()} ${monthShort(d.getUTCMonth())} ${d.getUTCFullYear()}`;
+}
+
+export function fmtRange(start: string, end: string): string {
+  const a = parseISO(start);
+  const b = parseISO(end);
+  const sameMonth = a.getUTCMonth() === b.getUTCMonth() && a.getUTCFullYear() === b.getUTCFullYear();
+  const mon = (d: Date) => monthShort(d.getUTCMonth()).toUpperCase();
+  if (sameMonth) return `${pad(a.getUTCDate())}–${pad(b.getUTCDate())} ${mon(b)} ${b.getUTCFullYear()}`;
+  return `${pad(a.getUTCDate())} ${mon(a)} – ${pad(b.getUTCDate())} ${mon(b)} ${b.getUTCFullYear()}`;
+}
+
+export const unitPrice = (price: number, quantity: number) => (quantity > 0 ? price / quantity : 0);
+
+export function greeting(): string {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}

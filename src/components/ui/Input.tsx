@@ -1,77 +1,47 @@
-// ============================================================
-// FICHIER : src/components/ui/Input.tsx
-// MISSION : Champ de saisie réutilisable conforme au design Figma :
-//           - Carte blanche avec bordure et ombre
-//           - Label en petit au-dessus (Theme.font.small / muted)
-//           - Message d'erreur précis sous le champ en corail
-// ============================================================
-
 import React from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  TextInputProps,
-  ViewStyle,
-} from 'react-native';
-import { Theme } from '../../constants/theme';
+import { KeyboardTypeOptions, StyleSheet, Text, TextInput, View } from 'react-native';
+import { colors, radius } from '@/constants/theme';
 
-type Props = TextInputProps & {
+interface Props {
   label: string;
+  value: string;
+  onChangeText?: (t: string) => void;
+  placeholder?: string;
+  secure?: boolean;
+  keyboardType?: KeyboardTypeOptions;
+  autoCapitalize?: 'none' | 'sentences' | 'words';
+  editable?: boolean;
   error?: string;
-  containerStyle?: ViewStyle;
-};
+  hint?: string;
+}
 
-export default function Input({
-  label,
-  error,
-  containerStyle,
-  style,
-  ...rest
-}: Props) {
+export function Input({ label, value, onChangeText, placeholder, secure, keyboardType, autoCapitalize = 'none', editable = true, error, hint }: Props) {
   return (
-    <View style={[styles.container, containerStyle]}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={[styles.input, style]}
-        placeholderTextColor={Theme.colors.muted}
-        {...rest}
-      />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+    <View>
+      <View style={[styles.box, !!error && { borderColor: colors.coral }, !editable && { opacity: 0.6 }]}>
+        <Text style={styles.label}>{label}</Text>
+        <TextInput
+          style={styles.input}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="#9AA9A3"
+          secureTextEntry={secure}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          editable={editable}
+        />
+      </View>
+      {error ? <Text style={styles.error}>{error}</Text> : hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: Theme.colors.white,
-    borderRadius: Theme.radius.lg,
-    paddingHorizontal: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.md,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-    marginBottom: Theme.spacing.md,
-    ...Theme.shadows.card,
-  },
-  label: {
-    fontSize: Theme.font.small,
-    color: Theme.colors.muted,
-    marginBottom: Theme.spacing.xs,
-    fontWeight: '500',
-  },
-  input: {
-    fontSize: Theme.font.body,
-    fontWeight: '600',
-    color: Theme.colors.ink,
-    padding: 0,
-    minHeight: 24,
-  },
-  error: {
-    fontSize: Theme.font.small,
-    color: Theme.colors.coral,
-    marginTop: Theme.spacing.xs,
-    fontWeight: '600',
-  },
+  box: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: radius.control, minHeight: 80, paddingHorizontal: 15, paddingTop: 10, paddingBottom: 6 },
+  label: { fontSize: 11, lineHeight: 16, fontWeight: '500', color: colors.muted },
+  input: { fontSize: 16, lineHeight: 23, fontWeight: '500', color: colors.forest, paddingVertical: 4, minHeight: 36 },
+  error: { fontSize: 12, color: colors.coral, marginTop: 4, marginLeft: 4 },
+  hint: { fontSize: 12, color: colors.muted, marginTop: 4, marginLeft: 4 },
 });
-

@@ -1,84 +1,33 @@
-// ============================================================
-// FICHIER : src/components/ui/Skeleton.tsx
-// MISSION : Composant de chargement skeleton discret et fluide
-//           selon les spécifications du design Masrouf.
-// ============================================================
-
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated, ViewStyle } from 'react-native';
-import { Theme } from '../../constants/theme';
+import { Animated, DimensionValue, StyleSheet, View } from 'react-native';
+import { colors } from '@/constants/theme';
 
-type Props = {
-  width?: number | string;
-  height?: number;
-  borderRadius?: number;
-  style?: ViewStyle;
-};
-
-export default function Skeleton({
-  width = '100%',
-  height = 20,
-  borderRadius = Theme.radius.md,
-  style,
-}: Props) {
-  const opacity = useRef(new Animated.Value(0.3)).current;
-
+export function Skeleton({ height = 16, width = '100%', radius = 12 }: { height?: number; width?: DimensionValue; radius?: number }) {
+  const o = useRef(new Animated.Value(0.45)).current;
   useEffect(() => {
-    const animation = Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 0.7,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.3,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ])
+        Animated.timing(o, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(o, { toValue: 0.45, duration: 700, useNativeDriver: true }),
+      ]),
     );
-    animation.start();
-    return () => animation.stop();
-  }, [opacity]);
-
-  return (
-    <Animated.View
-      style={[
-        styles.skeleton,
-        {
-          width: width as any,
-          height,
-          borderRadius,
-          opacity,
-        },
-        style,
-      ]}
-    />
-  );
+    loop.start();
+    return () => loop.stop();
+  }, [o]);
+  return <Animated.View style={{ height, width, borderRadius: radius, backgroundColor: colors.border, opacity: o }} />;
 }
 
-export function SkeletonCard() {
+/** Full-screen quiet loading state (design: "34 · Loading"). */
+export function LoadingScreen() {
   return (
-    <View style={styles.card}>
-      <Skeleton width="40%" height={14} style={{ marginBottom: 12 }} />
-      <Skeleton width="70%" height={28} style={{ marginBottom: 16 }} />
-      <Skeleton width="100%" height={8} borderRadius={4} />
+    <View style={styles.wrap}>
+      <Skeleton height={32} width={200} />
+      <Skeleton height={218} radius={16} />
+      <Skeleton height={76} radius={16} />
+      <Skeleton height={26} width={160} />
+      <Skeleton height={88} radius={16} />
+      <Skeleton height={88} radius={16} />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  skeleton: {
-    backgroundColor: '#E2E6DF',
-  },
-  card: {
-    backgroundColor: Theme.colors.white,
-    borderRadius: Theme.radius.lg,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-    marginBottom: 12,
-  },
-});
-
+const styles = StyleSheet.create({ wrap: { flex: 1, backgroundColor: colors.warm, padding: 24, paddingTop: 80, gap: 14 } });

@@ -1,80 +1,31 @@
-// ============================================================
-// FICHIER : src/components/ui/EmptyState.tsx
-// MISSION : État vide réutilisable avec icône, titre, description
-//           et bouton d'action visible conforme au design.
-// ============================================================
-
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { Theme } from '../../constants/theme';
-import Button from './Button';
+import { StyleSheet, Text, View } from 'react-native';
+import { colors, radius } from '@/constants/theme';
+import { Button } from './Button';
 
-type Props = {
-  icon?: string;
+interface Props {
+  icon?: keyof typeof Ionicons.glyphMap;
   title: string;
-  description?: string;
+  detail?: string;
   actionLabel?: string;
   onAction?: () => void;
-  style?: ViewStyle;
-};
+}
 
-export default function EmptyState({
-  icon = '📦',
-  title,
-  description,
-  actionLabel,
-  onAction,
-  style,
-}: Props) {
+export function EmptyState({ icon = 'leaf-outline', title, detail, actionLabel, onAction }: Props) {
   return (
-    <View style={[styles.container, style]}>
-      <Text style={styles.icon}>{icon}</Text>
+    <View style={styles.box}>
+      <View style={styles.badge}><Ionicons name={icon} size={26} color={colors.green} /></View>
       <Text style={styles.title}>{title}</Text>
-      {description ? <Text style={styles.description}>{description}</Text> : null}
-      {actionLabel && onAction ? (
-        <Button
-          title={actionLabel}
-          onPress={onAction}
-          variant="primary"
-          style={styles.button}
-        />
-      ) : null}
+      {detail ? <Text style={styles.detail}>{detail}</Text> : null}
+      {actionLabel && onAction ? <View style={{ alignSelf: 'stretch', marginTop: 8 }}><Button label={actionLabel} onPress={onAction} /></View> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: Theme.colors.white,
-    borderRadius: Theme.radius.xl,
-    padding: Theme.spacing.xxl,
-    alignItems: 'center',
-    marginVertical: Theme.spacing.lg,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-    ...Theme.shadows.card,
-  },
-  icon: {
-    fontSize: 44,
-    marginBottom: Theme.spacing.md,
-  },
-  title: {
-    fontSize: Theme.font.section,
-    fontWeight: '800',
-    color: Theme.colors.ink,
-    textAlign: 'center',
-    marginBottom: Theme.spacing.sm,
-  },
-  description: {
-    fontSize: Theme.font.body,
-    color: Theme.colors.muted,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: Theme.spacing.xl,
-  },
-  button: {
-    marginTop: Theme.spacing.md,
-    alignSelf: 'stretch',
-  },
+  box: { backgroundColor: colors.white, borderRadius: radius.hero, padding: 24, alignItems: 'center', gap: 8 },
+  badge: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.mint, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 18, fontWeight: '600', color: colors.forest, textAlign: 'center' },
+  detail: { fontSize: 14, lineHeight: 20, color: colors.muted, textAlign: 'center' },
 });
-

@@ -1,123 +1,28 @@
-// ============================================================
-// FICHIER : src/app/(admin)/types.tsx
-// RÔLE    : Définition du type de chaque catégorie (Produit ou Dépense).
-// ============================================================
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { Screen } from '@/components/Screen';
+import { AlertBanner, Button, Eyebrow, Input, SectionTitle } from '@/components/ui';
+import { useStore } from '@/state/store';
 
-import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
-import AppHeader from '../../components/AppHeader';
-import { Theme } from '../../constants/theme';
-import { Categorie, getAllCategories, setCategoryType } from '../../db/queries';
-import { useAuth } from '../../utils/auth';
-import { useTranslation } from '../../utils/i18n';
-import { useAdminDrawer } from './_layout';
-
-export default function AdminTypesScreen() {
-  const { user } = useAuth();
-  const { t } = useTranslation();
-  const { ouvrirDrawer } = useAdminDrawer();
-  const [categories, setCategories] = useState<Categorie[]>([]);
-
-  const recharger = useCallback(() => {
-    setCategories(getAllCategories(false));
-  }, []);
-
-  useFocusEffect(recharger);
-
+export default function AdminCategoryTypesScreen() {
+  const router = useRouter();
+  const { db, actions } = useStore();
+  const [types, setTypes] = useState(db.categoryTypes);
+  const [saved, setSaved] = useState(false);
+  const set = (i: number, patch: Partial<(typeof types)[number]>) => { setTypes((t) => t.map((x, j) => (j === i ? { ...x, ...patch } : x))); setSaved(false); };
   return (
-    <View style={styles.container}>
-      <AppHeader titre={t('types_categories')} onMenuPress={ouvrirDrawer} />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.label}>{t('gestion_categories').toUpperCase()}</Text>
-        {categories.map((cat) => (
-          <View key={cat.id} style={styles.row}>
-            <Text style={styles.nom}>{cat.nom}</Text>
-            <View style={styles.choix}>
-              <TouchableOpacity
-                style={[styles.btn, cat.type === 'product' && styles.btnOn]}
-                onPress={() => {
-                  setCategoryType(cat.id, 'product', user?.id);
-                  recharger();
-                }}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.btnText, cat.type === 'product' && styles.btnTextOn]}>
-                  {t('produit')}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, cat.type === 'expense' && styles.btnOn]}
-                onPress={() => {
-                  setCategoryType(cat.id, 'expense', user?.id);
-                  recharger();
-                }}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.btnText, cat.type === 'expense' && styles.btnTextOn]}>
-                  {t('depense_label')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-    </View>
+    <Screen title="Category types">
+      <Eyebrow>PRODUCTS AND EXPENSES STAY DISTINCT</Eyebrow>
+      {types.map((t, i) => (
+        <React.Fragment key={t.kind}>
+          <SectionTitle>{t.kind === 'product' ? 'Product type' : 'Expense type'}</SectionTitle>
+          <Input label="Display name" value={t.label} onChangeText={(v) => set(i, { label: v })} autoCapitalize="words" />
+          <Input label="Description" value={t.description} onChangeText={(v) => set(i, { description: v })} autoCapitalize="sentences" />
+        </React.Fragment>
+      ))}
+      {saved ? <AlertBanner tone="success" title="Category types saved" /> : null}
+      <Button label="Save changes" disabled={types.some((t) => !t.label.trim())} onPress={() => { actions.updateCategoryTypes(types.map((t) => ({ ...t, label: t.label.trim() }))); setSaved(true); }} />
+      <Button label="Back to overview" variant="secondary" onPress={() => router.navigate('/(admin)/dashboard')} />
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.warm,
-  },
-  scroll: {
-    padding: 16,
-    paddingBottom: 90,
-  },
-  label: {
-    color: Theme.colors.muted,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    marginBottom: 16,
-  },
-  row: {
-    backgroundColor: Theme.colors.white,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  nom: {
-    color: Theme.colors.ink,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  choix: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  btn: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Theme.colors.mint,
-    paddingVertical: 12,
-  },
-  btnOn: {
-    backgroundColor: Theme.colors.forest,
-  },
-  btnText: {
-    color: Theme.colors.deepGreen,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  btnTextOn: {
-    color: Theme.colors.white,
-  },
-});

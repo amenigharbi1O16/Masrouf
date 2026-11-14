@@ -1,151 +1,61 @@
-// ============================================================
-// FICHIER : src/constants/theme.ts
-// RÔLE    : Design System officiel de l'application Masrouf.
-//           Basé sur la maquette Figma validée.
-//
-// DIRECTION DE DESIGN :
-//   Calme, professionnel, minimaliste et financier.
-//   « Quiet confidence. Clear decisions. Local by design. »
-//
-// PALETTE VISUELLE FIGMA :
-//   - Forest / Forest Green : #102B27 (Headers, boutons primaires, drawer)
-//   - Deep Green            : #1C5143 (Texte vert, indicateur « sain »)
-//   - Mint / Mint Green     : #D9F0E4 (Bannières info, badges, accents)
-//   - Warm / Warm Off-white : #F5F3ED (Fond principal de l'app)
-//   - White                 : #FFFFFF (Cartes, inputs)
-//   - Gold / Status Orange  : #E9B66B (Alerte budget 70-99 %)
-//   - Coral / Status Red    : #DC7770 (Budget dépassé ≥ 100 %)
-//   - Ink / Text Primary    : #102B27 (Texte principal)
-//   - Muted / Text Secondary: #61746D (Texte secondaire, descriptions)
-// ============================================================
-
-const palette = {
-  // Couleurs principales Figma
+export const colors = {
   forest: '#102B27',
-  forestGreen: '#102B27',
-  deepGreen: '#1C5143',
+  green: '#1C5143',
   mint: '#D9F0E4',
-  mintGreen: '#D9F0E4',
   warm: '#F5F3ED',
-  warmOffWhite: '#F5F3ED',
   white: '#FFFFFF',
-  border: '#E2E6DF',
-  divider: '#ECEFEA',
-
-  // Alertes et statuts budgétaires
   gold: '#E9B66B',
   coral: '#DC7770',
-  statusGreen: '#1C5143',
-  statusGreenBg: '#D9F0E4',
-  statusOrange: '#E9B66B',
-  statusOrangeBg: '#FEF3C7',
-  statusRed: '#DC7770',
-  statusRedBg: '#FEE2E2',
-
-  // Typographie et niveaux de gris
-  ink: '#102B27',
-  textPrimary: '#102B27',
-  textSecondary: '#61746D',
-  textMuted: '#61746D',
   muted: '#61746D',
-  subtle: '#9CA8A3',
-  textLight: '#9CA8A3',
-
-  // Tiroir latéral (Drawer)
-  drawerBg: '#102B27',
-  drawerText: '#FFFFFF',
-  drawerMuted: '#9CA8A3',
-  drawerActive: '#1C5143',
-
-  // Administration
-  adminPurple: '#581C87',
-  adminPurpleLight: '#F3E8FF',
-  adminPurpleBorder: '#D8B4FE',
+  border: '#E2E7DF',
+  track: '#3C5B51',
+  goldSoft: '#FBEFD9',
+  coralSoft: '#F8E1DF',
 } as const;
 
-export const Theme = {
-  colors: palette,
+export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
+export const radius = { control: 16, card: 16, hero: 24, pill: 28 } as const;
 
-  // Typographie officielle Figma
-  font: {
-    display: 34,
-    title: 26,
-    section: 18,
-    body: 14,
-    label: 12,
-    small: 11,
-  },
+export const type = {
+  display: { fontSize: 34, fontWeight: '600' as const },
+  title: { fontSize: 26, fontWeight: '600' as const },
+  section: { fontSize: 18, fontWeight: '600' as const },
+  body: { fontSize: 14, fontWeight: '400' as const },
+  label: { fontSize: 12, fontWeight: '500' as const },
+};
 
-  radius: {
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
-    full: 9999,
-  },
-
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 24,
-    xxl: 32,
-  },
-
-  // Alias pour la compatibilité avec Theme.Spacing
-  Spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 24,
-    xxl: 32,
-  },
-
-  shadows: {
-    card: {
-      shadowColor: '#102B27',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.05,
-      shadowRadius: 8,
-      elevation: 2,
-    },
-    button: {
-      shadowColor: '#102B27',
-      shadowOffset: { width: 0, height: 3 },
-      shadowOpacity: 0.12,
-      shadowRadius: 6,
-      elevation: 3,
-    },
-  },
-
-  control: {
-    height: 52,
-    heightLg: 56,
-  },
-} as const;
-
-// Alias exportés pour les hooks et fichiers existants
-export const Spacing = Theme.spacing;
-
+// Aliases pour rétrocompatibilité
+export const Spacing = space;
 export const Colors = {
   light: {
-    text: palette.ink,
-    background: palette.warm,
-    tint: palette.forest,
-    icon: palette.muted,
-    tabIconDefault: palette.muted,
-    tabIconSelected: palette.forest,
+    ...colors,
+    text: colors.forest,
+    background: colors.warm,
+    tint: colors.green,
+    icon: colors.muted,
+    tabIconDefault: colors.muted,
+    tabIconSelected: colors.green,
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: palette.mint,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: palette.mint,
+    ...colors,
+    text: colors.warm,
+    background: colors.forest,
+    tint: colors.mint,
+    icon: colors.muted,
+    tabIconDefault: colors.muted,
+    tabIconSelected: colors.mint,
   },
-  ...palette,
 };
+
+export const Theme = {
+  colors: {
+    ...colors,
+    ink: colors.forest,
+    deepGreen: colors.green,
+  },
+  space,
+  spacing: space,
+  radius,
+  type,
+};
+

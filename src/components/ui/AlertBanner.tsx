@@ -1,86 +1,31 @@
-// ============================================================
-// FICHIER : src/components/ui/AlertBanner.tsx
-// MISSION : Bannière d'alerte et de statut conforme au thème Masrouf :
-//           - mint (sain / information)
-//           - gold (alerte 80 %)
-//           - coral (dépassement 100 %)
-// ============================================================
-
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { Theme } from '../../constants/theme';
+import { StyleSheet, Text, View } from 'react-native';
+import { colors, radius } from '@/constants/theme';
 
-type AlertVariant = 'mint' | 'gold' | 'coral';
-
-type Props = {
-  title: string;
-  subtitle?: string;
-  icon?: string;
-  variant?: AlertVariant;
-  style?: ViewStyle;
+export type Tone = 'success' | 'warning' | 'danger' | 'info';
+const TONES: Record<Tone, { bg: string; fg: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  success: { bg: colors.mint, fg: colors.green, icon: 'checkmark-circle' },
+  info: { bg: colors.mint, fg: colors.green, icon: 'information-circle' },
+  warning: { bg: colors.goldSoft, fg: '#8A5A12', icon: 'alert-circle' },
+  danger: { bg: colors.coralSoft, fg: '#9B3B35', icon: 'warning' },
 };
 
-export default function AlertBanner({
-  title,
-  subtitle,
-  icon = '✓',
-  variant = 'mint',
-  style,
-}: Props) {
-  const isGold = variant === 'gold';
-  const isCoral = variant === 'coral';
-
-  const bgColor = isCoral
-    ? Theme.colors.statusRedBg
-    : isGold
-    ? Theme.colors.statusOrangeBg
-    : Theme.colors.mint;
-
-  const textColor = isCoral
-    ? Theme.colors.coral
-    : isGold
-    ? '#92400E'
-    : Theme.colors.deepGreen;
-
+export function AlertBanner({ title, detail, tone = 'success' }: { title: string; detail?: string; tone?: Tone }) {
+  const t = TONES[tone];
   return (
-    <View style={[styles.banner, { backgroundColor: bgColor }, style]}>
-      <Text style={[styles.icon, { color: textColor }]}>{icon}</Text>
-      <View style={styles.textContainer}>
-        <Text style={[styles.title, { color: textColor }]}>{title}</Text>
-        {subtitle ? (
-          <Text style={[styles.subtitle, { color: textColor }]}>{subtitle}</Text>
-        ) : null}
+    <View style={[styles.box, { backgroundColor: t.bg }]} accessibilityRole="alert">
+      <Ionicons name={t.icon} size={22} color={t.fg} style={{ marginTop: 1 }} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.title, { color: t.fg }]}>{title}</Text>
+        {detail ? <Text style={[styles.detail, { color: t.fg }]}>{detail}</Text> : null}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  banner: {
-    borderRadius: Theme.radius.lg,
-    padding: Theme.spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Theme.spacing.md,
-    marginBottom: Theme.spacing.lg,
-  },
-  icon: {
-    fontSize: Theme.font.section,
-    fontWeight: '800',
-    marginTop: 1,
-  },
-  textContainer: {
-    flex: 1,
-  },
-  title: {
-    fontSize: Theme.font.body,
-    fontWeight: '800',
-    marginBottom: 2,
-  },
-  subtitle: {
-    fontSize: Theme.font.small,
-    lineHeight: 18,
-    opacity: 0.9,
-  },
+  box: { flexDirection: 'row', gap: 10, padding: 14, borderRadius: radius.card },
+  title: { fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  detail: { fontSize: 12, lineHeight: 17, marginTop: 2 },
 });
-

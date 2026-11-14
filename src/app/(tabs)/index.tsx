@@ -1,685 +1,100 @@
-// ============================================================
-// FICHIER : src/app/(tabs)/index.tsx
-// RÔLE    : Écran d'accueil (Home) — Design Figma 07/27/28/29.
-//
-// DESIGN FIGMA :
-//   - Fond : #F5F3ED
-//   - Header : hamburger ☰ | "Bonjour, [Prénom]" | icône profil
-//   - Label : "[MOIS ANNÉE] · 01-30 NOV."
-//   - Carte hero sombre (#102B27) : disponible à dépenser, budget, barre, dépensé
-//   - Bannière mint (sain) / gold (80%) / coral (dépassé)
-//   - Section "Vos catégories" : cartes blanches avec barre de progression
-//   - Section "Transactions récentes" : lignes avec icône + nom + montant
-//   - Bouton "Ajouter une dépense simple" (secondary, mint)
-//   - FAB "+ Ajouter un achat" (primaire, vert forêt, full-width, ancré en bas)
-//   - État sans budget : carte blanche avec CTA "Créer un budget"
-// ============================================================
-
-import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-} from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
-
-import {
-  getTotalMois,
-  getRecentAchats,
-  getEnveloppesBudget,
-  getMonthlyBudget,
-  getNonBudgetedDepenses,
-  getTotalPoints,
-  getPointsSettings,
-  couleurSelonConsommation,
-  evaluerMoisPrecedent,
-  hasAlerteBeenShown,
-  logAlerte,
-  Achat,
-  EnveloppeBudget,
-} from '../../db/queries';
-
-import { Theme } from '../../constants/theme';
-import { useAuth } from '../../utils/auth';
-import { useTranslation } from '../../utils/i18n';
-import { useDrawer } from './_layout';
-import AppHeader from '../../components/AppHeader';
-import ProductThumb from '../../components/ProductThumb';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
+import { BudgetCard, CategoryCard, ExpenseCard, TransactionRow } from '@/components/Cards';
+import { Screen } from '@/components/Screen';
+import { AlertBanner, Button, EmptyState, Eyebrow, SectionTitle } from '@/components/ui';
+import { colors } from '@/constants/theme';
+import { categoryName, currentBudget, pointsFor, summarize, userTxns } from '@/state/selectors';
+import { useStore } from '@/state/store';
+import { fmtDate, fmtRange, greeting, money, monthName, parseISO, short } from '@/utils/format';
 
 export default function HomeScreen() {
-  const { user, refreshUser } = useAuth();
-  const { t } = useTranslation();
-  const { openDrawer } = useDrawer();
+  const router = useRouter();
+  const { db, me } = useStore();
+  const [expanded, setExpanded] = useState(false);
+  const budget = me ? currentBudget(db, me.id) : null;
+  const sum = budget && me ? summarize(db, me.id, budget) : null;
 
-  // Période courante
-  const maintenant = new Date();
-  const moisCourant = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}`;
+  // Celebrate a newly completed successful period once.
+  const reward = useMemo(() => {
+    if (!me) return null;
+    return pointsFor(db, me).periods.find((p) => p.success && !me.celebratedBudgetIds.includes(p.budget.id)) ?? null;
+  }, [db, me]);
+  useEffect(() => {
+    if (reward) router.push({ pathname: '/felicitations', params: { id: reward.budget.id } } as never);
+  }, [reward?.budget.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Libellé de la période (ex : "NOVEMBRE 2026 · 01-30 NOV.")
-  const moisNom = maintenant.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }).toUpperCase();
-  const debut = `01 ${maintenant.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }).toUpperCase().replace('.', '')}`;
-  const finDuMois = new Date(maintenant.getFullYear(), maintenant.getMonth() + 1, 0);
-  const fin = `${finDuMois.getDate()} ${finDuMois.toLocaleDateString('fr-FR', { month: 'short' }).toUpperCase().replace('.', '')}`;
-
-  // États
-  const [totalDepense, setTotalDepense] = useState<number>(0);
-  const [achatsRecents, setAchatsRecents] = useState<Achat[]>([]);
-  const [enveloppes, setEnveloppes] = useState<EnveloppeBudget[]>([]);
-  const [nonBudgetise, setNonBudgetise] = useState<number>(0);
-  const [budgetTotal, setBudgetTotal] = useState<number>(0);
-
-  const rechargerDonnees = useCallback(() => {
-    if (!user) return;
-    refreshUser();
-
-    // Évaluation du mois précédent (1 fois)
-    const evalRes = evaluerMoisPrecedent(user.id, moisCourant);
-    if (evalRes.evalue && evalRes.pointsGagnes > 0) {
-      Alert.alert(t('felicitations_mois'), `${evalRes.message}\n+${evalRes.pointsGagnes} ${t('points')} 🎉`);
-    }
-
-    const total = getTotalMois(user.id, moisCourant);
-    setTotalDepense(total);
-    setAchatsRecents(getRecentAchats(user.id, moisCourant));
-
-    const mb = getMonthlyBudget(user.id, moisCourant);
-    const bTot = (user.budget_mensuel && user.budget_mensuel > 0)
-      ? user.budget_mensuel
-      : (mb?.montant_total ?? 0);
-    setBudgetTotal(bTot);
-
-    const envs = getEnveloppesBudget(user.id, moisCourant);
-    setEnveloppes(envs);
-    setNonBudgetise(getNonBudgetedDepenses(user.id, moisCourant));
-
-    // Alertes 80% et 100%
-    for (const env of envs) {
-      const reglesAlerte = getPointsSettings();
-      if (env.pourcentage_consomme >= reglesAlerte.red_from && !hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 100)) {
-        logAlerte(user.id, moisCourant, env.categorie_id, 100);
-        Alert.alert(t('alerte_100_titre'), `${t('alerte_100_msg')} ${env.categorie_nom}`);
-      } else if (env.pourcentage_consomme >= reglesAlerte.orange_from && !hasAlerteBeenShown(user.id, moisCourant, env.categorie_id, 80)) {
-        logAlerte(user.id, moisCourant, env.categorie_id, 80);
-        Alert.alert(t('alerte_80_titre'), `${t('alerte_80_msg')} ${env.categorie_nom}`);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, moisCourant, t]);
-
-  useFocusEffect(rechargerDonnees);
-
-  const disponible = budgetTotal - totalDepense;
-  const ratio = budgetTotal > 0 ? (totalDepense / budgetTotal) * 100 : 0;
-  const largeurBarre = Math.min(ratio, 100);
-
-  // Couleur de statut budgétaire
-  const teinte = couleurSelonConsommation(ratio);
-  const couleurBarre =
-    teinte === 'corail' ? Theme.colors.coral : teinte === 'or' ? Theme.colors.gold : Theme.colors.statusGreen;
-  const regles = getPointsSettings();
-
-  // Statut de la bannière : or dès 80 %, rouge dès 100 %
-  const statut: 'healthy' | 'warning' | 'exceeded' =
-    ratio >= regles.red_from ? 'exceeded' : ratio >= regles.orange_from ? 'warning' : 'healthy';
-
-  // Catégories visibles vs résumé
-  const enveloppesVisibles = enveloppes.slice(0, 2);
-  const enveloppesRestantes = enveloppes.slice(2);
-  const totalRestant = enveloppesRestantes.reduce((s, e) => s + e.montant_alloue, 0);
+  if (!me) return null;
+  const txns = userTxns(db, me.id).slice(0, 4);
+  const allocCats = budget ? Object.keys(budget.allocations).filter((id) => (budget.allocations[id] ?? 0) > 0 || (sum?.byCat[id] ?? 0) > 0) : [];
+  const shown = expanded ? allocCats : allocCats.slice(0, 2);
+  const rest = allocCats.slice(2);
+  const restSpent = rest.reduce((a, id) => a + (sum?.byCat[id] ?? 0), 0);
+  const restAlloc = rest.reduce((a, id) => a + (budget?.allocations[id] ?? 0), 0);
+  const d = budget ? parseISO(budget.start) : null;
 
   return (
-    <View style={styles.root}>
-      {/* ── HEADER ── */}
-      <AppHeader
-        title={`${t('bonjour') ?? 'Bonjour'}, ${user?.nom?.split(' ')[0] ?? ''}`}
-        onMenuPress={openDrawer}
-      />
-
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── LABEL PÉRIODE ── */}
-        <Text style={styles.periodLabel}>
-          {moisNom}  ·  {debut}–{fin}.
-        </Text>
-
-        {budgetTotal <= 0 ? (
-          /* ── ÉTAT SANS BUDGET (Figma 29) ── */
-          <EtatSansBudget t={t} categories={enveloppes} />
-        ) : (
-          <>
-            {/* ── CARTE HERO BUDGET ── */}
-            <View style={styles.heroCard}>
-              <Text style={styles.heroLabel}>
-                {t('disponible_a_depenser') ?? 'DISPONIBLE À DÉPENSER'}
-              </Text>
-              <Text style={styles.heroAmount}>
-                {formatDT(disponible)}
-              </Text>
-              <Text style={styles.heroBudgetLine}>
-                {t('budget') ?? 'Budget'}  {formatDT(budgetTotal)}
-              </Text>
-
-              {/* Barre de progression globale */}
-              <View style={styles.heroProgressTrack}>
-                <View
-                  style={[
-                    styles.heroProgressFill,
-                    { width: `${largeurBarre}%`, backgroundColor: couleurBarre },
-                  ]}
-                />
-              </View>
-
-              <View style={styles.heroFooter}>
-                <Text style={styles.heroDepense}>
-                  {t('depense') ?? 'Dépensé'}  {formatDT(totalDepense)}
-                </Text>
-                <Text style={styles.heroRatio}>{ratio.toFixed(1)}% {t('utilise') ?? 'utilisé'}</Text>
-              </View>
-              <Text style={styles.heroDate}>
-                {debut}–{fin} {maintenant.getFullYear()}
-              </Text>
-            </View>
-
-            {/* ── BANNIÈRE DE STATUT ── */}
-            <BannierStatut statut={statut} disponible={disponible} t={t} />
-
-            {/* ── SECTION CATÉGORIES ── */}
-            <Text style={styles.sectionTitle}>{t('vos_categories') ?? 'Vos catégories'}</Text>
-
-            {enveloppesVisibles.map((env) => {
-              const pct = env.pourcentage_consomme;
-              const w = Math.min(pct, 100);
-              let col: string = Theme.colors.statusGreen;
-              const teinteCat = couleurSelonConsommation(pct);
-              if (teinteCat === 'corail') col = Theme.colors.coral;
-              else if (teinteCat === 'or') col = Theme.colors.gold;
-
-              return (
-                <View key={env.categorie_id} style={styles.catCard}>
-                  <View style={styles.catCardHeader}>
-                    <View style={styles.catIconBox}>
-                      <Text style={{ fontSize: 18, color: Theme.colors.forest }}>{env.categorie_icone || '🏷️'}</Text>
-                    </View>
-                    <Text style={styles.catName}>{env.categorie_nom}</Text>
-                    <Text style={styles.catAmounts}>
-                      {formatDT(env.montant_depense)} / {formatDT(env.montant_alloue)}
-                    </Text>
-                  </View>
-                  <View style={styles.catProgressTrack}>
-                    <View style={[styles.catProgressFill, { width: `${w}%`, backgroundColor: col }]} />
-                  </View>
-                </View>
-              );
-            })}
-
-            {/* Résumé des catégories restantes */}
-            {enveloppesRestantes.length > 0 && (
-              <View style={styles.catSummaryRow}>
-                <Text style={styles.catSummaryNames}>
-                  {enveloppesRestantes.map((e) => e.categorie_nom).join(' · ')}
-                </Text>
-                <Text style={styles.catSummaryAmount}>
-                  {formatDT(enveloppes.slice(2).reduce((s, e) => s + e.montant_depense, 0))} / {formatDT(totalRestant)}
-                </Text>
-              </View>
-            )}
-
-            {/* ── SECTION TRANSACTIONS RÉCENTES ── */}
-            {achatsRecents.length > 0 && (
-              <>
-                <Text style={styles.sectionTitle}>{t('transactions_recentes') ?? 'Transactions récentes'}</Text>
-                {achatsRecents.map((a) => (
-                  <TouchableOpacity
-                    key={a.id}
-                    style={styles.transactionRow}
-                    onPress={() => router.push({ pathname: '/modifier-achat' as any, params: { id: a.id } })}
-                    activeOpacity={0.7}
-                  >
-                    <ProductThumb
-                      photoPath={a.produit_photo}
-                      icone={a.produit_icone || '📦'}
-                      taille={36}
-                      style={{ marginRight: 12 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.transactionName}>{a.produit_nom}</Text>
-                      <Text style={styles.transactionMeta}>
-                        {a.magasin_nom}  ·  {formatDate(a.date_achat)}
-                      </Text>
-                    </View>
-                    <Text style={styles.transactionAmount}>
-                      -{formatDT(a.prix_total)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </>
-            )}
-          </>
-        )}
-
-        {/* Dépenses hors budget */}
-        {nonBudgetise > 0 && (
-          <View style={styles.nonBudgetRow}>
-            <Text style={styles.nonBudgetText}>
-              ⚠ {t('non_budgetise') ?? 'Hors budget'} : {formatDT(nonBudgetise)}
-            </Text>
-          </View>
-        )}
-
-        {/* ── BOUTON DÉPENSE SIMPLE ── */}
-        <TouchableOpacity
-          style={styles.simpleExpenseBtn}
-          onPress={() => router.push('/nouvel-achat')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.simpleExpenseBtnText}>
-            {t('ajouter_depense_simple') ?? 'Ajouter une dépense simple'}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Espace pour le FAB */}
-        <View style={{ height: 80 }} />
-      </ScrollView>
-
-      {/* ── FAB PRINCIPAL ── */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => router.push('/nouvel-achat')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.fabText}>{t('ajouter_achat')}</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// ── Composant : bannière de statut budgétaire ──
-function BannierStatut({ statut, disponible, t }: { statut: string; disponible: number; t: (k: string) => string }) {
-  const bg = statut === 'exceeded' ? '#FEE2E2' : statut === 'warning' ? '#FEF9EB' : Theme.colors.mint;
-  const textCol = statut === 'exceeded' ? Theme.colors.coral : statut === 'warning' ? '#92400E' : Theme.colors.deepGreen;
-  const titre = statut === 'exceeded'
-    ? (t('budget_depasse') ?? 'Budget dépassé')
-    : statut === 'warning'
-    ? (t('attention_80') ?? 'Attention — 80 % atteint')
-    : (t('budget_se_porte_bien') ?? 'Votre budget se porte bien');
-  const sous = statut === 'healthy'
-    ? `${t('il_reste') ?? 'Il reste'} ${formatDT(disponible)} ${t('pour_periode') ?? 'pour cette période.'}`
-    : '';
-
-  return (
-    <View style={[styles.statusBanner, { backgroundColor: bg }]}>
-      <Text style={[styles.statusBannerCheck, { color: textCol }]}>✓</Text>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.statusBannerTitle, { color: textCol }]}>{titre}</Text>
-        {sous ? <Text style={[styles.statusBannerSub, { color: textCol }]}>{sous}</Text> : null}
-      </View>
-    </View>
-  );
-}
-
-// ── Composant : état sans budget ──
-function EtatSansBudget({ t, categories }: { t: (k: string) => string; categories: EnveloppeBudget[] }) {
-  return (
-    <>
-      <View style={styles.noBudgetCard}>
-        <Text style={{ fontSize: 32, marginBottom: 12 }}>☐</Text>
-        <Text style={styles.noBudgetTitle}>
-          {t('faites_place_objectifs') ?? 'Faites place à vos objectifs'}
-        </Text>
-        <Text style={styles.noBudgetSub}>
-          {t('pas_de_budget_periode') ?? 'Vous n\'avez pas encore de budget pour cette période.'}
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        style={styles.primaryBtn}
-        onPress={() => router.push('/budget-mois')}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.primaryBtnText}>{t('creer_budget') ?? 'Créer un budget'}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.secondaryBtn}
-        onPress={() => router.push({ pathname: '/budget-mois', params: { copier: '1' } })}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.secondaryBtnText}>
-          {t('copier_periode_precedente') ?? 'Copier la période précédente'}
-        </Text>
-      </TouchableOpacity>
-
-      <View style={styles.mintBanner}>
-        <Text style={{ color: Theme.colors.deepGreen, fontSize: 14, marginRight: 8 }}>✓</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.mintBannerTitle}>
-            {t('commencez_vos_dates') ?? 'Commencez aux dates de votre choix'}
-          </Text>
-          <Text style={styles.mintBannerSub}>
-            {t('decidez_duree_montant') ?? 'Vous décidez de la durée et du montant total.'}
-          </Text>
-        </View>
-      </View>
-
-      {categories.length > 0 && (
+    <Screen title={`${greeting()}, ${me.name.split(' ')[0]}`} fab={{ label: '＋ Add purchase', onPress: () => router.push('/nouvel-achat') }}>
+      {budget && sum && d ? (
         <>
-          <Text style={styles.sectionTitle}>{t('vos_categories_pretes') ?? 'Vos catégories sont prêtes'}</Text>
-          {categories.map((c) => (
-            <View key={c.categorie_id} style={styles.catReadyRow}>
-              <Text style={styles.catReadyName}>{c.categorie_nom}</Text>
-              <Text style={styles.catReadyStatus}>{t('prete') ?? 'Prête'}</Text>
-            </View>
+          <Eyebrow>{monthName(d.getUTCMonth()).toUpperCase()} {d.getUTCFullYear()}  ·  {fmtRange(budget.start, budget.end).split(' ').slice(0, 1)[0]} {fmtRange(budget.start, budget.end).split(' ')[1]}</Eyebrow>
+          <BudgetCard
+            available={sum.left} spent={sum.spent} total={sum.total} pct={sum.pct} over={sum.status === 'exceeded' ? sum.over : undefined}
+            range={fmtRange(budget.start, budget.end)}
+            onPress={() => router.push({ pathname: '/budget-mois', params: { mode: 'edit', id: budget.id } } as never)}
+          />
+          {sum.status === 'healthy' && <AlertBanner tone="success" title="Your budget is looking healthy" detail={`${money(sum.left)} left for the rest of this period.`} />}
+          {sum.status === 'warning' && <AlertBanner tone="warning" title={`You have used ${Math.round(sum.pct)}% of your budget`} detail={`${money(sum.left)} left — slow down on non-essentials.`} />}
+          {sum.status === 'exceeded' && <AlertBanner tone="danger" title="Budget exceeded" detail={`You are ${money(sum.over)} over your plan for this period.`} />}
+
+          <SectionTitle>Your categories</SectionTitle>
+          {shown.map((id) => (
+            <CategoryCard key={id} name={categoryName(db, id)} spent={sum.byCat[id] ?? 0} allocation={budget.allocations[id] ?? 0} />
           ))}
+          {!expanded && rest.length > 0 && (
+            <Pressable onPress={() => setExpanded(true)} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }} accessibilityRole="button">
+              <Text style={{ fontSize: 13, color: colors.muted, flex: 1 }} numberOfLines={1}>{rest.map((id) => categoryName(db, id)).join(' · ')}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.forest }}>{short(restSpent)} / {short(restAlloc)} DT</Text>
+            </Pressable>
+          )}
+          {expanded && rest.length > 0 && (
+            <Pressable onPress={() => setExpanded(false)} accessibilityRole="button"><Text style={{ fontSize: 13, color: colors.green, fontWeight: '600' }}>Show less</Text></Pressable>
+          )}
+        </>
+      ) : (
+        <>
+          <Eyebrow>NO ACTIVE BUDGET PERIOD</Eyebrow>
+          <EmptyState
+            icon="wallet-outline"
+            title="Give every dinar a direction"
+            detail="You have no budget for today. Create one for any period — it does not have to be a calendar month."
+            actionLabel="Create a budget"
+            onAction={() => router.push('/budget-mois')}
+          />
         </>
       )}
-    </>
+
+      <SectionTitle>Recent transactions</SectionTitle>
+      {txns.length === 0 ? (
+        <EmptyState icon="receipt-outline" title="Nothing recorded yet" detail="Add your first purchase or expense to see it here." />
+      ) : (
+        txns.map((t) =>
+          t.kind === 'purchase' ? (
+            <TransactionRow
+              key={t.id} title={t.title} detail={`${t.detail} · ${fmtDate(t.date)}`} amount={`−${money(t.amount).replace(' DT', '')}`}
+              onPress={() => router.push({ pathname: '/modifier-achat', params: { id: t.id } } as never)}
+            />
+          ) : (
+            <ExpenseCard
+              key={t.id} title={t.title} detail={`${t.detail} · ${fmtDate(t.date)}`} amount={money(t.amount)}
+              onPress={() => router.push({ pathname: '/modifier-depense', params: { id: t.id } } as never)}
+            />
+          ),
+        )
+      )}
+      <Button label="Add a simple expense" variant="secondary" onPress={() => router.push('/nouvelle-depense')} />
+      <View style={{ height: 4 }} />
+    </Screen>
   );
 }
-
-// ── Helpers ──
-function formatDT(val: number): string {
-  // Formatage tunisien : 3 décimales, séparateur point
-  return `${val.toFixed(3)} DT`;
-}
-
-function formatDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-  } catch {
-    return dateStr;
-  }
-}
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Theme.colors.warm },
-  scroll: {
-    paddingHorizontal: 20,
-    paddingBottom: 100,
-  },
-
-  // Période
-  periodLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Theme.colors.muted,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 14,
-  },
-
-  // Carte hero (fond foncé)
-  heroCard: {
-    backgroundColor: Theme.colors.forest,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 12,
-  },
-  heroLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.65)',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  heroAmount: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: Theme.colors.white,
-    marginBottom: 4,
-  },
-  heroBudgetLine: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 12,
-  },
-  heroProgressTrack: {
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
-  heroProgressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  heroFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  heroDepense: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: '600',
-  },
-  heroRatio: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-  },
-  heroDate: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 4,
-  },
-
-  // Bannière statut
-  statusBanner: {
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginBottom: 20,
-  },
-  statusBannerCheck: { fontSize: 14, fontWeight: '800', marginTop: 1 },
-  statusBannerTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  statusBannerSub: { fontSize: 13, lineHeight: 18 },
-
-  // Sections
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: Theme.colors.ink,
-    marginBottom: 12,
-  },
-
-  // Cartes catégories
-  catCard: {
-    backgroundColor: Theme.colors.white,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  catCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  catIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: Theme.colors.mint,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  catName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: Theme.colors.ink,
-  },
-  catAmounts: {
-    fontSize: 13,
-    color: Theme.colors.muted,
-    fontWeight: '500',
-  },
-  catProgressTrack: {
-    height: 5,
-    backgroundColor: Theme.colors.border,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  catProgressFill: { height: '100%', borderRadius: 3 },
-
-  // Résumé catégories
-  catSummaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-    paddingHorizontal: 4,
-  },
-  catSummaryNames: { fontSize: 12, color: Theme.colors.muted },
-  catSummaryAmount: { fontSize: 12, fontWeight: '700', color: Theme.colors.ink },
-
-  // Transactions
-  transactionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Theme.colors.white,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  transactionIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: Theme.colors.mint,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  transactionName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Theme.colors.ink,
-  },
-  transactionMeta: { fontSize: 12, color: Theme.colors.muted, marginTop: 2 },
-  transactionAmount: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Theme.colors.ink,
-  },
-
-  // Hors budget
-  nonBudgetRow: {
-    backgroundColor: '#FEF9EB',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-  },
-  nonBudgetText: { fontSize: 13, color: '#92400E', fontWeight: '600' },
-
-  // Bouton dépense simple (secondary)
-  simpleExpenseBtn: {
-    backgroundColor: Theme.colors.mint,
-    borderRadius: 9999,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  simpleExpenseBtnText: {
-    color: Theme.colors.forest,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-
-  // FAB
-  fabContainer: {
-    position: 'absolute',
-    bottom: 24,
-    left: 20,
-    right: 20,
-  },
-  fab: {
-    backgroundColor: Theme.colors.forest,
-    borderRadius: 9999,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Theme.colors.forest,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  fabText: { color: Theme.colors.white, fontSize: 15, fontWeight: '700' },
-
-  // État sans budget
-  noBudgetCard: {
-    backgroundColor: Theme.colors.white,
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  noBudgetTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: Theme.colors.ink,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  noBudgetSub: {
-    fontSize: 14,
-    color: Theme.colors.muted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  primaryBtn: {
-    backgroundColor: Theme.colors.forest,
-    borderRadius: 9999,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  primaryBtnText: { color: Theme.colors.white, fontSize: 15, fontWeight: '700' },
-  secondaryBtn: {
-    backgroundColor: Theme.colors.mint,
-    borderRadius: 9999,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  secondaryBtnText: { color: Theme.colors.forest, fontSize: 15, fontWeight: '600' },
-  mintBanner: {
-    backgroundColor: Theme.colors.mint,
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  mintBannerTitle: { fontSize: 14, fontWeight: '700', color: Theme.colors.ink, marginBottom: 4 },
-  mintBannerSub: { fontSize: 13, color: Theme.colors.muted, lineHeight: 18 },
-  catReadyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Theme.colors.divider,
-  },
-  catReadyName: { fontSize: 14, color: Theme.colors.ink },
-  catReadyStatus: { fontSize: 14, fontWeight: '700', color: Theme.colors.muted },
-});

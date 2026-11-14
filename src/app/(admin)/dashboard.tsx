@@ -1,292 +1,44 @@
-// ============================================================
-// FICHIER : src/app/(admin)/dashboard.tsx
-// RÔLE    : Vue d'ensemble Administrateur — Design Figma 35.
-//
-// CE QUI EST AFFICHÉ SUR L'ÉCRAN (Design Figma 35 · FR · Admin dashboard) :
-//   • Header : ☰ hamburger + "Vue d'ensemble admin" + profil
-//   • Label "ADMINISTRATEUR · STATISTIQUES GLOBALES" (muted, uppercase)
-//   • Carte Hero Forest (#102B27) :
-//       - Label "COMPTES ACTIFS"
-//       - Nombre grand format (ex: 248)
-//       - Sous-titre : "X au total · Y suspendus"
-//   • Bannière Mint de confidentialité :
-//       - "✓ Statistiques anonymes uniquement"
-//       - "Aucun accès aux budgets ou transactions personnels."
-//   • Ligne d'information : "Catégories de produits     6"
-//   • Ligne d'information : "Catégories de dépenses    10"
-//   • 6 Boutons secondaires mint :
-//       1. "Gérer les utilisateurs"
-//       2. "Gérer les catégories"
-//       3. "Types de catégories"
-//       4. "Pourcentages par défaut"
-//       5. "Règles des points"
-//       6. "Paramètres admin"
-// ============================================================
+import { useRouter } from 'expo-router';
+import React from 'react';
+import { Text, View } from 'react-native';
+import { Screen } from '@/components/Screen';
+import { AlertBanner, Button, Eyebrow, SectionTitle } from '@/components/ui';
+import { colors, radius } from '@/constants/theme';
+import { useStore } from '@/state/store';
 
-import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
-
-// Fonctions SQLite
-import {
-  getAdminGlobalStats,
-  AdminGlobalStats,
-} from '../../db/queries';
-
-// Design System & Contexte
-import { Theme } from '../../constants/theme';
-import { useAuth } from '../../utils/auth';
-import { useTranslation } from '../../utils/i18n';
-import { useAdminDrawer } from './_layout';
-import AppHeader from '../../components/AppHeader';
-
-export default function AdminDashboardScreen() {
-  const { user } = useAuth();
-  const { t } = useTranslation();
-  const { ouvrirDrawer } = useAdminDrawer();
-
-  const [stats, setStats] = useState<AdminGlobalStats>({
-    nbUtilisateurs: 0,
-    nbUtilisateursActifs: 0,
-    nbSuspendus: 0,
-    nbCategoriesProduit: 0,
-    nbCategoriesDepense: 0,
-  });
-
-  useFocusEffect(
-    useCallback(() => {
-      setStats(getAdminGlobalStats(user?.id));
-    }, [user?.id])
-  );
-
-  const nbSuspendus = stats.nbSuspendus;
-  const nbCatsProduit = stats.nbCategoriesProduit;
-  const nbCatsDepense = stats.nbCategoriesDepense;
-
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <View style={styles.container}>
-      {/* Header avec bouton hamburger */}
-      <AppHeader
-        titre={t('vue_ensemble_admin')}
-        onMenuPress={ouvrirDrawer}
-      />
-
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Label uppercase */}
-        <Text style={styles.sectionLabel}>
-          {t('administrateur').toUpperCase()} · {t('stats_globales_anonymes').toUpperCase()}
-        </Text>
-
-        {/* CARTE HERO : COMPTES ACTIFS (Forest Green #102B27) */}
-        <View style={styles.heroCard}>
-          <Text style={styles.heroLabel}>{t('comptes_actifs').toUpperCase()}</Text>
-          <Text style={styles.heroNumber}>{stats.nbUtilisateursActifs}</Text>
-          <Text style={styles.heroSub}>
-            {stats.nbUtilisateurs} total · {nbSuspendus} {t('suspendu').toLowerCase()}
-          </Text>
-        </View>
-
-        {/* BANNIÈRE MINT DE CONFIDENTIALITÉ */}
-        <View style={styles.mintBanner}>
-          <View style={styles.bannerHeaderRow}>
-            <Text style={styles.checkIcon}>✓</Text>
-            <Text style={styles.bannerTitle}>
-              {t('statistiques_anonymes')}
-            </Text>
-          </View>
-          <Text style={styles.bannerSub}>
-            {t('aucun_acces_finances_perso')}
-          </Text>
-        </View>
-
-        {/* LIGNES D'INFORMATIONS RÉFÉRENTIEL */}
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>{t('categories_produits')}</Text>
-          <Text style={styles.infoValue}>{nbCatsProduit}</Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>{t('categories_depenses')}</Text>
-          <Text style={styles.infoValue}>{nbCatsDepense}</Text>
-        </View>
-
-        {/* 6 BOUTONS D'ACCÈS RAPIDE (Figma 35) */}
-        <View style={styles.buttonsContainer}>
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => router.push('/(admin)/utilisateurs')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.secondaryBtnText}>{t('gerer_utilisateurs')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => router.push('/(admin)/categories')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.secondaryBtnText}>{t('gerer_categories')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => router.push('/(admin)/types' as any)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.secondaryBtnText}>{t('types_categories')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => router.push('/(admin)/pourcentages' as any)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.secondaryBtnText}>{t('pourcentages_defaut')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => router.push('/(admin)/points-regles')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.secondaryBtnText}>{t('regles_points_admin')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => router.push('/(admin)/reglages')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.secondaryBtnText}>{t('parametres_admin')}</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+    <View style={{ width: '48%', flexGrow: 1, backgroundColor: colors.white, borderRadius: radius.card, padding: 16, gap: 4 }}>
+      <Text style={{ fontSize: 28, fontWeight: '600', color: colors.forest }}>{value}</Text>
+      <Text style={{ fontSize: 12, color: colors.muted }}>{label}</Text>
     </View>
   );
 }
 
-// ------------------------------------------------------------
-// STYLES — Design Figma 35
-// ------------------------------------------------------------
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.warm,
-  },
-  scroll: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 48,
-  },
-
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Theme.colors.muted,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 14,
-  },
-
-  // HERO CARD FOREST GREEN (#102B27)
-  heroCard: {
-    backgroundColor: Theme.colors.forest,
-    borderRadius: Theme.radius.xl,
-    padding: 24,
-    marginBottom: 20,
-    ...Theme.shadows.card,
-  },
-  heroLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Theme.colors.mint,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  heroNumber: {
-    fontSize: 44,
-    fontWeight: '800',
-    color: Theme.colors.white,
-    marginBottom: 8,
-  },
-  heroSub: {
-    fontSize: 14,
-    color: 'rgba(217, 240, 228, 0.8)',
-  },
-
-  // BANNIÈRE MINT
-  mintBanner: {
-    backgroundColor: Theme.colors.mint,
-    borderRadius: Theme.radius.lg,
-    padding: 18,
-    marginBottom: 20,
-  },
-  bannerHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  checkIcon: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Theme.colors.deepGreen,
-  },
-  bannerTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Theme.colors.deepGreen,
-  },
-  bannerSub: {
-    fontSize: 13,
-    color: Theme.colors.forest,
-    lineHeight: 18,
-  },
-
-  // LIGNES D'INFORMATIONS
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Theme.colors.border,
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: Theme.colors.muted,
-  },
-  infoValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Theme.colors.ink,
-  },
-
-  // CONTENEUR BOUTONS
-  buttonsContainer: {
-    marginTop: 20,
-    gap: 12,
-  },
-  secondaryBtn: {
-    backgroundColor: Theme.colors.mint,
-    borderRadius: Theme.radius.full,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryBtnText: {
-    color: Theme.colors.deepGreen,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-});
+/** Anonymous global statistics only. No individual financial record is ever shown here. */
+export default function AdminDashboard() {
+  const router = useRouter();
+  const { db } = useStore();
+  const people = db.users.filter((u) => u.role === 'user');
+  return (
+    <Screen title="Overview">
+      <Eyebrow>ADMINISTRATION</Eyebrow>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        <Stat label="Accounts" value={people.length} />
+        <Stat label="Active accounts" value={people.filter((u) => u.active).length} />
+        <Stat label="Suspended" value={people.filter((u) => !u.active).length} />
+        <Stat label="Budget periods" value={db.budgets.length} />
+        <Stat label="Tracked products" value={db.products.length} />
+        <Stat label="Purchases recorded" value={db.purchases.length} />
+        <Stat label="Expenses recorded" value={db.expenses.length} />
+        <Stat label="Active categories" value={db.categories.filter((c) => c.active).length} />
+      </View>
+      <AlertBanner tone="info" title="Privacy by design" detail="Statistics are anonymous totals. Personal budgets, purchases and expenses are never exposed to administrators." />
+      <SectionTitle>Manage</SectionTitle>
+      <Button label="Users" onPress={() => router.push('/(admin)/utilisateurs')} />
+      <Button label="Categories" variant="secondary" onPress={() => router.push('/(admin)/categories')} />
+      <Button label="Default percentages" variant="secondary" onPress={() => router.push('/(admin)/pourcentages')} />
+      <Button label="Points rules" variant="secondary" onPress={() => router.push('/(admin)/points-regles')} />
+    </Screen>
+  );
+}
