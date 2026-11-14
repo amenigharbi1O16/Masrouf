@@ -62,9 +62,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     let alive = true;
     (async () => {
       let loaded: DB | null = null;
+      let savedSessionId: string | null = null;
+
+      try {
+        const raw = await AsyncStorage.getItem(KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.sessionUserId) {
+            savedSessionId = String(parsed.sessionUserId);
+          }
+        }
+      } catch {}
+
       try {
         // Chargement prioritaire depuis la base SQLite locale
         loaded = await loadDBFromSQLite();
+        if (loaded && savedSessionId) {
+          // Restaurer la session utilisateur active
+          const exists = loaded.users.some((u) => u.id === savedSessionId);
+          if (exists) {
+            loaded.sessionUserId = savedSessionId;
+          }
+        }
       } catch (err) {
         console.warn('SQLite init/load warning:', err);
       }

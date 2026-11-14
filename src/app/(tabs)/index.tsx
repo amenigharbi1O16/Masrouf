@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { BudgetCard, CategoryCard, ExpenseCard, TransactionRow } from '@/components/Cards';
 import { Screen } from '@/components/Screen';
-import { AlertBanner, Button, EmptyState, Eyebrow, SectionTitle } from '@/components/ui';
+import { AlertBanner, Button, EmptyState, Eyebrow, LoadingScreen, SectionTitle } from '@/components/ui';
 import { colors } from '@/constants/theme';
 import { categoryName, currentBudget, pointsFor, summarize, userTxns } from '@/state/selectors';
 import { useStore } from '@/state/store';
@@ -19,13 +19,13 @@ export default function HomeScreen() {
   // Celebrate a newly completed successful period once.
   const reward = useMemo(() => {
     if (!me) return null;
-    return pointsFor(db, me).periods.find((p) => p.success && !me.celebratedBudgetIds.includes(p.budget.id)) ?? null;
+    return pointsFor(db, me).periods.find((p) => p.success && !(me.celebratedBudgetIds ?? []).includes(p.budget.id)) ?? null;
   }, [db, me]);
   useEffect(() => {
     if (reward) router.push({ pathname: '/felicitations', params: { id: reward.budget.id } } as never);
   }, [reward?.budget.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!me) return null;
+  if (!me) return <LoadingScreen />;
   const txns = userTxns(db, me.id).slice(0, 4);
   const allocCats = budget ? Object.keys(budget.allocations).filter((id) => (budget.allocations[id] ?? 0) > 0 || (sum?.byCat[id] ?? 0) > 0) : [];
   const shown = expanded ? allocCats : allocCats.slice(0, 2);

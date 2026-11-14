@@ -44,7 +44,13 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
     close();
     router.navigate(href as never);
   };
-  const active = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href.replace('/(admin)', '')));
+  const active = (href: string) => {
+    if (href === '/' || href === '/(tabs)') {
+      return pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/index';
+    }
+    const clean = href.replace('/(admin)/', '').replace('/(tabs)/', '');
+    return pathname.includes(clean);
+  };
 
   return (
     <Modal transparent visible animationType="none" onRequestClose={close} statusBarTranslucent>

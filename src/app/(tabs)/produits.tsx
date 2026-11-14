@@ -17,7 +17,7 @@ export default function ProductsScreen() {
   const [asc, setAsc] = useState(true);
 
   const mine = useMemo(() => db.products.filter((p) => p.userId === me?.id), [db.products, me?.id]);
-  const chipCats = db.categories.filter((c) => c.kind === 'product' && me?.categoryIds.includes(c.id));
+  const chipCats = db.categories.filter((c) => c.kind === 'product' && (me?.categoryIds ?? []).includes(c.id));
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
     return mine

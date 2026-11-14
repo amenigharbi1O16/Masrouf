@@ -34,7 +34,7 @@ export default function CongratulationsScreen() {
       {pts ? <InfoRow label="Total points" value={`${pts.total}  ·  ${pts.level}`} /> : null}
       {period && period.bonus > 0 ? <InfoRow label="Streak bonus" value={`+${period.bonus}`} tone="good" /> : null}
       <Button label="View my achievements" onPress={() => router.replace('/points')} />
-      <Button label="Back to home" variant="secondary" onPress={() => router.replace('/')} />
+      <Button label="Back to home" variant="secondary" onPress={() => router.replace('/(tabs)')} />
     </Screen>
   );
 }

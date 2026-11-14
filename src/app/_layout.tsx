@@ -32,7 +32,7 @@ function Gate({ children }: { children: React.ReactNode }) {
       if (first !== '(admin)' && first !== 'changer-mot-de-passe') router.replace('/(admin)/dashboard');
       return;
     }
-    if (first === '(admin)') { router.replace('/'); return; }
+    if (first === '(admin)') { router.replace('/(tabs)'); return; }
     if (!me.onboarded) {
       if (first !== 'onboarding') router.replace('/onboarding');
       return;

@@ -31,7 +31,7 @@ export default function ConfirmationScreen() {
       </View>
       <InfoRow label="Category" value={categoryName(db, categoryId)} />
       {budget ? <InfoRow label={`${categoryName(db, categoryId)} budget`} value={`${short(spent)} / ${short(alloc)} DT`} tone={spent > alloc && alloc > 0 ? 'danger' : 'good'} /> : null}
-      <Button label="Back to home" onPress={() => router.replace('/')} />
+      <Button label="Back to home" onPress={() => router.replace('/(tabs)')} />
       {productId ? <Button label="View product" variant="secondary" onPress={() => router.replace({ pathname: '/produit/[id]', params: { id: productId } } as never)} /> : null}
       <Button label={kind === 'expense' ? 'Add another expense' : 'Add another purchase'} variant="secondary" onPress={() => router.replace((kind === 'expense' ? '/nouvelle-depense' : '/nouvel-achat') as never)} />
     </Screen>

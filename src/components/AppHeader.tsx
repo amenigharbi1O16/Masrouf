@@ -19,7 +19,7 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
   const router = useRouter();
   const { open } = useDrawer();
   const { isAdmin } = useAuth();
-  const goBack = () => (onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/' as never));
+  const goBack = () => (onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/(tabs)' as never));
   return (
     <View style={styles.row}>
       {plain ? (
@@ -34,7 +34,7 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
         <View style={styles.slot} />
       ) : (
         <Pressable
-          onPress={() => router.navigate((isAdmin ? '/(admin)/reglages' : '/reglages') as never)}
+          onPress={() => router.navigate((isAdmin ? '/(admin)/reglages' : '/(tabs)/reglages') as never)}
           hitSlop={12}
           style={styles.slot}
           accessibilityRole="button"

@@ -5,5 +5,5 @@ export function homeRouteFor(user: User): string {
   if (user.mustChangePassword) return '/changer-mot-de-passe';
   if (user.role === 'admin') return '/(admin)/dashboard';
   if (!user.onboarded) return '/onboarding';
-  return '/';
+  return '/(tabs)';
 }

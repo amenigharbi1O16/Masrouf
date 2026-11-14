@@ -12,7 +12,7 @@ export default function AllocateBudgetScreen() {
   const { start = '', end = '', total = '0' } = useLocalSearchParams<{ start: string; end: string; total: string }>();
   const { db, me, actions } = useStore();
   const totalN = toNum(total);
-  const cats = db.categories.filter((c) => me?.categoryIds.includes(c.id) && c.active);
+  const cats = db.categories.filter((c) => (me?.categoryIds ?? []).includes(c.id) && c.active);
   const [vals, setVals] = useState<Record<string, string>>(
     Object.fromEntries(cats.map((c) => [c.id, dt(Math.round(((totalN * (db.defaultPercentages[c.id] ?? 0)) / 100) * 1000) / 1000)])),
   );
@@ -25,7 +25,7 @@ export default function AllocateBudgetScreen() {
     if (over || !Number.isFinite(totalN) || totalN <= 0) return;
     actions.saveBudget({ start, end, total: totalN, allocations: Object.fromEntries(Object.entries(nums).filter(([, v]) => v > 0)) });
     router.dismissAll?.();
-    router.replace('/');
+    router.replace('/(tabs)');
   };
 
   return (
