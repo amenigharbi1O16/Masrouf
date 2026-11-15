@@ -15,7 +15,9 @@ import { colors } from '@/constants/theme';
 import { useAuth } from '@/utils/auth';
 import { LANGUES_DISPONIBLES, useTranslation } from '@/utils/i18n';
 import { useDrawer } from './DrawerContext';
+import { LanguageSelector } from './LanguageSelector';
 
+/** Interface décrivant chaque lien du menu du tiroir */
 export interface DrawerItem {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
@@ -23,24 +25,51 @@ export interface DrawerItem {
 }
 
 /**
- * Tiroir de navigation (78 % de la largeur de l'écran, transition fluide 200 ms).
- * S'ouvre à gauche en français et en anglais, à droite en arabe (RTL).
+ * 🎯 COMPOSANT : SideDrawer (`src/components/SideDrawer.tsx`)
+ * 📌 Mission : Tiroir de navigation latéral coulissant (Drawer Navigation).
+ * 👁️ Ce que l'utilisateur voit à l'écran :
+ *    - Un voile sombre semi-transparent qui assombrit l'arrière-plan de l'application.
+ *    - Le volet latéral vert forêt qui glisse avec fluidité depuis le bord (gauche en français/anglais, droite en arabe).
+ *    - Le logo "MASROUF" avec une feuille verte en haut.
+ *    - La photo/icône de profil avec le prénom de l'utilisateur et son statut.
+ *    - Les boutons de menu avec leurs icônes (ex: Tableau de bord, Catégories, Points, Réglages).
+ *    - Le sélecteur de langue pour basculer facilement en Arabe ou Anglais.
+ *    - Le bouton rouge/blanc "Se déconnecter" tout en bas.
  */
 export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle: string }) {
+  // Contexte global pour savoir si le tiroir est ouvert ou fermé, et fonction de fermeture
   const { visible, close } = useDrawer();
+
+  // Données de l'utilisateur connecté et fonction de déconnexion
   const { user, logout } = useAuth();
+
+  // Traduction et gestion de l'alignement RTL pour l'arabe
   const { t, isRTL, langue } = useTranslation();
+
+  // Outils de navigation d'Expo Router
   const router = useRouter();
   const pathname = usePathname();
+
+  // Marges de sécurité pour éviter l'encoche du haut et la barre du bas
   const insets = useSafeAreaInsets();
+
+  // Largeur de l'écran du smartphone : le tiroir occupe 78% de la largeur totale
   const { width } = useWindowDimensions();
   const drawerW = Math.round(width * 0.78);
 
+  // Position hors-champ : à gauche (-drawerW) pour LTR, à droite (+drawerW) pour RTL
   const hiddenX = isRTL ? drawerW : -drawerW;
+
+  // Variables animées pour la translation horizontale (x) et le fondu sombre (fade)
   const x = useRef(new Animated.Value(hiddenX)).current;
   const fade = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
 
+  /**
+   * 🎬 Cycle d'animation du tiroir :
+   * - À l'ouverture : fait glisser le tiroir en 200ms et assombrit l'arrière-plan.
+   * - À la fermeture : fait glisser le tiroir en sens inverse puis démonte le composant.
+   */
   useEffect(() => {
     if (visible) {
       setMounted(true);
@@ -57,13 +86,16 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
     }
   }, [visible, drawerW, hiddenX]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Si le tiroir est fermé et non monté, aucun composant n'est rendu pour économiser la mémoire
   if (!mounted) return null;
 
+  /** Action de navigation : ferme le tiroir puis redirige vers l'écran demandé */
   const go = (href: string) => {
     close();
     router.navigate(href as never);
   };
 
+  /** Détecte si un lien du menu correspond à la page actuellement affichée pour la surligner */
   const active = (href: string) => {
     if (href === '/' || href === '/(tabs)') {
       return pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/index';
@@ -78,11 +110,14 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
   return (
     <Modal transparent visible animationType="none" onRequestClose={close} statusBarTranslucent>
       <View style={StyleSheet.absoluteFill}>
+        {/* Voile sombre d'arrière-plan : un clic dessus referme le tiroir */}
         <Animated.View
           style={[StyleSheet.absoluteFill, { backgroundColor: colors.forest, opacity: fade }]}
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Close menu" />
         </Animated.View>
+
+        {/* Panneau coulissant du tiroir */}
         <Animated.View
           style={[
             styles.drawer,
@@ -97,10 +132,13 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
             },
           ]}
         >
+          {/* En-tête : Titre de l'application et logo feuille */}
           <View style={[styles.brandRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <Text style={styles.brand}>MASROUF</Text>
             <Ionicons name="leaf" size={26} color={colors.mint} />
           </View>
+
+          {/* Profil utilisateur : Avatar, nom complet et statut */}
           <View style={[styles.profile, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <Ionicons name="person-circle" size={34} color={colors.mint} />
             <View style={{ flex: 1 }}>
@@ -115,6 +153,8 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
               </Text>
             </View>
           </View>
+
+          {/* Liste des boutons de navigation du menu */}
           <View style={{ gap: 11, marginTop: 28 }}>
             {items.map((it) => {
               const on = active(it.href);
@@ -135,13 +175,17 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
               );
             })}
           </View>
+
+          {/* Espaceur flexible pour pousser les réglages et la déconnexion vers le bas */}
           <View style={{ flex: 1 }} />
+
+          {/* Sélecteur rapide de langue */}
           <Text style={[styles.langLabel, { textAlign: isRTL ? 'right' : 'left' }]}>
             {t('langue_label')}
           </Text>
-          <Text style={[styles.lang, { textAlign: isRTL ? 'right' : 'left' }]}>
-            {nomLangue}
-          </Text>
+          <LanguageSelector variant="drawer" />
+
+          {/* Bouton de déconnexion */}
           <Pressable
             onPress={() => {
               close();
@@ -159,6 +203,7 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
   );
 }
 
+/** Styles graphiques du tiroir, typographie et dimensions */
 const styles = StyleSheet.create({
   drawer: {
     position: 'absolute',

@@ -1,46 +1,131 @@
+/**
+ * FICHIER : src/components/AppHeader.tsx
+ * IDENTIFIANT INVENTAIRE : FICHIER-041
+ * COMPOSANT : AppHeader (Barre d'En-Tête Universelle)
+ *
+ * RÔLE DU COMPOSANT :
+ * Barre supérieure commune à tous les écrans de l'application :
+ * - À gauche (ou à droite en RTL) :
+ *   - Si `back === true` : bouton retour avec chevron dynamique (‹ en LTR, › en RTL).
+ *   - Sinon : bouton burger 'menu' ouvrant le tiroir de navigation latéral (`useDrawer().open()`).
+ * - Au centre : titre de l'écran en vert forêt foncé (`colors.forest`), tronqué si nécessaire.
+ * - À droite (ou à gauche en RTL) : raccourci d'accès au profil utilisateur / admin (`person-circle-outline`).
+ * - Si `plain === true` (écrans de login, inscription, félicitations) : aucun bouton affiché.
+ *
+ * EFFET VISUEL SUR L'INTERFACE :
+ * En-tête aéré de 56px de hauteur avec alignement parfait et gestion bidirectionnelle LTR/RTL.
+ */
+
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+// Constantes de thème (couleurs écologiques)
 import { colors } from '@/constants/theme';
+// Hook d'authentification pour connaître le rôle de l'utilisateur
 import { useAuth } from '@/utils/auth';
+// Système d'internationalisation (FR, EN, AR) et détection RTL
+import { useTranslation } from '@/utils/i18n';
+// Contexte du menu tiroir latéral
 import { useDrawer } from './DrawerContext';
 
+/**
+ * Propriétés du composant AppHeader.
+ */
 interface Props {
   title: string;
-  /** Show a back arrow instead of the menu button. */
+  /** Afficher une flèche de retour au lieu du bouton de menu */
   back?: boolean;
   onBack?: () => void;
-  /** Login / registration: no menu, no profile button. */
+  /** Mode épuré sans menu ni bouton de profil (ex: connexion, inscription) */
   plain?: boolean;
 }
 
+/**
+ * Composant de barre d'en-tête de page.
+ */
 export function AppHeader({ title, back, onBack, plain }: Props) {
   const router = useRouter();
   const { open } = useDrawer();
   const { isAdmin } = useAuth();
-  const goBack = () => (onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/(tabs)' as never));
+  const { t, isRTL } = useTranslation();
+
+  /**
+   * Action : retour en arrière ou retour à l'accueil si aucune route historique.
+   */
+  const goBack = () => {
+    if (onBack) {
+      onBack();
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)' as never);
+    }
+  };
+
   return (
-    <View style={styles.row}>
-      {plain ? (
-        <View style={styles.slot} />
-      ) : (
-        <Pressable onPress={back ? goBack : open} hitSlop={12} style={styles.slot} accessibilityRole="button" accessibilityLabel={back ? 'Go back' : 'Open menu'}>
-          <Ionicons name={back ? 'chevron-back' : 'menu'} size={24} color={colors.forest} />
-        </Pressable>
-      )}
-      <Text style={styles.title} numberOfLines={1}>{title}</Text>
+    <View
+      style={[
+        styles.row,
+        { flexDirection: isRTL ? 'row-reverse' : 'row' },
+      ]}
+    >
+      {/* 1. Bouton d'action gauche : Retour ou Burger Menu */}
       {plain ? (
         <View style={styles.slot} />
       ) : (
         <Pressable
-          onPress={() => router.navigate((isAdmin ? '/(admin)/reglages' : '/(tabs)/reglages') as never)}
+          onPress={back ? goBack : open}
           hitSlop={12}
           style={styles.slot}
           accessibilityRole="button"
-          accessibilityLabel="Profile and settings"
+          accessibilityLabel={back ? t('retour') : t('ouvrir_menu')}
         >
-          <Ionicons name="person-circle-outline" size={26} color={colors.forest} />
+          <Ionicons
+            name={
+              back
+                ? isRTL
+                  ? 'chevron-forward'
+                  : 'chevron-back'
+                : 'menu'
+            }
+            size={24}
+            color={colors.forest}
+          />
+        </Pressable>
+      )}
+
+      {/* 2. Titre centré de l'écran */}
+      <Text
+        style={[
+          styles.title,
+          { textAlign: isRTL ? 'right' : 'left' },
+        ]}
+        numberOfLines={1}
+      >
+        {title}
+      </Text>
+
+      {/* 3. Bouton d'action droit : Profil & Réglages */}
+      {plain ? (
+        <View style={styles.slot} />
+      ) : (
+        <Pressable
+          onPress={() =>
+            router.navigate(
+              (isAdmin ? '/(admin)/reglages' : '/(tabs)/reglages') as never
+            )
+          }
+          hitSlop={12}
+          style={styles.slot}
+          accessibilityRole="button"
+          accessibilityLabel={t('profil_et_reglages')}
+        >
+          <Ionicons
+            name="person-circle-outline"
+            size={26}
+            color={colors.forest}
+          />
         </Pressable>
       )}
     </View>
@@ -48,7 +133,22 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', minHeight: 56, gap: 8 },
-  slot: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  title: { flex: 1, fontSize: 22, lineHeight: 32, fontWeight: '600', color: colors.forest },
+  row: {
+    alignItems: 'center',
+    minHeight: 56,
+    gap: 8,
+  },
+  slot: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    flex: 1,
+    fontSize: 22,
+    lineHeight: 32,
+    fontWeight: '600',
+    color: colors.forest,
+  },
 });
