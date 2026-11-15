@@ -1,3 +1,27 @@
+/**
+ * FICHIER : src/app/(tabs)/reglages.tsx
+ * IDENTIFIANT INVENTAIRE : FICHIER-015
+ * ÉCRAN : ECRAN-TAB-05 (Réglages et Préférences Utilisateur)
+ *
+ * RÔLE DU COMPOSANT :
+ * Permet à l'utilisateur de gérer son identité et ses préférences personnelles :
+ * - Modification du nom d'affichage (`actions.updateProfile`)
+ * - Consultation de l'adresse e-mail associée
+ * - Liens d'accès direct vers le budget en cours, la gestion des catégories, les points et le changement de mot de passe
+ * - Sélecteur de langue d'interface trilingue (Français, Arabe, Anglais)
+ * - Déconnexion sécurisée de la session (`actions.logout`)
+ *
+ * ACTIONS ASSOCIÉES :
+ * - Mise à jour du profil dans SQLite
+ * - ACTION-USER-15 : Déconnexion de la session
+ * - Navigation vers les sous-modules
+ *
+ * EFFET VISUEL SUR L'INTERFACE :
+ * Formulaire de profil avec bouton d'enregistrement secondaire, liste de rangées d'options
+ * blanches arrondies avec icônes vertes et chevrons dynamiques, sélecteur de langue en pastilles
+ * et bouton rouge de déconnexion.
+ */
+
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -9,6 +33,17 @@ import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
 import { useTranslation } from '@/utils/i18n';
 
+/**
+ * MISSION DE LA FONCTION : Row
+ *   Composant atomique de ligne d'option de réglage avec icône vectorielle à gauche,
+ *   titre et sous-titre au centre, et chevron directionnel à droite (adapté au mode RTL/LTR).
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Sert de brique de navigation interne vers les sous-écrans de configuration.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Boîte blanche de 60px min avec contour arrondi fin, icône verte et texte vert forêt.
+ */
 function Row({
   icon,
   label,
@@ -69,6 +104,21 @@ function Row({
   );
 }
 
+/**
+ * MISSION DE LA FONCTION : SettingsScreen
+ *   Composant principal de l'écran des Réglages (`/(tabs)/reglages`).
+ *   Gère l'affichage du profil de l'utilisateur, la mise à jour de son nom,
+ *   l'accès aux sous-écrans de gestion et la déconnexion sécurisée.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Centralise toutes les préférences du compte utilisateur connecté.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   - Champ de modification du nom avec bouton vert "Enregistrer".
+ *   - Lignes de navigation cliquables vers le budget, les catégories, les points et le mot de passe.
+ *   - Sélecteur de langue trilingue sous forme de pastilles (Français / العربية / English).
+ *   - Bouton d'action rouge de déconnexion "Se déconnecter".
+ */
 export default function SettingsScreen() {
   const router = useRouter();
   const { me, actions } = useStore();

@@ -1,3 +1,32 @@
+/**
+ * FICHIER : src/app/(tabs)/analyses.tsx
+ * IDENTIFIANT INVENTAIRE : FICHIER-013
+ * ÉCRAN : ECRAN-TAB-04 (Analyses Statistiques et Rapports Comparatifs)
+ *
+ * RÔLE DU COMPOSANT :
+ * Moteur d'analyses statistiques et budgétaires complet de Masrouf :
+ * 1. Sélecteur de période cliquable affichant les dates réelles du budget et ouvrant le calendrier au toucher.
+ * 2. Carte de résumé financière en vert forêt : total dépensé en DT (3 décimales), comparaison
+ *    en montant et pourcentage avec la période précédente de même durée, pastille vert menthe (économie)
+ *    ou corail (hausse).
+ * 3. Répartition par catégorie avec diagramme horizontal segmenté (Top 5 + Autres) et légende détaillée.
+ * 4. Tableau détaillé de chaque catégorie : montant consommé, pourcentage du total, comparaison
+ *    avec la période précédente et jauge de consommation de l'enveloppe budgétaire.
+ * 5. Carte de conclusions intelligentes automatisées (catégorie la plus dépensée, plus forte hausse/baisse,
+ *    respect global du budget).
+ * 6. Classement des plus grosses dépenses individuelles de la période.
+ * 7. Sélecteur et graphique d'évolution du prix unitaire pour un produit choisi.
+ *
+ * ACTIONS ASSOCIÉES :
+ * - Navigation vers le calendrier (`/(tabs)/calendrier`)
+ * - Dépliage / repliage du tableau détaillé (`expandedDetails`)
+ * - Sélection d'un produit pour afficher sa courbe de prix
+ *
+ * EFFET VISUEL SUR L'INTERFACE :
+ * Interface riche bicolore (vert forêt, menthe, or, corail) sans aucune donnée codée en dur.
+ * Toutes les valeurs proviennent des requêtes SQLite réelles.
+ */
+
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
