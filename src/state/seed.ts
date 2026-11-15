@@ -1,7 +1,40 @@
-import { hashPassword } from '@/utils/security';
-import { addDays, pad, todayISO } from '@/utils/format';
-import type { Budget, Category, DB, Expense, Product, Purchase, User } from './types';
+/**
+ * FICHIER : src/state/seed.ts
+ * IDENTIFIANT INVENTAIRE : FICHIER-061
+ * MODULE : Données Initiales et Script d'Amorçage de la Base SQLite (Seed)
+ *
+ * RÔLE DU MODULE :
+ * Génère le jeu de données initial inséré dans SQLite lors du tout premier démarrage de l'application :
+ * 1. 16 Catégories budgétaires de référence réparties entre Produits physiques et Dépenses directes,
+ *    avec une clé de répartition par défaut dont la somme fait exactement 100 %.
+ * 2. Comptes de démonstration avec hachage cryptographique sécurisé SHA-256 :
+ *    - Administrateur : `admin@masrouf.tn` / mot de passe : `Admin2026` (rôle 'admin').
+ *    - Utilisateur actif : `ines.benali@email.tn` / mot de passe : `Masrouf2026` (rôle 'user'),
+ *      avec 3 mois de budgets consécutifs, produits tunisiens réels et historique de prix.
+ *    - Autres utilisateurs : Sami Trabelsi, Rania Gharbi, Youssef Mansour (compte suspendu pour démonstration).
+ * 3. Produits tunisiens du quotidien avec magasins réels (Huile d'olive Châal, Lait Délice, Pâtes Warda, Thon Sicam chez Monoprix/Carrefour).
+ * 4. Périodes de budget dynamiques calculées par rapport à la date courante (`monthRange(0)`, `-1`, `-2`).
+ * 5. Barèmes de gamification : 100 points par période réussie, bonus de 50 points toutes les 3 périodes, paliers Économe à 300 et Expert à 1000.
+ */
 
+// Utilitaire de hachage cryptographique du mot de passe avec sel
+import { hashPassword } from '@/utils/security';
+// Fonctions utilitaires de calcul et de formatage de dates
+import { addDays, pad, todayISO } from '@/utils/format';
+// Types métier TypeScript
+import type {
+  Budget,
+  Category,
+  DB,
+  Expense,
+  Product,
+  Purchase,
+  User,
+} from './types';
+
+/**
+ * Catalogue initial des 16 catégories de base avec identifiant, nom anglais, nature et pourcentage par défaut (Total = 100%).
+ */
 const CATS: [string, string, 'product' | 'expense', number][] = [
   ['food', 'Food', 'product', 33],
   ['clothing', 'Clothing and shoes', 'product', 4],
@@ -21,31 +54,83 @@ const CATS: [string, string, 'product' | 'expense', number][] = [
   ['other', 'Other', 'expense', 1],
 ];
 
+/**
+ * Calcule dynamiquement les dates de début et fin d'un mois avec un décalage relatif (offset).
+ * @param offset 0 pour le mois en cours, -1 pour le mois précédent, -2 pour l'avant-dernier mois
+ */
 function monthRange(offset: number) {
   const now = new Date();
   const first = new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset, 1));
   const last = new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset + 1, 0));
-  const f = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  const f = (d: Date) =>
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   return { start: f(first), end: f(last) };
 }
 
+/**
+ * Génère le jeu de données initial complet sous forme d'objet structuré `DB`.
+ */
 export async function buildSeed(): Promise<DB> {
   const today = todayISO();
-  const categories: Category[] = CATS.map(([id, name, kind]) => ({ id, name, kind, active: true }));
-  const defaultPercentages = Object.fromEntries(CATS.map(([id, , , p]) => [id, p]));
+  // Génération des entités catégories
+  const categories: Category[] = CATS.map(([id, name, kind]) => ({
+    id,
+    name,
+    kind,
+    active: true,
+  }));
+  // Clés de répartition budgétaire par défaut
+  const defaultPercentages = Object.fromEntries(
+    CATS.map(([id, , , p]) => [id, p])
+  );
 
-  const mk = async (id: string, name: string, email: string, pw: string, role: 'user' | 'admin', active = true, extra: Partial<User> = {}): Promise<User> => ({
-    id, name, email, passwordHash: await hashPassword(pw), role, active,
-    mustChangePassword: false, onboarded: role === 'admin', categoryIds: [], celebratedBudgetIds: [],
-    createdAt: today, ...extra,
+  /**
+   * Fabrique un compte utilisateur avec mot de passe haché par SHA-256.
+   */
+  const mk = async (
+    id: string,
+    name: string,
+    email: string,
+    pw: string,
+    role: 'user' | 'admin',
+    active = true,
+    extra: Partial<User> = {}
+  ): Promise<User> => ({
+    id,
+    name,
+    email,
+    passwordHash: await hashPassword(pw),
+    role,
+    active,
+    mustChangePassword: false,
+    onboarded: role === 'admin',
+    categoryIds: [],
+    celebratedBudgetIds: [],
+    createdAt: today,
+    ...extra,
   });
 
-  const cur = monthRange(0), m1 = monthRange(-1), m2 = monthRange(-2);
-  const ines = await mk('u-ines', 'Ines Ben Ali', 'ines.benali@email.tn', 'Masrouf2026', 'user', true, {
-    onboarded: true,
-    categoryIds: ['food', 'transport', 'bills', 'entertainment', 'savings'],
-    celebratedBudgetIds: ['b-m2', 'b-m1'],
-  });
+  // Calcul des trois plages mensuelles (mois courant, M-1, M-2)
+  const cur = monthRange(0);
+  const m1 = monthRange(-1);
+  const m2 = monthRange(-2);
+
+  // Profil principal de démonstration pour la soutenance (Ines Ben Ali)
+  const ines = await mk(
+    'u-ines',
+    'Ines Ben Ali',
+    'ines.benali@email.tn',
+    'Masrouf2026',
+    'user',
+    true,
+    {
+      onboarded: true,
+      categoryIds: ['food', 'transport', 'bills', 'entertainment', 'savings'],
+      celebratedBudgetIds: ['b-m2', 'b-m1'],
+    }
+  );
+
+  // Liste de tous les comptes pré-créés
   const users: User[] = [
     await mk('u-admin', 'Administrator', 'admin@masrouf.tn', 'Admin2026', 'admin'),
     ines,
@@ -54,14 +139,54 @@ export async function buildSeed(): Promise<DB> {
     await mk('u-youssef', 'Youssef Mansour', 'youssef.m@email.tn', 'Masrouf2026', 'user', false),
   ];
 
-  const alloc = { food: 500, transport: 150, bills: 250, entertainment: 100, savings: 100 };
+  // Budgets historiques pour Ines Ben Ali
+  const alloc = {
+    food: 500,
+    transport: 150,
+    bills: 250,
+    entertainment: 100,
+    savings: 100,
+  };
   const budgets: Budget[] = [
-    { id: 'b-m2', userId: ines.id, ...m2, total: 1100, allocations: { food: 450, transport: 150, bills: 250, entertainment: 100, savings: 100 } },
-    { id: 'b-m1', userId: ines.id, ...m1, total: 1150, allocations: { food: 480, transport: 150, bills: 250, entertainment: 100, savings: 100 } },
-    { id: 'b-cur', userId: ines.id, ...cur, total: 1200, allocations: alloc },
+    {
+      id: 'b-m2',
+      userId: ines.id,
+      ...m2,
+      total: 1100,
+      allocations: { food: 450, transport: 150, bills: 250, entertainment: 100, savings: 100 },
+    },
+    {
+      id: 'b-m1',
+      userId: ines.id,
+      ...m1,
+      total: 1150,
+      allocations: { food: 480, transport: 150, bills: 250, entertainment: 100, savings: 100 },
+    },
+    {
+      id: 'b-cur',
+      userId: ines.id,
+      ...cur,
+      total: 1200,
+      allocations: alloc,
+    },
   ];
 
-  const P = (id: string, name: string, brand: string, categoryId: string, unit: string): Product => ({ id, userId: ines.id, name, brand, categoryId, unit });
+  // Catalogue de produits du quotidien
+  const P = (
+    id: string,
+    name: string,
+    brand: string,
+    categoryId: string,
+    unit: string
+  ): Product => ({
+    id,
+    userId: ines.id,
+    name,
+    brand,
+    categoryId,
+    unit,
+  });
+
   const products: Product[] = [
     P('p-oil', 'Olive oil', 'Châal', 'food', 'L'),
     P('p-milk', 'Whole milk', 'Délice', 'food', 'L'),
@@ -71,9 +196,29 @@ export async function buildSeed(): Promise<DB> {
     P('p-pasta', 'Pasta', 'Warda', 'food', 'kg'),
   ];
 
-  const pu = (id: string, productId: string, price: number, quantity: number, unit: string, store: string, date: string): Purchase =>
-    ({ id, userId: ines.id, productId, price, quantity, unit, store, date });
-  const inMonth = (m: { start: string }, day: number) => addDays(m.start, day - 1);
+  // Génération des achats de produits avec magasins et prix
+  const pu = (
+    id: string,
+    productId: string,
+    price: number,
+    quantity: number,
+    unit: string,
+    store: string,
+    date: string
+  ): Purchase => ({
+    id,
+    userId: ines.id,
+    productId,
+    price,
+    quantity,
+    unit,
+    store,
+    date,
+  });
+
+  const inMonth = (m: { start: string }, day: number) =>
+    addDays(m.start, day - 1);
+
   const purchases: Purchase[] = [
     pu('pu-oil-1', 'p-oil', 14.0, 1, 'L', 'Carrefour', addDays(cur.start, -92 + 10)),
     pu('pu-oil-2', 'p-oil', 14.0, 1, 'L', 'Carrefour', addDays(cur.start, -61 + 10)),
@@ -88,8 +233,22 @@ export async function buildSeed(): Promise<DB> {
     pu('pu-rice-prev', 'p-rice', 420, 5, 'kg', 'Carrefour', inMonth(m1, 9)),
   ];
 
-  const ex = (id: string, categoryId: string, amount: number, note: string, date: string): Expense =>
-    ({ id, userId: ines.id, categoryId, amount, note, date });
+  // Génération des dépenses directes sans produit physique
+  const ex = (
+    id: string,
+    categoryId: string,
+    amount: number,
+    note: string,
+    date: string
+  ): Expense => ({
+    id,
+    userId: ines.id,
+    categoryId,
+    amount,
+    note,
+    date,
+  });
+
   const expenses: Expense[] = [
     ex('e1', 'transport', 35, 'Bus pass', addDays(today, today > addDays(cur.start, 2) ? -2 : 0)),
     ex('e2', 'transport', 65, 'Fuel', inMonth(cur, 2)),
@@ -105,15 +264,33 @@ export async function buildSeed(): Promise<DB> {
   ];
 
   return {
-    users, categories,
+    users,
+    categories,
     categoryTypes: [
-      { kind: 'product', label: 'Products', description: 'Items you buy and follow by unit price.' },
-      { kind: 'expense', label: 'Expenses', description: 'Everyday spending with no product attached.' },
+      {
+        kind: 'product',
+        label: 'Products',
+        description: 'Items you buy and follow by unit price.',
+      },
+      {
+        kind: 'expense',
+        label: 'Expenses',
+        description: 'Everyday spending with no product attached.',
+      },
     ],
     defaultPercentages,
-    pointsRules: { periodReward: 100, streakLength: 3, streakBonus: 50, saverAt: 300, expertAt: 1000 },
+    pointsRules: {
+      periodReward: 100,
+      streakLength: 3,
+      streakBonus: 50,
+      saverAt: 300,
+      expertAt: 1000,
+    },
     settings: { allowRegistration: true },
-    budgets, products, purchases, expenses,
+    budgets,
+    products,
+    purchases,
+    expenses,
     sessionUserId: null,
   };
 }

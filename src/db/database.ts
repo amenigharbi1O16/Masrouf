@@ -1,39 +1,57 @@
 // ============================================================
 // FICHIER : src/db/database.ts
-// RÔLE    : Moteur de persistance SQLite locale (Android & iOS).
-//           ÉTAPE 1 : Création du schéma relationnel et migration
-//           transparente sans perte de données.
+// RÔLE DANS L'APPLICATION :
+//   Moteur central de persistance SQLite locale pour Android et iOS.
+//   Ce fichier gère l'ouverture du fichier physique `masrouf.db`,
+//   la création du schéma relationnel (12 tables au singulier),
+//   la sauvegarde physique d'urgence (VACUUM INTO), l'initialisation des
+//   données de départ (comptes de test, barèmes, mots-clés) et la création
+//   des vues de rétro-compatibilité avec leurs déclencheurs (triggers).
 //
-// CONVENTION DE NOMMAGE :
-//   Toutes les tables sont au singulier :
-//   - user, category, user_category, month_budget, category_budget,
-//     product, purchase, expense, keyword_map, alert_log, points_log, settings.
+// ANALOGIE DE LA VIE RÉELLE :
+//   C'est le coffre-fort physique et le grand registre comptable de Masrouf :
+//   il dispose de tiroirs compartimentés et étiquetés (les tables), d'un gardien
+//   qui vérifie la conformité des données (les clés étrangères et contraintes CHECK),
+//   d'une copie de sauvegarde blindée (backup) et d'un guichet qui comprend l'ancien
+//   langage comme le nouveau (les vues et déclencheurs).
 //
-// GARANTIE SANS PERTE DE DONNÉES :
-//   Si la base contient d'anciennes tables (utilisateurs, categories, etc.),
-//   les données sont automatiquement migrées vers les nouvelles tables
-//   et des vues de compatibilité sont créées pour assurer la continuité.
+// IMPACT DANS L'INTERFACE UTILISATEUR :
+//   Toutes les informations que l'utilisateur voit à l'écran (son solde restant,
+//   ses graphiques d'analyses, ses photos de produits, ses points de gamification,
+//   ses alertes 80%/100%) sont conservées et lues de façon instantanée et persistante
+//   ici, même lorsque le smartphone est éteint ou hors-ligne (mode avion).
 // ============================================================
 
 import * as SQLite from 'expo-sqlite';
 import { migrateDatabase } from './migrate';
 
-// Connexion SQLite locale
+// Connexion SQLite locale vers le fichier physique masrouf.db
 export const db = SQLite.openDatabaseSync('masrouf.db');
 
 // Hashes initiaux (SHA-256 avec sel) pour admin et user de test
 export const DEFAULT_SALT = '11112222333344445555666677778888';
-// admin123
+// Mot de passe admin de test : admin123
 export const DEFAULT_ADMIN_HASH =
   '11112222333344445555666677778888:60f3d9f2c7bf6bbd6e6263a454cf9a5d4c0cfd7342a7e5e04ad25be69b1d492b';
-// user123
+// Mot de passe utilisateur de test : user123
 export const DEFAULT_USER_HASH =
   '11112222333344445555666677778888:e6f2daa877de06e7f3d664fb9d340962466508050464c33f8649876bc10a43aa';
 
-// ------------------------------------------------------------
-// FONCTION : initDatabase
-// RÔLE : Initialise les tables, migre les données et insère les valeurs de départ
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : initDatabase
+ *   Initialise le moteur SQLite au démarrage de l'application. Elle crée l'ensemble
+ *   des 12 tables relationnelles si elles n'existent pas encore, active le journal WAL
+ *   et les contraintes d'intégrité référentielle, applique les migrations de colonnes
+ *   sécurisées, peuple les données de départ et installe les déclencheurs de compatibilité.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Exécutée au tout premier lancement de Masrouf (dans le layout racine `src/app/_layout.tsx`)
+ *   avant l'affichage du premier écran. Elle garantit que la base est prête et structurée.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Pas d'élément visuel direct : prépare les tables pour que l'écran d'accueil
+ *   puisse afficher immédiatement les chiffres réels sans écran blanc ni crash SQL.
+ */
 export function initDatabase(): void {
   // Active le mode WAL pour la vitesse d'écriture et les clés étrangères
   db.execSync(`
@@ -227,11 +245,18 @@ export function initDatabase(): void {
   migrateDatabase(db);
 }
 
-// ------------------------------------------------------------
-// SAUVEGARDE : sauvegarderBaseDeDonnees
-// RÔLE : Crée une copie exacte et cohérente de masrouf.db (masrouf_backup_etape2.db)
-//        via la commande officielle SQLite VACUUM INTO.
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : sauvegarderBaseDeDonnees
+ *   Crée un cliché instantané physique de sécurité de la base de données SQLite
+ *   nommé `masrouf_backup_etape2.db` via la commande native `VACUUM INTO`.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Préserve une copie de sauvegarde intacte avant toute mise à jour de schéma.
+ *   Si une coupure de courant ou un redémarrage impromptu survient, aucune donnée n'est perdue.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Opération d'arrière-plan sans rendu visuel direct. Protège silencieusement les données.
+ */
 export function sauvegarderBaseDeDonnees(): void {
   try {
     // VACUUM INTO crée une sauvegarde transactionnelle sans verrouiller la base
@@ -243,11 +268,20 @@ export function sauvegarderBaseDeDonnees(): void {
   }
 }
 
-// ------------------------------------------------------------
-// MIGRATION : migrerAnciennesDonneesSiPresentes
-// RÔLE : Transfère les données des tables françaises (utilisateurs,
-//        categories, produits, achats) vers les nouvelles tables unifiées
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : migrerAnciennesDonneesSiPresentes
+ *   Détecte la présence d'anciennes tables en français (`utilisateurs`, `categories`,
+ *   `produits`, `achats`) et transfère automatiquement leur contenu vers les nouvelles
+ *   tables au singulier (`user`, `category`, `product`, `purchase`, `expense`).
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Assure qu'un utilisateur qui met à jour l'application conserve tous ses achats,
+ *   ses comptes et ses produits sans aucune perte de données historique.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Aucun rendu direct : permet à l'écran d'accueil de retrouver tous les achats
+ *   passés sans afficher un tableau vide.
+ */
 function migrerAnciennesDonneesSiPresentes(): void {
   try {
     // 1. Migration utilisateurs -> user
@@ -354,10 +388,20 @@ function migrerAnciennesDonneesSiPresentes(): void {
   }
 }
 
-// ------------------------------------------------------------
-// INITIALISATION : initialiserCategories
-// RÔLE : Renseigne les catégories avec leur TYPE ('product' ou 'expense')
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : initialiserCategories
+ *   Peuple le catalogue des catégories en distinguant les catégories de produits
+ *   achetés (`type = 'product'`) des catégories de dépenses directes (`type = 'expense'`).
+ *   Définit également les pourcentages par défaut, icônes et appartenances aux thèmes.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Fournit les données de base nécessaires pour que l'onboarding et la gestion des
+ *   catégories fonctionnent dès l'installation, sans laisser de listes vides.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Alimente la liste de tuiles de l'écran d'onboarding et du sélecteur de catégories
+ *   avec les icônes (🍞, 👕, 🚗, 🧾) et les noms en français.
+ */
 function initialiserCategories(): void {
   // A) CATÉGORIES DE PRODUITS ACHETÉS (type = 'product')
   const categoriesProduits = [
@@ -462,10 +506,20 @@ function initialiserCategories(): void {
   }
 }
 
-// ------------------------------------------------------------
-// INITIALISATION : initialiserMotsClesSysteme
-// RÔLE : Dictionnaire de base FR / AR / Dialecte tunisien pour la saisie libre
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : initialiserMotsClesSysteme
+ *   Enregistre un dictionnaire multilingue de mots-clés courants en français,
+ *   arabe et dialecte tunisien (ex: 'khobz' -> Alimentation, 'taxi' -> Transport, 'steg' -> Factures)
+ *   dans la table `keyword_map`.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Permet à l'algorithme d'auto-complétion et de suggestion prédictive de deviner
+ *   la bonne catégorie lors de la saisie libre d'un achat par l'utilisateur.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Lorsque l'utilisateur tape un mot dans le formulaire de nouvel achat,
+ *   la catégorie correspondante est pré-sélectionnée automatiquement à l'écran.
+ */
 function initialiserMotsClesSysteme(): void {
   const compte = db.getFirstSync<{ cnt: number }>(
     `SELECT COUNT(*) as cnt FROM keyword_map WHERE user_id IS NULL`
@@ -550,9 +604,20 @@ function initialiserMotsClesSysteme(): void {
   }
 }
 
-// ------------------------------------------------------------
-// INITIALISATION : initialiserSettings
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : initialiserSettings
+ *   Insère la configuration initiale du barème de points et des seuils de niveaux
+ *   dans la table `settings` (100 pts par période réussie, seuil Économe à 300 pts,
+ *   seuil Expert à 1000 pts, alertes vert jusqu'à 79%, orange à 80%, rouge à 100%).
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Fournit les paramètres de calcul pour le moteur de gamification et le module d'alertes.
+ *   Modifiable ensuite par l'administrateur depuis son tableau de bord.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Pilote la jauge de progression, le badge de niveau (Débutant, Économe, Expert)
+ *   et les alertes colorées affichées sur l'écran d'accueil et l'écran des points.
+ */
 function initialiserSettings(): void {
   const existe = db.getFirstSync<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM settings`);
   if (!existe || existe.cnt === 0) {
@@ -566,9 +631,21 @@ function initialiserSettings(): void {
   }
 }
 
-// ------------------------------------------------------------
-// INITIALISATION : initialiserComptesDepart
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : initialiserComptesDepart
+ *   Crée les deux comptes de démonstration indispensables :
+ *   1. Administrateur (`admin@masrouf.tn` / mot de passe : `admin123`).
+ *   2. Utilisateur standard (`user@masrouf.tn` / mot de passe : `user123`), avec
+ *      budget mensuel de 1200 DT et ses enveloppes de catégories par défaut activées.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Permet à l'enseignant ou examinateur de se connecter immédiatement sans devoir
+ *   obligatoirement créer un compte manuellement.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Permet l'accès instantané aux dashboards administrateur et utilisateur lors
+ *   de la saisie des identifiants sur l'écran `login.tsx`.
+ */
 function initialiserComptesDepart(): void {
   // Administrateur de test officiel (must_change_password = 0 pour accès direct, onboarding_done = 1, hash_version = 1)
   const adminExiste = db.getFirstSync<{ id: number }>(
@@ -618,13 +695,20 @@ function initialiserComptesDepart(): void {
   }
 }
 
-// ------------------------------------------------------------
-// COMPATIBILITÉ : Vues SQLite et déclencheurs (triggers)
-// RÔLE : Assure une rétro-compatibilité totale avec l'ancien code.
-//        Permet aux écrans existants de lire et d'écrire (INSERT/UPDATE/DELETE)
-//        sur les anciens noms (utilisateurs, categories, produits, achats, etc.)
-//        sans jamais provoquer d'erreur SQLite "cannot modify view" ou "no such table".
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : creerVuesDeRetroCompatibilite
+ *   Crée les vues SQL et déclencheurs (triggers) `INSTEAD OF INSERT/UPDATE/DELETE`
+ *   pour les tables françaises historiques (`utilisateurs`, `categories`, `produits`,
+ *   `achats`, `monthly_budgets`, `category_budgets`, etc.).
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Garantit qu'aucun ancien écran ne plante si une requête cible encore l'ancien nom de table.
+ *   Toute écriture sur une vue est automatiquement redirigée vers la nouvelle table correspondante.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Pas d'affichage direct : assure une parfaite fluidité sans jamais provoquer d'erreur
+ *   "no such table" ou "cannot modify view" lors des actions utilisateur.
+ */
 function creerVuesDeRetroCompatibilite(): void {
   try {
     // 1. Table magasins pour éviter toute absence de table

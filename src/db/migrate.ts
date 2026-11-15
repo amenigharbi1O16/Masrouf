@@ -1,16 +1,43 @@
 // ============================================================
 // FICHIER : src/db/migrate.ts
-// MISSION : Faire passer une base déjà installée vers les périodes
-//           libres, sans perdre les lignes, et pouvoir relancer
-//           ce script sans erreur.
+// RÔLE DANS L'APPLICATION :
+//   Gestionnaire de migrations versionnées et sécurisées pour la base SQLite locale.
+//   Ce script assure l'évolution incrémentale de la structure de données sans perte :
+//   - Transition des mois civils fixes ('YYYY-MM') vers les budgets à périodes libres
+//     (date de début et date de fin personnalisées).
+//   - Migration du calcul des prix (passage du prix unitaire au prix total multiplié par la quantité).
+//   - Normalisation des chemins de photos d'articles vers des noms de fichiers relatifs.
+//   - Enregistrement des étapes appliquées dans la table d'audit `schema_migrations`.
 //
-// POURQUOI : l'ancienne base rangeait le budget par mois civil
-// (month_budget). Le produit demande une date de début et une
-// date de fin choisies par la personne.
+// ANALOGIE DE LA VIE RÉELLE :
+//   C'est comme une équipe d'architectes et d'électriciens qui rénove une maison
+//   pendant que les habitants y vivent encore : chaque modification (nouvelle prise,
+//   déplacement d'un mur) est testée, tamponnée dans un carnet de chantier (`schema_migrations`),
+//   sans jamais couper le courant ni casser les meubles existants.
+//
+// IMPACT DANS L'INTERFACE UTILISATEUR :
+//   Permet à l'utilisateur de conserver tous ses anciens reçus, catégories et photos
+//   lorsqu'il met à jour l'application, tout en profitant immédiatement des nouvelles fonctionnalités
+//   (sélecteur de dates personnalisées sur le calendrier, camembert d'analyses, etc.).
 // ============================================================
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+/**
+ * MISSION DE LA FONCTION : dejaFaite
+ *   Vérifie si un identifiant de migration précis (ex: 'purchase_price_is_total_v1')
+ *   a déjà été appliqué avec succès dans la table `schema_migrations`.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Garantit le principe d'idempotence : une mise à niveau ne sera jamais exécutée
+ *   deux fois, évitant ainsi de multiplier deux fois un prix par sa quantité.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Aucun rendu visuel direct. Empêche les corruptions de données invisibles.
+ *
+ * @param db Instance active de la base SQLite
+ * @param id Clé textuelle unique de la migration
+ */
 function dejaFaite(db: SQLiteDatabase, id: string): boolean {
   const row = db.getFirstSync<{ id: string }>(
     `SELECT id FROM schema_migrations WHERE id = ?`,
@@ -19,25 +46,61 @@ function dejaFaite(db: SQLiteDatabase, id: string): boolean {
   return row != null;
 }
 
+/**
+ * MISSION DE LA FONCTION : marquer
+ *   Enregistre l'identifiant d'une migration réussie dans la table `schema_migrations`
+ *   avec l'horodatage exact de son application.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Permet aux prochains démarrages de l'application de savoir immédiatement
+ *   que cette opération a été finalisée.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Aucun composant graphique : persistance de traçabilité technique.
+ *
+ * @param db Instance active de la base SQLite
+ * @param id Clé textuelle unique de la migration
+ */
 function marquer(db: SQLiteDatabase, id: string): void {
   db.runSync(`INSERT INTO schema_migrations (id) VALUES (?)`, [id]);
 }
 
+/**
+ * MISSION DE LA FONCTION : ajouterColonne
+ *   Tente d'exécuter une requête SQL d'altération de table (`ALTER TABLE ADD COLUMN`)
+ *   en interceptant sans planter les erreurs au cas où la colonne existe déjà.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Permet d'ajouter de nouveaux champs (ex: streak_length, seuils de points)
+ *   à d'anciennes installations sans faire planter le lancement.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Aucun rendu direct. Met à disposition de nouvelles données pour les jauges d'alertes.
+ *
+ * @param db Instance active de la base SQLite
+ * @param sql Requête SQL d'ajout de colonne
+ */
 function ajouterColonne(db: SQLiteDatabase, sql: string): void {
   try {
     db.execSync(sql);
   } catch {
-    // La colonne existe déjà : on continue.
+    // La colonne existe déjà : on continue sereinement
   }
 }
 
 /**
- * Migration du prix.
- * L'ancien déclencheur écrivait le prix UNITAIRE dans purchase.price
- * (voir trg_achats_insert : NEW.prix_unitaire).
- * On lit d'abord les lignes réelles. S'il n'y en a pas, on ne touche à rien.
- * S'il y en a, on multiplie par la quantité, une seule fois :
- * quand la quantité vaut 1, le nombre ne change pas.
+ * MISSION DE LA FONCTION : migrerPrixTotal
+ *   Met à jour la colonne `price` de la table `purchase` pour s'assurer qu'elle contient
+ *   le montant total payé (prix unitaire × quantité) au lieu du seul prix unitaire.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Harmonise les anciens enregistrements avec la nouvelle convention financière de Masrouf.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Corrige les totaux de dépenses affichés sur le tableau de bord et les cartes d'analyses
+ *   pour qu'un achat de 3 articles à 2 DT indique bien 6,000 DT et non 2,000 DT.
+ *
+ * @param db Instance active de la base SQLite
  */
 function migrerPrixTotal(db: SQLiteDatabase): void {
   if (dejaFaite(db, 'purchase_price_is_total_v1')) return;
@@ -55,11 +118,39 @@ function migrerPrixTotal(db: SQLiteDatabase): void {
   marquer(db, 'purchase_price_is_total_v1');
 }
 
+/**
+ * MISSION DE LA FONCTION : nomDeFichier
+ *   Extrait uniquement le nom du fichier (avec son extension) depuis un chemin
+ *   absolu ou relatif complexe (ex: '/var/mobile/.../photo123.jpg' -> 'photo123.jpg').
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Utile car les chemins absolus sur iOS et Android changent d'identifiant d'application (UUID)
+ *   à chaque mise à jour système. Seul le nom de fichier reste stable.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Aucun affichage direct : renvoie une chaîne nettoyée.
+ *
+ * @param chemin Chemin d'accès complet du fichier
+ */
 function nomDeFichier(chemin: string): string {
   const morceaux = chemin.split(/[/\\]/);
   return morceaux[morceaux.length - 1] ?? '';
 }
 
+/**
+ * MISSION DE LA FONCTION : migrerNomPhoto
+ *   Transforme les anciens chemins absolus de photos stockés dans la table `product`
+ *   en noms de fichiers simples et stables.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Évite le problème des "photos perdues" lors d'une mise à niveau de l'OS du smartphone.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Garantit que la miniature de la photo du produit (dans la liste du catalogue et la fiche produit)
+ *   continue à s'afficher fidèlement sans vignette cassée.
+ *
+ * @param db Instance active de la base SQLite
+ */
 function migrerNomPhoto(db: SQLiteDatabase): void {
   if (dejaFaite(db, 'photo_filename_only_v1')) return;
   const lignes = db.getAllSync<{ id: number; photo_path: string }>(
@@ -74,8 +165,23 @@ function migrerNomPhoto(db: SQLiteDatabase): void {
   marquer(db, 'photo_filename_only_v1');
 }
 
+/**
+ * MISSION DE LA FONCTION : creerVuesPrixTotal
+ *   Définit la vue SQL unifiée `achats` combinant à la fois les achats de produits (`purchase`)
+ *   et les dépenses directes sans produit (`expense`), et installe le déclencheur d'insertion.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Permet à tous les anciens composants de continuer à requêter la vue `achats`
+ *   avec calcul dynamique automatique du prix unitaire et du prix total.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Alimente la liste des dépenses récentes sur le tableau de bord avec les icônes,
+ *   magasins, titres et montants en dinars tunisiens.
+ *
+ * @param db Instance active de la base SQLite
+ */
 function creerVuesPrixTotal(db: SQLiteDatabase): void {
-  // Supprimer triggers d'abord (toujours possible)
+  // Supprimer triggers d'abord (toujours possible sans conflit)
   try { db.execSync(`DROP TRIGGER IF EXISTS trg_achats_insert;`); } catch { }
 
   // Vérifier si 'achats' est une TABLE physique ou une VIEW
@@ -171,7 +277,7 @@ function creerVuesPrixTotal(db: SQLiteDatabase): void {
     END;
   `);
 
-  // Créer la vue produits (déjà droppée proprement au-dessus)
+  // Créer la vue produits
   db.execSync(`
     CREATE VIEW produits AS
     SELECT
@@ -221,7 +327,19 @@ function creerVuesPrixTotal(db: SQLiteDatabase): void {
 }
 
 /**
- * Point d'entrée. Relançable : chaque étape est notée dans schema_migrations.
+ * MISSION DE LA FONCTION : migrateDatabase
+ *   Point d'entrée global orchestrant toutes les migrations de schéma dans l'ordre chronologique.
+ *   Initialise le tableau de suivi, crée les tables de budgets libres (`budget`, `envelope`),
+ *   applique les nouveaux barèmes de points et convertit les anciens mois civils en périodes réelles.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Appelé par `initDatabase()` dans `src/db/database.ts` à chaque démarrage.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Garantit que l'écran de sélection de dates sur le calendrier et les rapports
+ *   d'analyses disposent de structures de données complètes et à jour.
+ *
+ * @param db Instance active de la base SQLite
  */
 export function migrateDatabase(db: SQLiteDatabase): void {
   // 1. Recréer immédiatement les vues achats et produits
@@ -318,7 +436,7 @@ export function migrateDatabase(db: SQLiteDatabase): void {
   }
 
   if (!dejaFaite(db, 'month_budget_to_budget_v1')) {
-    // Un mois civil devient une période du 1er au dernier jour.
+    // Un mois civil devient une période du 1er au dernier jour
     db.execSync(`
       INSERT INTO budget (user_id, start_date, end_date, total, is_evaluated, created_at)
       SELECT

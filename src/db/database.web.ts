@@ -1,14 +1,20 @@
 // ============================================================
 // FICHIER : src/db/database.web.ts
-// RÔLE    : Moteur de base de données miroir dédié au Web (Navigateur).
-//           Remplace les appels natifs C++ d'expo-sqlite pour éviter
-//           l'erreur "Sync operation timeout".
+// RÔLE DANS L'APPLICATION :
+//   Moteur de base de données miroir dédié à la plateforme Web (navigateurs Chrome, Firefox, Safari).
+//   Émule l'API synchrone d'expo-sqlite (`db.runSync`, `db.getFirstSync`, `db.getAllSync`)
+//   en stockant l'intégralité des 12 tables relationnelles dans le `localStorage` du navigateur.
+//   Ceci évite l'erreur classique "Sync operation timeout" causée par les bindings C++ absents du Web.
 //
-// CONFORMITÉ ÉTAPE 1 :
-//   - Reproduit exactement le schéma relationnel SQLite avec les tables
-//     au singulier : user, category (type 'product' | 'expense'),
-//     product, purchase, expense, month_budget, category_budget, etc.
-//   - Persistance automatique dans localStorage.
+// ANALOGIE DE LA VIE RÉELLE :
+//   C'est la version carnet de notes numérique accessible sur ordinateur : même si le coffre-fort
+//   physique en métal (SQLite mobile) n'est pas transportable sur un navigateur de bureau,
+//   le carnet reproduit exactement les mêmes fiches et les sauvegarde dans la mémoire du navigateur.
+//
+// IMPACT DANS L'INTERFACE UTILISATEUR :
+//   Permet de tester et présenter l'application Masrouf directement dans un navigateur
+//   avec les mêmes utilisateurs de test (admin@masrouf.tn, user@masrouf.tn), les mêmes calculs
+//   de budget en dinars tunisiens et les mêmes jauges de gamification sans aucun blocage.
 // ============================================================
 
 export const DEFAULT_SALT = '11112222333344445555666677778888';
@@ -229,6 +235,16 @@ class WebDatabaseStore {
     this.charger();
   }
 
+  /**
+   * MISSION DE LA MÉTHODE : charger
+   *   Restaure l'état complet de la base en mémoire depuis la clé `masrouf_web_v3` du `localStorage`.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Permet au navigateur de récupérer les comptes, catégories, budgets et achats de la session précédente.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Restitue instantanément les dépenses et le solde de l'utilisateur dès le rechargement de la page Web.
+   */
   charger() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -255,6 +271,16 @@ class WebDatabaseStore {
     } catch {}
   }
 
+  /**
+   * MISSION DE LA MÉTHODE : sauvegarder
+   *   Sérialise l'ensemble des tables en chaîne JSON et les persiste dans le `localStorage` du navigateur.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Appelée après chaque création ou modification (nouvel achat, inscription, mise à jour de budget).
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Aucun composant graphique : sauvegarde en tâche de fond pour garantir la persistance des données.
+   */
   sauvegarder() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -644,10 +670,16 @@ export const db = {
   },
 };
 
-// ------------------------------------------------------------
-// SAUVEGARDE : sauvegarderBaseDeDonnees (Web)
-// RÔLE : Snapshot de masrouf_web_v3 dans masrouf_web_v3_backup_etape2
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : sauvegarderBaseDeDonnees
+ *   Crée une sauvegarde miroir sous la clé `masrouf_web_v3_backup_etape2` dans le `localStorage`.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Fournit une copie de sauvegarde Web équivalente au VACUUM INTO natif.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Opération silencieuse d'arrière-plan sans impact visuel direct.
+ */
 export function sauvegarderBaseDeDonnees(): void {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -660,6 +692,16 @@ export function sauvegarderBaseDeDonnees(): void {
   } catch {}
 }
 
+/**
+ * MISSION DE LA FONCTION : initDatabase
+ *   Initialise la base Web au démarrage de l'application Masrouf sur navigateur.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Déclenche la sauvegarde de précaution et s'assure que le store en mémoire est actif.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Permet à l'interface Web de s'afficher sans délai ni crash.
+ */
 export function initDatabase(): void {
   sauvegarderBaseDeDonnees();
 }

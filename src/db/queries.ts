@@ -135,9 +135,19 @@ export type DepenseParCategorie = {
 // SECTION A — AUTHENTIFICATION & UTILISATEURS
 // ============================================================
 
-// ------------------------------------------------------------
-// getUserByEmail : Recherche un compte par e-mail (insensible à la casse)
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : getUserByEmail
+ *   Recherche et renvoie la fiche utilisateur complète correspondant à une adresse email.
+ *   Utilise `COLLATE NOCASE` pour être insensible à la casse (ex: "Admin@Masrouf.tn" = "admin@masrouf.tn").
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Appelée lors de la connexion sur l'écran `login.tsx` pour vérifier l'existence du compte
+ *   et comparer le mot de passe haché.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Si l'utilisateur est trouvé et valide, redirige vers le tableau de bord ou l'espace admin.
+ *   Si le compte est introuvable ou suspendu, affiche un message d'erreur rouge sous les champs.
+ */
 export function getUserByEmail(email: string): Utilisateur | null {
   const row = db.getFirstSync<any>(
     `SELECT id, name as nom, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel, langue, created_at
@@ -163,9 +173,17 @@ export function getUserByEmail(email: string): Utilisateur | null {
   };
 }
 
-// ------------------------------------------------------------
-// getUserById : Recherche un utilisateur par son identifiant unique
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : getUserById
+ *   Charge le profil d'un utilisateur d'après sa clé primaire numérique `id`.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Utilisée par le contexte d'authentification `AuthProvider` pour recharger les informations
+ *   de session (budget mensuel, langue, statut actif) sans stocker de mot de passe en mémoire vive.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Alimente le nom du profil dans le tiroir latéral, la langue active et le montant du budget.
+ */
 export function getUserById(id: number): Utilisateur | null {
   const row = db.getFirstSync<any>(
     `SELECT id, name as nom, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel, langue, created_at
@@ -191,10 +209,17 @@ export function getUserById(id: number): Utilisateur | null {
   };
 }
 
-// ------------------------------------------------------------
-// registerUser : Crée un compte utilisateur normal (rôle 'user' UNIQUEMENT)
-//                onboarding_done est à 0 pour déclencher l'assistant au premier accès
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : registerUser
+ *   Insère un nouveau compte utilisateur dans la table `user` avec son sel de chiffrement et son hash SHA-256.
+ *   Le rôle est obligatoirement défini à 'user' et `onboarding_done` à 0.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Exécutée lors de la validation du formulaire de création de compte sur l'écran `inscription.tsx`.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Redirige l'utilisateur nouvellement inscrit vers l'assistant de premier démarrage (`onboarding.tsx`).
+ */
 export function registerUser(
   nom: string,
   email: string,
@@ -210,9 +235,17 @@ export function registerUser(
   return result.lastInsertRowId;
 }
 
-// ------------------------------------------------------------
-// updateUserOnboarding : Marque l'onboarding comme complété (1)
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : updateUserOnboarding
+ *   Bascule l'indicateur `onboarding_done` à 1 (ou 0) pour un utilisateur.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Appelée à la fin de l'étape 3 de l'onboarding pour confirmer que l'utilisateur
+ *   a sélectionné ses catégories et peut désormais accéder directement au tableau de bord.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Déverrouille l'accès permanent aux onglets principaux de Masrouf (`/(tabs)/`).
+ */
 export function updateUserOnboarding(userId: number, done: boolean = true): void {
   db.runSync(
     `UPDATE user SET onboarding_done = ? WHERE id = ?`,
@@ -220,9 +253,17 @@ export function updateUserOnboarding(userId: number, done: boolean = true): void
   );
 }
 
-// ------------------------------------------------------------
-// updateUserPasswordAndVersion : Met à niveau le mot de passe et sa version de hash
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : updateUserPasswordAndVersion
+ *   Met à jour le mot de passe chiffré, le sel, la version de hash et réinitialise `must_change_password` à 0.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Appelée lorsqu'un utilisateur ou un administrateur remplace son mot de passe provisoire
+ *   sur l'écran `changer-mot-de-passe.tsx`.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Affiche une bannière de succès verte et redirige vers le tableau de bord de l'application.
+ */
 export function updateUserPasswordAndVersion(
   userId: number,
   newPasswordHash: string,
@@ -240,9 +281,17 @@ export function updateUserPasswordAndVersion(
   );
 }
 
-// ------------------------------------------------------------
-// getUserCategories : Liste des IDs de catégories activées par l'utilisateur
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : getUserCategories
+ *   Récupère la liste des identifiants des catégories activées par un utilisateur dans la table `user_category`.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Permet d'afficher uniquement les enveloppes budgétaires que la personne a choisies de suivre.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Coche les tuiles correspondantes dans l'écran `gerer-categories.tsx` et affiche les cartes
+ *   de catégories sélectionnées sur la page d'accueil.
+ */
 export function getUserCategories(userId: number): number[] {
   const rows = db.getAllSync<{ category_id: number }>(
     `SELECT category_id FROM user_category WHERE user_id = ? AND enabled = 1`,
@@ -251,9 +300,16 @@ export function getUserCategories(userId: number): number[] {
   return rows.map((r) => r.category_id);
 }
 
-// ------------------------------------------------------------
-// setUserCategories : Remplace les catégories sélectionnées par l'utilisateur
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : setUserCategories
+ *   Remplace l'ensemble des catégories sélectionnées d'un utilisateur par une nouvelle liste d'IDs.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Sauvegarde les choix de l'utilisateur lors de l'onboarding et de la modification dans `gerer-categories.tsx`.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Met à jour instantanément la liste des cartes de dépenses sur le tableau de bord.
+ */
 export function setUserCategories(userId: number, categoryIds: number[]): void {
   db.runSync(`DELETE FROM user_category WHERE user_id = ?`, [userId]);
   for (const catId of categoryIds) {
@@ -264,9 +320,16 @@ export function setUserCategories(userId: number, categoryIds: number[]): void {
   }
 }
 
-// ------------------------------------------------------------
-// updateUserPassword : Met à jour le mot de passe et réinitialise must_change_password
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : updateUserPassword
+ *   Modifie le hash du mot de passe et réinitialise le drapeau `must_change_password`.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Permet à un utilisateur de modifier son mot de passe depuis ses réglages de profil.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Affiche une alerte de confirmation indiquant que le nouveau mot de passe est enregistré.
+ */
 export function updateUserPassword(
   userId: number,
   newPasswordHash: string
@@ -280,12 +343,17 @@ export function updateUserPassword(
   );
 }
 
-// ------------------------------------------------------------
-// VERIFICATION DE SECURITE : verifierPrivilegeAdmin
-// RÔLE : Empêche toute élévation de privilèges ou exécution illégitime.
-//        Si un adminUserId est transmis, vérifie dans SQLite qu'il est bien
-//        un administrateur actif.
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : verifierPrivilegeAdmin
+ *   Contrôle de sécurité strict vérifiant que l'utilisateur connecté possède le rôle 'admin' et est actif.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Protège toutes les opérations sensibles d'administration (gestion des utilisateurs,
+ *   barèmes de points, réinitialisation de mots de passe, suppression de comptes).
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Si l'accès est refusé, lève une exception empêchant toute exécution non autorisée.
+ */
 export function verifierPrivilegeAdmin(adminUserId?: number): void {
   if (adminUserId !== undefined && adminUserId !== null) {
     const admin = getUserById(adminUserId);
@@ -301,9 +369,17 @@ export function verifierPrivilegeAdmin(adminUserId?: number): void {
   }
 }
 
-// ------------------------------------------------------------
-// updateUserActiveStatus : Active ou suspend l'accès d'un compte
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : updateUserActiveStatus
+ *   Active (1) ou suspend (0) un compte utilisateur, avec interdiction d'auto-suspension
+ *   et protection garantissant qu'au moins un administrateur reste actif.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Utilisée par l'administrateur depuis le panneau de gestion des utilisateurs (`utilisateurs.tsx`).
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Change le badge d'état (vert "Actif" ou gris "Suspendu") dans le tableau de l'administrateur.
+ */
 export function updateUserActiveStatus(
   userId: number,
   isActive: boolean,
@@ -323,9 +399,17 @@ export function updateUserActiveStatus(
   );
 }
 
-// ------------------------------------------------------------
-// resetUserPassword : Génère un mot de passe temporaire et force son changement
-// ------------------------------------------------------------
+/**
+ * MISSION DE LA FONCTION : resetUserPassword
+ *   Génère un mot de passe temporaire pour un utilisateur et force `must_change_password = 1`.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Permet à l'administrateur de dépanner un utilisateur ayant oublié ses identifiants.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Affiche le mot de passe temporaire à l'administrateur sur l'écran `mot-de-passe-temporaire.tsx`.
+ *   Dès la prochaine connexion de cet utilisateur, l'écran `changer-mot-de-passe.tsx` s'ouvrira obligatoirement.
+ */
 export function resetUserPassword(
   userId: number,
   tempPasswordHash: string,
@@ -341,35 +425,59 @@ export function resetUserPassword(
   );
 }
 
-// ------------------------------------------------------------
-// deleteUserAndData : Supprime un utilisateur et l'ensemble de ses données
-// ------------------------------------------------------------
-  export function deleteUserAndData(userId: number, adminUserId?: number): void {
-    verifierPrivilegeAdmin(adminUserId);
-    if (adminUserId != null && userId === adminUserId) {
-      throw new Error('Un administrateur ne peut pas supprimer son propre compte.');
-    }
-    const cible = getUserById(userId);
-    if (cible?.role === 'admin' && cible.is_active === 1 && countActiveAdmins() <= 1) {
-      throw new Error('Il doit rester au moins un administrateur actif.');
-    }
-    db.runSync(`DELETE FROM user WHERE id = ?`, [userId]);
+/**
+ * MISSION DE LA FONCTION : deleteUserAndData
+ *   Supprime un compte utilisateur et l'ensemble de ses données rattachées en cascade.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Réservée à l'administrateur avec vérification de sécurité (impossible de supprimer le dernier admin).
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Supprime la ligne de l'utilisateur du tableau récapitulatif de l'écran admin.
+ */
+export function deleteUserAndData(userId: number, adminUserId?: number): void {
+  verifierPrivilegeAdmin(adminUserId);
+  if (adminUserId != null && userId === adminUserId) {
+    throw new Error('Un administrateur ne peut pas supprimer son propre compte.');
   }
+  const cible = getUserById(userId);
+  if (cible?.role === 'admin' && cible.is_active === 1 && countActiveAdmins() <= 1) {
+    throw new Error('Il doit rester au moins un administrateur actif.');
+  }
+  db.runSync(`DELETE FROM user WHERE id = ?`, [userId]);
+}
 
-  // ------------------------------------------------------------
-  // countActiveAdmins : Compte le nombre d'administrateurs actifs
-  // ------------------------------------------------------------
-  export function countActiveAdmins(): number {
-    const result = db.getFirstSync<{ cnt: number }>(
-      `SELECT COUNT(*) as cnt FROM user WHERE role = 'admin' AND is_active = 1`
-    );
-    return result?.cnt ?? 0;
-  }
+/**
+ * MISSION DE LA FONCTION : countActiveAdmins
+ *   Compte le nombre total d'administrateurs actuellement actifs dans la base.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Utilisée par les sécurités pour garantir que le système ne se retrouve jamais orphelin.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Aucun affichage direct : utilisé pour valider les boutons de suspension ou suppression.
+ */
+export function countActiveAdmins(): number {
+  const result = db.getFirstSync<{ cnt: number }>(
+    `SELECT COUNT(*) as cnt FROM user WHERE role = 'admin' AND is_active = 1`
+  );
+  return result?.cnt ?? 0;
+}
 
   // ============================================================
   // SECTION B — DEPENSES ET ACHATS PERSONNELS (WHERE utilisateur_id = ?)
   // ============================================================
 
+  /**
+   * MISSION DE LA FONCTION : getTotalMois
+   *   Calcule la somme totale exacte dépensée par un utilisateur pour un mois donné ('YYYY-MM').
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Utilisée pour alimenter les compteurs de dépenses totales du tableau de bord.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Le montant affiché en gros caractères en haut du tableau de bord (ex: "854,250 DT").
+   */
   export function getTotalMois(utilisateurId: number, mois: string): number {
     const result = db.getFirstSync<{ total: number }>(
       `SELECT COALESCE(SUM(prix_total), 0) as total
@@ -380,6 +488,16 @@ export function resetUserPassword(
     return result?.total ?? 0;
   }
 
+  /**
+   * MISSION DE LA FONCTION : getTotalMoisPrecedent
+   *   Détermine le mois civil précédent et appelle `getTotalMois` pour en calculer la somme.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Sert au calcul de l'évolution des dépenses mois par mois pour la comparaison budgétaire.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Alimente la mention d'évolution comparative (ex: "+12% par rapport au mois dernier").
+   */
   export function getTotalMoisPrecedent(
     utilisateurId: number,
     moisActuel: string
@@ -391,6 +509,16 @@ export function resetUserPassword(
     return getTotalMois(utilisateurId, moisPrecedent);
   }
 
+  /**
+   * MISSION DE LA FONCTION : getRecentAchats
+   *   Récupère les 5 dépenses les plus récentes de l'utilisateur pour le mois en cours.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Fournit les données de l'encart "Dernières dépenses" sur la page d'accueil.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Une liste de 5 cartes compactes blanches avec icône de catégorie, titre, magasin et montant en DT.
+   */
   export function getRecentAchats(utilisateurId: number, mois: string): Achat[] {
     return db.getAllSync<Achat>(
       `SELECT
@@ -414,6 +542,17 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : getAllAchats
+   *   Récupère l'intégralité des dépenses et achats de l'utilisateur pour un mois donné,
+   *   triés du plus récent au plus ancien.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Alimente la liste complète de l'historique sur l'écran calendrier ou l'écran récapitulatif.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   La liste déroulante complète de tous les tickets de caisse et dépenses directes du mois.
+   */
   export function getAllAchats(utilisateurId: number, mois: string): Achat[] {
     return db.getAllSync<Achat>(
       `SELECT
@@ -436,6 +575,16 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : insertAchat
+   *   Insère un nouvel achat ou une dépense directe via la vue `achats` (qui déclenche `trg_achats_insert`).
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Enregistre les formulaires soumis depuis `nouvel-achat.tsx` et `nouvelle-depense.tsx`.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Après enregistrement, ferme le formulaire et rafraîchit immédiatement l'accueil et le solde restant.
+   */
   export function insertAchat(data: {
     produit_id: number | null;
     utilisateur_id: number;
@@ -472,6 +621,16 @@ export function resetUserPassword(
   // SECTION C — PRODUITS (WHERE created_by = ? OU Globaux)
   // ============================================================
 
+  /**
+   * MISSION DE LA FONCTION : getAllProduits
+   *   Récupère tous les articles de consommation créés par l'utilisateur (ou tous les produits si aucun filtre).
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Alimente la liste du catalogue d'articles sur l'écran `produits.tsx`.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Grille ou liste de cartes blanches avec photo de l'article, marque, unité et nom de catégorie.
+   */
   export function getAllProduits(userId?: number): Produit[] {
     if (userId) {
       return db.getAllSync<Produit>(
@@ -502,6 +661,16 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : getProduitById
+   *   Extrait la fiche détaillée d'un produit d'après son identifiant unique.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Utilisée par la page de détail produit `produit/[id].tsx` et le formulaire d'édition.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   La photo plein écran, le nom, la marque, l'unité de mesure et le comparateur de prix.
+   */
   export function getProduitById(id: number): Produit | null {
     return (
       db.getFirstSync<Produit>(
@@ -519,6 +688,16 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : getAchatsByProduit
+   *   Retrouve l'historique complet des achats passés pour un produit donné.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Permet d'analyser l'évolution dans le temps des prix d'un produit (ex: brique de lait, paquet de pâtes).
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   La liste chronologique des prix relevés par magasin sur l'écran `produit/historique.tsx`.
+   */
   export function getAchatsByProduit(produitId: number, userId?: number): Achat[] {
     if (userId) {
       return db.getAllSync<Achat>(
@@ -561,6 +740,16 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : insertProduit
+   *   Crée un nouvel article dans la table `product` via la vue de compatibilité `produits`.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Enregistre les données du formulaire `nouveau-produit.tsx` (nom, marque, catégorie, unité, photo).
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Ajoute immédiatement la nouvelle vignette au catalogue d'articles.
+   */
   export function insertProduit(data: {
     nom: string;
     marque: string;
@@ -586,6 +775,16 @@ export function resetUserPassword(
       .trim();
   }
 
+  /**
+   * MISSION DE LA FONCTION : suggestProduits
+   *   Filtre les produits existants selon les lettres tapées par l'utilisateur (auto-complétion).
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Accélère la saisie d'un ticket lors d'un nouvel achat.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Une liste déroulante sous le champ texte proposant jusqu'à 8 produits correspondants.
+   */
   export function suggestProduits(userId: number, saisie: string, limite: number = 8): Produit[] {
     const terme = normaliserTexte(saisie);
     if (!terme) return [];
@@ -598,6 +797,16 @@ export function resetUserPassword(
       .slice(0, limite);
   }
 
+  /**
+   * MISSION DE LA FONCTION : getAchatsDuJour
+   *   Récupère les dépenses enregistrées pour une date précise (ou aujourd'hui par défaut).
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Alimente le résumé quotidien et la vue calendrier.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   La liste des achats sous le calendrier lorsqu'un jour précis est touché.
+   */
   export function getAchatsDuJour(userId: number, isoDate?: string): Achat[] {
     const jour = isoDate ?? new Date().toISOString().slice(0, 10);
     return db.getAllSync<Achat>(
@@ -621,6 +830,16 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : getMagasinMoinsCher
+   *   Compare tous les achats d'un produit pour trouver l'enseigne proposant le meilleur prix unitaire.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Moteur d'aide à la décision économique et de comparaison des prix entre supermarchés.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Un encart vert menthe "Meilleur prix trouvé" indiquant le nom de l'enseigne et le prix en DT.
+   */
   export function getMagasinMoinsCher(
     produitId: number,
     userId: number
@@ -640,6 +859,16 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : updateProduit
+   *   Modifie les informations d'un produit (nom, marque, unité, catégorie, photo).
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Exécutée lors de la validation du formulaire `modifier-produit.tsx`.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Met à jour la fiche produit affichée à l'écran.
+   */
   export function updateProduit(
     id: number,
     userId: number,
@@ -653,6 +882,16 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : getAchatById
+   *   Charge un achat ou une dépense par son ID unique pour l'utilisateur connecté.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Pré-remplit les champs de `modifier-achat.tsx` et `modifier-depense.tsx`.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Affiche les valeurs actuelles (prix, quantité, magasin, date) dans le formulaire.
+   */
   export function getAchatById(id: number, userId: number): Achat | null {
     return (
       db.getFirstSync<Achat>(
@@ -676,6 +915,16 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : updateAchat
+   *   Met à jour les montants, la date, le magasin ou la catégorie d'un ticket existant.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Sauvegarde les corrections faites par l'utilisateur.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Actualise immédiatement les statistiques de dépenses du mois.
+   */
   export function updateAchat(
     id: number,
     userId: number,
@@ -727,6 +976,16 @@ export function resetUserPassword(
     );
   }
 
+  /**
+   * MISSION DE LA FONCTION : deleteAchat
+   *   Supprime définitivement un achat (`purchase`) ou une dépense (`expense`) de la base de données.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Déclenchée lorsque l'utilisateur appuie sur l'icône de corbeille rouge.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Retire la dépense de la liste et recalcule le solde restant.
+   */
   export function deleteAchat(id: number, userId: number): void {
     if (id >= 1000000) {
       db.runSync(`DELETE FROM expense WHERE id = ? AND user_id = ?`, [id - 1000000, userId]);
@@ -735,13 +994,18 @@ export function resetUserPassword(
     db.runSync(`DELETE FROM purchase WHERE id = ? AND user_id = ?`, [id, userId]);
   }
 
-  // ------------------------------------------------------------
-  // deleteProduit : Supprime un produit du catalogue.
-  // Paramètre mode :
-  //   - 'reassign' (défaut) : Transforme les achats existants en dépenses directes
-  //     pour conserver l'historique financier et ne pas fausser le budget du mois.
-  //   - 'cascade' : Supprime définitivement le produit et tous les tickets rattachés.
-  // ------------------------------------------------------------
+  /**
+   * MISSION DE LA FONCTION : deleteProduit
+   *   Supprime un produit du catalogue personnel de l'utilisateur.
+   *   En mode 'reassign' (par défaut), convertit automatiquement les anciens achats
+   *   de ce produit en dépenses directes afin de ne jamais fausser le budget du mois ni perdre l'historique financier.
+   *
+   * RÔLE DANS L'APPLICATION :
+   *   Protège l'intégrité comptable de l'utilisateur tout en lui permettant de nettoyer son catalogue.
+   *
+   * CE QUI EST AFFICHÉ À L'ÉCRAN :
+   *   Fait disparaître le produit de la grille des articles tout en préservant le total des dépenses passées.
+   */
   export function deleteProduit(
     produitId: number,
     mode: 'reassign' | 'cascade' = 'reassign'

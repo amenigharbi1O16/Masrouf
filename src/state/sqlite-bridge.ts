@@ -1,8 +1,41 @@
+// ============================================================
+// FICHIER : src/state/sqlite-bridge.ts
+// RÔLE    : Passerelle de persistance bidirectionnelle entre l'état
+//           en mémoire de l'application (React Context / Store)
+//           et la base de données SQLite locale physique (masrouf.db).
+//
+// CONCEPTS CLÉS :
+//   1. Hydratation initiale (loadDBFromSQLite) :
+//      Lit toutes les tables SQLite (user, category, budget, product, purchase, expense, settings)
+//      et reconstruit l'objet d'état complet DB conforme aux types de l'application.
+//      Si la base est vierge, injecte automatiquement les catégories de référence et les utilisateurs initiaux.
+//
+//   2. Opérations d'écriture synchrones (sqliteAdd*, sqliteUpdate*, sqliteSave*) :
+//      Appelées à chaque mutation du store pour garantir une persistance immédiate sans perte de données.
+//
+//   3. Conformité Zéro Données Codées en Dur :
+//      Toutes les entités créées ou modifiées sont fidèlement sauvegardées dans SQLite avec leurs identifiants.
+// ============================================================
+
 import { db, initDatabase } from '@/db/database';
 import type { AppSettings, Budget, Category, CategoryType, DB, Expense, PointsRules, Product, Purchase, User } from './types';
 import { hashPassword } from '@/utils/security';
 import { todayISO, uid } from '@/utils/format';
 
+/**
+ * Charge l'intégralité des données persistées dans la base SQLite locale.
+ * Initialise le schéma relationnel et retourne un instantané typé `DB`.
+ * 
+ * Processus étape par étape :
+ * 1. Initialise la base via `initDatabase()` (tables, triggers, index).
+ * 2. Charge et hydrate les catégories (ou amorce les catégories par défaut si vide).
+ * 3. Charge et hydrate les utilisateurs avec leurs catégories associées.
+ * 4. Charge les budgets de périodes et les enveloppes par catégorie.
+ * 5. Charge le catalogue des produits enregistrés par l'utilisateur.
+ * 6. Charge les achats (purchases) associés aux produits.
+ * 7. Charge les dépenses courantes (expenses).
+ * 8. Charge les règles de points et de gamification depuis la table settings.
+ */
 export async function loadDBFromSQLite(): Promise<DB> {
   // Initialise les tables et migrations SQLite locales
   try {
@@ -11,7 +44,9 @@ export async function loadDBFromSQLite(): Promise<DB> {
     console.warn('initDatabase notice:', err);
   }
 
-  // 1. Catégories
+  // ------------------------------------------------------------
+  // ÉTAPE 1 : Chargement des catégories depuis la table SQLite `category`
+  // ------------------------------------------------------------
   let catRows = db.getAllSync<{
     id: number;
     name_key: string;
@@ -21,7 +56,7 @@ export async function loadDBFromSQLite(): Promise<DB> {
     is_active: number;
   }>('SELECT id, name_key, type, icon, default_percent, is_active FROM category');
 
-  // Si la table category est vide, on injecte les catégories de la maquette Figma
+  // Si la table category est vierge (premier lancement), injection des catégories par défaut
   if (catRows.length === 0) {
     const SEED_CATS = [
       ['food', 'Food', 'product', '🥦', 33],
@@ -52,6 +87,7 @@ export async function loadDBFromSQLite(): Promise<DB> {
     catRows = db.getAllSync('SELECT id, name_key, type, icon, default_percent, is_active FROM category');
   }
 
+  // Transformation des enregistrements SQLite en objets Category du store
   const categories: Category[] = catRows.map((r) => ({
     id: String(r.id),
     name: r.name_key,
@@ -59,11 +95,14 @@ export async function loadDBFromSQLite(): Promise<DB> {
     active: r.is_active === 1,
   }));
 
+  // Dictionnaire des pourcentages par défaut par identifiant de catégorie
   const defaultPercentages = Object.fromEntries(
     catRows.map((r) => [String(r.id), r.default_percent || 0])
   );
 
-  // 2. Utilisateurs
+  // ------------------------------------------------------------
+  // ÉTAPE 2 : Chargement des utilisateurs depuis la table `user`
+  // ------------------------------------------------------------
   let userRows = db.getAllSync<{
     id: number;
     name: string;
@@ -77,6 +116,7 @@ export async function loadDBFromSQLite(): Promise<DB> {
     langue: string;
   }>('SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user');
 
+  // Si aucun utilisateur n'existe, injection des profils d'administration et de test
   if (userRows.length === 0) {
     const adminPw = await hashPassword('Admin2026');
     const userPw = await hashPassword('Masrouf2026');
@@ -95,8 +135,8 @@ export async function loadDBFromSQLite(): Promise<DB> {
     userRows = db.getAllSync('SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user');
   }
 
+  // Transformation des profils utilisateurs et récupération de leurs catégories choisies
   const users: User[] = userRows.map((u) => {
-    // Récupérer les catégories actives de l'utilisateur
     const uCatRows = db.getAllSync<{ category_id: number }>(
       'SELECT category_id FROM user_category WHERE user_id = ? AND enabled = 1',
       [u.id]
@@ -117,7 +157,9 @@ export async function loadDBFromSQLite(): Promise<DB> {
     };
   });
 
-  // 3. Budgets
+  // ------------------------------------------------------------
+  // ÉTAPE 3 : Chargement des budgets et enveloppes de catégories
+  // ------------------------------------------------------------
   let budgets: Budget[] = [];
   try {
     const budgetRows = db.getAllSync<{
@@ -153,7 +195,9 @@ export async function loadDBFromSQLite(): Promise<DB> {
     // Si la table budget n'a pas encore de lignes
   }
 
-  // 4. Produits
+  // ------------------------------------------------------------
+  // ÉTAPE 4 : Chargement du catalogue de produits
+  // ------------------------------------------------------------
   let products: Product[] = [];
   try {
     const prodRows = db.getAllSync<{
@@ -178,7 +222,9 @@ export async function loadDBFromSQLite(): Promise<DB> {
     }));
   } catch {}
 
-  // 5. Achats (Purchases)
+  // ------------------------------------------------------------
+  // ÉTAPE 5 : Chargement des achats détaillés (purchases)
+  // ------------------------------------------------------------
   let purchases: Purchase[] = [];
   try {
     const purchRows = db.getAllSync<{
@@ -204,7 +250,9 @@ export async function loadDBFromSQLite(): Promise<DB> {
     }));
   } catch {}
 
-  // 6. Dépenses (Expenses)
+  // ------------------------------------------------------------
+  // ÉTAPE 6 : Chargement des dépenses directes (expenses)
+  // ------------------------------------------------------------
   let expenses: Expense[] = [];
   try {
     const expRows = db.getAllSync<{
@@ -227,7 +275,9 @@ export async function loadDBFromSQLite(): Promise<DB> {
     }));
   } catch {}
 
-  // 7. Règles de points & paramètres
+  // ------------------------------------------------------------
+  // ÉTAPE 7 : Chargement des règles de points et configuration
+  // ------------------------------------------------------------
   let pointsRules: PointsRules = {
     periodReward: 100,
     streakLength: 3,
@@ -256,6 +306,7 @@ export async function loadDBFromSQLite(): Promise<DB> {
     }
   } catch {}
 
+  // Types de catégories (produit avec suivi de prix unitaire ou dépense forfaitaire)
   const categoryTypes: CategoryType[] = [
     { kind: 'product', label: 'Products', description: 'Articles achetés au quotidien avec suivi du prix unitaire.' },
     { kind: 'expense', label: 'Expenses', description: 'Dépenses courantes sans produit spécifique.' },
@@ -276,10 +327,14 @@ export async function loadDBFromSQLite(): Promise<DB> {
   };
 }
 
-// ------------------------------------------------------------
-// OPÉRATIONS D'ÉCRITURE SQLITE SYNCHRONES (ZÉRO DONNÉES EN DUR)
-// ------------------------------------------------------------
+// ============================================================
+// OPÉRATIONS D'ÉCRITURE SQLITE SYNCHRONES (PERSISTANCE PHYSIQUE)
+// ============================================================
 
+/**
+ * Insère un nouvel utilisateur dans la table SQLite `user`.
+ * @param user Objet utilisateur complet contenant le hash de mot de passe.
+ */
 export function sqliteAddUser(user: User): void {
   try {
     db.runSync(
@@ -291,6 +346,11 @@ export function sqliteAddUser(user: User): void {
   }
 }
 
+/**
+ * Met à jour les champs d'un utilisateur existant dans la table SQLite `user`.
+ * @param id Identifiant numérique ou chaîne de l'utilisateur.
+ * @param patch Modifications partielles (nom, mot de passe, statut actif, onboarding, langue).
+ */
 export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
   try {
     const numId = Number(id);
@@ -317,6 +377,12 @@ export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
   }
 }
 
+/**
+ * Enregistre les catégories actives choisies par l'utilisateur dans `user_category`.
+ * Réinitialise d'abord les anciennes liaisons puis réinsère les catégories sélectionnées.
+ * @param userId Identifiant de l'utilisateur.
+ * @param categoryIds Liste des identifiants de catégories sélectionnées.
+ */
 export function sqliteSetUserCategories(userId: string, categoryIds: string[]): void {
   try {
     const numUserId = Number(userId);
@@ -335,12 +401,17 @@ export function sqliteSetUserCategories(userId: string, categoryIds: string[]): 
   }
 }
 
+/**
+ * Enregistre ou met à jour un budget de période et ses enveloppes dans SQLite.
+ * Écrit à la fois dans `budget` (périodes personnalisées) et `month_budget` (mensuel).
+ * @param budget Objet budget avec dates, total et dictionnaire d'allocations par catégorie.
+ */
 export function sqliteSaveBudget(budget: Budget): void {
   try {
     const numUserId = Number(budget.userId);
     const month = budget.start.substring(0, 7);
 
-    // 1. Table budget (périodes personnalisées)
+    // 1. Table budget (périodes personnalisées avec dates de début et fin)
     try {
       db.runSync(
         'INSERT OR REPLACE INTO budget (id, user_id, start_date, end_date, total) VALUES (?, ?, ?, ?, ?)',
@@ -348,7 +419,7 @@ export function sqliteSaveBudget(budget: Budget): void {
       );
     } catch {}
 
-    // 2. Table month_budget (mensuel)
+    // 2. Table month_budget (regroupement calendaire mensuel)
     try {
       db.runSync(
         'INSERT OR REPLACE INTO month_budget (user_id, month, total) VALUES (?, ?, ?)',
@@ -356,7 +427,7 @@ export function sqliteSaveBudget(budget: Budget): void {
       );
     } catch {}
 
-    // 3. Enveloppes par catégorie
+    // 3. Table category_budget : montants alloués par catégorie
     for (const [catIdStr, montant] of Object.entries(budget.allocations)) {
       const numCatId = Number(catIdStr);
       if (numCatId > 0) {
@@ -371,6 +442,10 @@ export function sqliteSaveBudget(budget: Budget): void {
   }
 }
 
+/**
+ * Insère un nouvel article dans le catalogue produit (`product`).
+ * @param product Objet produit avec nom, marque, catégorie, unité et photo optionnelle.
+ */
 export function sqliteAddProduct(product: Product): void {
   try {
     db.runSync(
@@ -382,6 +457,11 @@ export function sqliteAddProduct(product: Product): void {
   }
 }
 
+/**
+ * Modifie les caractéristiques d'un produit existant dans `product`.
+ * @param id Identifiant du produit.
+ * @param patch Données partielles à mettre à jour.
+ */
 export function sqliteUpdateProduct(id: string, patch: Partial<Product>): void {
   try {
     const numId = Number(id);
@@ -405,6 +485,10 @@ export function sqliteUpdateProduct(id: string, patch: Partial<Product>): void {
   }
 }
 
+/**
+ * Enregistre un achat d'article dans la table `purchase` pour le calcul des prix unitaires.
+ * @param purchase Objet achat contenant prix, quantité, magasin et date.
+ */
 export function sqliteAddPurchase(purchase: Purchase): void {
   try {
     const month = purchase.date.substring(0, 7);
@@ -417,6 +501,11 @@ export function sqliteAddPurchase(purchase: Purchase): void {
   }
 }
 
+/**
+ * Met à jour un achat enregistré dans la table `purchase`.
+ * @param id Identifiant de l'achat.
+ * @param patch Champs modifiés (prix, quantité, magasin, date).
+ */
 export function sqliteUpdatePurchase(id: string, patch: Partial<Purchase>): void {
   try {
     const numId = Number(id);
@@ -437,6 +526,10 @@ export function sqliteUpdatePurchase(id: string, patch: Partial<Purchase>): void
   }
 }
 
+/**
+ * Enregistre une dépense forfaitaire courante dans la table `expense`.
+ * @param expense Objet dépense contenant montant, catégorie, note et date.
+ */
 export function sqliteAddExpense(expense: Expense): void {
   try {
     const month = expense.date.substring(0, 7);
@@ -449,6 +542,11 @@ export function sqliteAddExpense(expense: Expense): void {
   }
 }
 
+/**
+ * Met à jour une dépense existante dans la table `expense`.
+ * @param id Identifiant de la dépense.
+ * @param patch Données modifiées (montant, note, date).
+ */
 export function sqliteUpdateExpense(id: string, patch: Partial<Expense>): void {
   try {
     const numId = Number(id);
@@ -466,6 +564,10 @@ export function sqliteUpdateExpense(id: string, patch: Partial<Expense>): void {
   }
 }
 
+/**
+ * Insère une nouvelle catégorie créée par l'administrateur dans `category`.
+ * @param cat Nouvelle catégorie avec nom, type ('product' ou 'expense') et statut actif.
+ */
 export function sqliteAddCategory(cat: Category): void {
   try {
     db.runSync(
@@ -477,6 +579,11 @@ export function sqliteAddCategory(cat: Category): void {
   }
 }
 
+/**
+ * Modifie le libellé ou l'état actif/inactif d'une catégorie dans `category`.
+ * @param id Identifiant de la catégorie.
+ * @param patch Modifications partielles du libellé ou statut.
+ */
 export function sqliteUpdateCategory(id: string, patch: Partial<Category>): void {
   try {
     const numId = Number(id);
