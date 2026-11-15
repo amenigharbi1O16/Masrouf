@@ -1,23 +1,80 @@
+/**
+ * FICHIER : src/components/ui/Skeleton.tsx
+ * IDENTIFIANT INVENTAIRE : FICHIER-058
+ * COMPOSANT : Skeleton & LoadingScreen (Indicateurs Squelettes de Chargement Animés)
+ *
+ * RÔLE DU COMPOSANT :
+ * Fournit des espaces réservés animés imitant la silhouette du contenu en cours de chargement :
+ * - `Skeleton` : bloc rectangulaire aux coins arrondis animé par `Animated.loop` faisant pulser
+ *   l'opacité entre 0.45 et 1.00 toutes les 700 millisecondes (utilisant le driver natif React Native).
+ * - `LoadingScreen` : écran complet de chargement élégant affiché pendant le démarrage de la base SQLite locale.
+ *
+ * EFFET VISUEL SUR L'INTERFACE :
+ * Remplace les écrans blancs ou spinners génériques par des formes grises douces pulsantes
+ * sur fond écru chaleureux `#F5F3ED`, procurant une impression de réactivité immédiate.
+ */
+
 import React, { useEffect, useRef } from 'react';
 import { Animated, DimensionValue, StyleSheet, View } from 'react-native';
+// Constantes de thème
 import { colors } from '@/constants/theme';
 
-export function Skeleton({ height = 16, width = '100%', radius = 12 }: { height?: number; width?: DimensionValue; radius?: number }) {
+/**
+ * Propriétés d'un bloc de squelette individuel.
+ */
+interface SkeletonProps {
+  height?: number;
+  width?: DimensionValue;
+  radius?: number;
+}
+
+/**
+ * Bloc rectangulaire squelette animé par pulsation d'opacité.
+ */
+export function Skeleton({
+  height = 16,
+  width = '100%',
+  radius = 12,
+}: SkeletonProps) {
+  // Valeur d'animation d'opacité
   const o = useRef(new Animated.Value(0.45)).current;
+
   useEffect(() => {
+    // Boucle continue de pulsation douce (700ms aller, 700ms retour)
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(o, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(o, { toValue: 0.45, duration: 700, useNativeDriver: true }),
-      ]),
+        Animated.timing(o, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(o, {
+          toValue: 0.45,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ])
     );
     loop.start();
     return () => loop.stop();
   }, [o]);
-  return <Animated.View style={{ height, width, borderRadius: radius, backgroundColor: colors.border, opacity: o }} />;
+
+  return (
+    <Animated.View
+      style={{
+        height,
+        width,
+        borderRadius: radius,
+        backgroundColor: colors.border,
+        opacity: o,
+      }}
+    />
+  );
 }
 
-/** Full-screen quiet loading state (design: "34 · Loading"). */
+/**
+ * Écran plein de chargement silencieux lors du démarrage de l'application.
+ */
 export function LoadingScreen() {
   return (
     <View style={styles.wrap}>
@@ -30,4 +87,13 @@ export function LoadingScreen() {
     </View>
   );
 }
-const styles = StyleSheet.create({ wrap: { flex: 1, backgroundColor: colors.warm, padding: 24, paddingTop: 80, gap: 14 } });
+
+const styles = StyleSheet.create({
+  wrap: {
+    flex: 1,
+    backgroundColor: colors.warm,
+    padding: 24,
+    paddingTop: 80,
+    gap: 14,
+  },
+});
