@@ -93,8 +93,8 @@ export default function ComparePriceScreen() {
     date: string;
     purchaseId?: string;
   }>();
-  // Extraction des données de la base, de l'utilisateur connecté et des actions
-  const { db, me, actions } = useStore();
+  // Extraction des données de la base, de l'utilisateur connecté, du budget sélectionné et des actions
+  const { db, me, selectedBudget, actions } = useStore();
   // Fonctions de traduction et sens de lecture
   const { t, isRTL } = useTranslation();
 
@@ -144,8 +144,8 @@ export default function ComparePriceScreen() {
       value: p.v,
     }));
 
-  // Simulation de l'impact de cet achat sur le budget actif
-  const budget = currentBudget(db, me.id);
+  // Simulation de l'impact de cet achat sur le budget de référence sélectionné
+  const budget = selectedBudget ?? (me ? currentBudget(db, me.id) : null);
   const catId = product.categoryId;
   const inBudget = !!budget && q.date >= budget.start && q.date <= budget.end;
   const spentAfter = budget

@@ -75,14 +75,30 @@ export default function CalendarScreen() {
   const spend = monthlySpend(db, me.id, year);
 
   /**
+   * Calcule avec exactitude les dates de début et de fin d'un mois civil donné,
+   * gérant rigoureusement février (années bissextiles à 29 jours), les mois de 30/31 jours et les transitions d'années.
+   */
+  const getMonthExactRange = (y: number, m: number) => {
+    const start = `${y}-${pad(m + 1)}-01`;
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const end = `${y}-${pad(m + 1)}-${pad(lastDay)}`;
+    return { start, end, lastDay };
+  };
+
+  /**
+   * Détermine si un mois donné est déjà passé par rapport à la date réelle courante (mois clos / consultation seule).
+   */
+  const isPastMonth = (y: number, m: number) => {
+    const currentY = now.getFullYear();
+    const currentM = now.getMonth();
+    return y < currentY || (y === currentY && m < currentM);
+  };
+
+  /**
    * Calcule les périodes de budget de l'utilisateur qui chevauchent le mois donné.
    */
   const monthBudgets = (m: number) => {
-    const start = `${year}-${pad(m + 1)}-01`;
-    const end = addDays(
-      `${m === 11 ? year + 1 : year}-${pad(m === 11 ? 1 : m + 2)}-01`,
-      -1
-    );
+    const { start, end } = getMonthExactRange(year, m);
     return budgetsOverlapping(db, me.id, start, end);
   };
 
@@ -96,6 +112,8 @@ export default function CalendarScreen() {
 
   // Liste des périodes pour le mois actuellement sélectionné
   const selected = month === null ? [] : monthBudgets(month);
+  const isSelectedPast = month !== null && isPastMonth(year, month);
+  const selectedRange = month !== null ? getMonthExactRange(year, month) : { start: '', end: '', lastDay: 30 };
 
   /**
    * Retourne le nom traduit du mois (janvier à décembre).
@@ -245,9 +263,20 @@ export default function CalendarScreen() {
             <EmptyState
               icon="calendar-outline"
               title={t('aucun_budget_periode')}
-              detail={t('aucune_periode_ce_mois')}
-              actionLabel={t('creer_periode_budget')}
-              onAction={() => router.push('/budget-mois')}
+              detail={isSelectedPast ? t('periode_cloturee_detail') : t('aucune_periode_ce_mois')}
+              actionLabel={isSelectedPast ? undefined : t('creer_periode_budget')}
+              onAction={
+                isSelectedPast
+                  ? undefined
+                  : () =>
+                      router.push({
+                        pathname: '/budget-mois',
+                        params: {
+                          defaultStart: selectedRange.start,
+                          defaultEnd: selectedRange.end,
+                        },
+                      } as never)
+              }
             />
           ) : (
             // Liste des périodes de budget chevauchant le mois avec sélection centrale
@@ -343,39 +372,63 @@ export default function CalendarScreen() {
                       </Pressable>
                     )}
 
-                    <Pressable
-                      onPress={() =>
-                        router.push({
-                          pathname: '/budget-mois',
-                          params: { mode: 'edit', id: b.id },
-                        } as never)
-                      }
-                      style={{
-                        paddingVertical: 8,
-                        paddingHorizontal: 12,
-                        backgroundColor: '#EFEFEF',
-                        borderRadius: 8,
-                        alignItems: 'center',
-                      }}
-                      accessibilityRole="button"
-                    >
-                      <Text style={{ color: colors.forest, fontSize: 12, fontWeight: '600' }}>
-                        {t('modifier')}
-                      </Text>
-                    </Pressable>
+                    {isSelectedPast ? (
+                      <View
+                        style={{
+                          paddingVertical: 7,
+                          paddingHorizontal: 12,
+                          backgroundColor: '#F5F5F5',
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: '#E0E0E0',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600' }}>
+                          {t('periode_cloturee_badge')}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Pressable
+                        onPress={() =>
+                          router.push({
+                            pathname: '/budget-mois',
+                            params: { mode: 'edit', id: b.id },
+                          } as never)
+                        }
+                        style={{
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          backgroundColor: '#EFEFEF',
+                          borderRadius: 8,
+                          alignItems: 'center',
+                        }}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: colors.forest, fontSize: 12, fontWeight: '600' }}>
+                          {t('modifier')}
+                        </Text>
+                      </Pressable>
+                    )}
                   </View>
                 </View>
               );
             })
           )}
 
-          {/* Bouton de création d'une nouvelle période vert foncé (affiché uniquement lorsqu'il y a des périodes listées) */}
-          {selected.length > 0 && (
+          {/* Bouton unique de création d'une nouvelle période (uniquement pour les mois en cours et futurs) */}
+          {!isSelectedPast && selected.length > 0 && (
             <Button
-              // Libellé traduit
               label={t('creer_periode_budget')}
-              // Redirection vers la création de période
-              onPress={() => router.push('/budget-mois')}
+              onPress={() =>
+                router.push({
+                  pathname: '/budget-mois',
+                  params: {
+                    defaultStart: selectedRange.start,
+                    defaultEnd: selectedRange.end,
+                  },
+                } as never)
+              }
             />
           )}
         </>

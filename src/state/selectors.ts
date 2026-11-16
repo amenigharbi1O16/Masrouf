@@ -329,7 +329,19 @@ export interface PeriodResult {
  */
 export function pointsFor(db: DB, user: User, today = todayISO()) {
   const r = db.pointsRules;
-  const ended = userBudgets(db, user.id).filter((b) => b.end < today);
+  const rawEnded = userBudgets(db, user.id).filter((b) => b.end < today);
+
+  // Règle d'intégrité anti-doublon : chaque période temporelle unique (start-end) ne peut être récompensée qu'une seule fois
+  const seen = new Set<string>();
+  const ended: Budget[] = [];
+  for (const b of rawEnded) {
+    const key = `${b.start}_${b.end}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      ended.push(b);
+    }
+  }
+
   let total = 0, streak = 0, best = 0;
   const periods: PeriodResult[] = [];
 

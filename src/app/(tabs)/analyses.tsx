@@ -1,87 +1,52 @@
 /**
  * FICHIER : src/app/(tabs)/analyses.tsx
  * IDENTIFIANT INVENTAIRE : FICHIER-013
- * ÉCRAN : ECRAN-TAB-04 (Analyses Statistiques et Rapports Comparatifs)
+ * ÉCRAN : ECRAN-TAB-04 (Tableau de Bord Financier & Analyses Ciblées)
  *
  * RÔLE DU COMPOSANT :
- * Moteur d'analyses statistiques et budgétaires complet de Masrouf :
- * 1. Sélecteur de période cliquable affichant les dates réelles du budget et ouvrant le calendrier au toucher.
- * 2. Carte de résumé financière en vert forêt : total dépensé en DT (3 décimales), comparaison
- *    en montant et pourcentage avec la période précédente de même durée, pastille vert menthe (économie)
- *    ou corail (hausse).
- * 3. Répartition par catégorie avec diagramme horizontal segmenté (Top 5 + Autres) et légende détaillée.
- * 4. Tableau détaillé de chaque catégorie : montant consommé, pourcentage du total, comparaison
- *    avec la période précédente et jauge de consommation de l'enveloppe budgétaire.
- * 5. Carte de conclusions intelligentes automatisées (catégorie la plus dépensée, plus forte hausse/baisse,
- *    respect global du budget).
- * 6. Classement des plus grosses dépenses individuelles de la période.
- * 7. Sélecteur et graphique d'évolution du prix unitaire pour un produit choisi.
+ * Tableau de bord financier moderne, épuré et professionnel de Masrouf, structuré
+ * rigoureusement selon les 7 sections ordonnées de la spécification :
+ * 1. Carte de synthèse budgétaire vert forêt (total, consommé, restant, % ; rouge si dépassé).
+ * 2. Conclusion financière automatique et recommandation personnalisée basée sur l'état réel.
+ * 3. Comparaison temporelle visuelle avec la période précédente de même durée.
+ * 4. Graphique de consommation du budget avec jauge et seuil maximal.
+ * 5. Graphique de consommation par catégorie classé du PLUS FAIBLE au PLUS FORT pourcentage.
+ * 6. Analyse du rythme de dépenses quotidien avec projection et durabilité.
+ * 7. Catégorie nécessitant le plus d'attention (ou message positif si tout est maîtrisé).
  *
- * ACTIONS ASSOCIÉES :
- * - Navigation vers le calendrier (`/(tabs)/calendrier`)
- * - Dépliage / repliage du tableau détaillé (`expandedDetails`)
- * - Sélection d'un produit pour afficher sa courbe de prix
- *
- * EFFET VISUEL SUR L'INTERFACE :
- * Interface riche bicolore (vert forêt, menthe, or, corail) sans aucune donnée codée en dur.
- * Toutes les valeurs proviennent des requêtes SQLite réelles.
+ * Toutes les données proviennent exclusivement des tables SQLite locales réelles (zéro mock, zéro hardcodage).
  */
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Chips } from '@/components/Chips';
-import { PriceChart } from '@/components/PriceChart';
 import { Screen } from '@/components/Screen';
-import {
-  AlertBanner,
-  Body,
-  Button,
-  EmptyState,
-  Eyebrow,
-  SectionTitle,
-} from '@/components/ui';
+import { EmptyState, SectionTitle } from '@/components/ui';
 import { colors, radius } from '@/constants/theme';
 import {
   categoryName,
-  currentBudget,
   inRange,
   previousWindow,
-  userBudgets,
   userTxns,
 } from '@/state/selectors';
 import { useStore } from '@/state/store';
-import { fmtRange, formatDT, unitPrice } from '@/utils/format';
-import { useTranslation } from '@/utils/i18n';
-// Résolveur d'icône représentative par catégorie pour les graphiques et listes d'analyses
 import { getCategoryIcon } from '@/utils/categoryIcons';
-
-const CAT_COLORS = [
-  colors.forest,
-  colors.green,
-  '#4A7C59',
-  colors.gold,
-  colors.coral,
-  '#7C9D8E',
-  '#A0B2A6',
-];
+import { daysBetween, fmtRange, formatDT, money, todayISO } from '@/utils/format';
+import { useTranslation } from '@/utils/i18n';
 
 export default function AnalyticsScreen() {
   const router = useRouter();
   const { db, me, selectedBudget } = useStore();
   const { t, isRTL, traduireCategorie } = useTranslation();
 
-  const [expandedDetails, setExpandedDetails] = useState(false);
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-
   if (!me) return null;
 
-  // 1. Période de référence centrale sélectionnée dans l'application et sa fenêtre précédente équivalente
+  // Période de référence centrale active
   const budget = selectedBudget;
   const win = budget ? previousWindow(budget) : null;
 
-  // 2. Transactions réelles pour chaque période
+  // Transactions réelles filtrées sur la période active et la période précédente
   const allTxns = useMemo(() => userTxns(db, me.id), [db, me.id]);
 
   const curTxns = useMemo(() => {
@@ -94,7 +59,7 @@ export default function AnalyticsScreen() {
     return allTxns.filter((tx) => inRange(tx.date, win.start, win.end));
   }, [allTxns, win]);
 
-  // 3. Calculs en millimes entiers pour zéro dérive d'arrondi
+  // Calculs monétaires précis en millimes entiers (zéro dérive d'arrondi)
   const curTotal = useMemo(
     () => curTxns.reduce((sum, tx) => sum + Math.round(tx.amount * 1000), 0) / 1000,
     [curTxns]
@@ -104,214 +69,191 @@ export default function AnalyticsScreen() {
     [prevTxns]
   );
 
+  const totalBudget = budget?.total ?? 0;
+  const isExceeded = curTotal > totalBudget && totalBudget > 0;
+  const remainingBudget = Math.max(0, totalBudget - curTotal);
+  const exceededAmount = Math.max(0, curTotal - totalBudget);
+  const consumptionPct = totalBudget > 0 ? (curTotal / totalBudget) * 100 : 0;
+
+  // Comparaison temporelle avec la période précédente équivalente
   const diff = curTotal - prevTotal;
   const pctDiff = prevTotal > 0 ? (diff / prevTotal) * 100 : null;
-  const aEconomise = diff <= 0;
+  const isSaving = diff < 0;
+  const isStable = Math.abs(diff) < 0.001;
 
-  // 4. Statistiques détaillées par catégorie
+  // Calcul du rythme journalier (Pace)
+  const today = todayISO();
+  const totalDays = budget ? Math.max(1, daysBetween(budget.start, budget.end) + 1) : 1;
+
+  const { daysElapsed, daysRemaining } = useMemo(() => {
+    if (!budget) return { daysElapsed: 0, daysRemaining: 0 };
+    if (today < budget.start) {
+      return { daysElapsed: 0, daysRemaining: totalDays };
+    }
+    if (today > budget.end) {
+      return { daysElapsed: totalDays, daysRemaining: 0 };
+    }
+    const elapsed = Math.max(1, daysBetween(budget.start, today) + 1);
+    const rem = Math.max(0, daysBetween(today, budget.end));
+    return { daysElapsed: elapsed, daysRemaining: rem };
+  }, [budget, today, totalDays]);
+
+  const avgDailySpend = daysElapsed > 0 ? curTotal / daysElapsed : 0;
+  const projectedTotal = curTotal + avgDailySpend * daysRemaining;
+  const isPaceSustainable = totalBudget > 0 ? projectedTotal <= totalBudget : true;
+  const projectedDifference = Math.abs(projectedTotal - totalBudget);
+
+  // Ventilation et calculs par catégorie
   const catStats = useMemo(() => {
     if (!budget) return [];
-    const catMap = new Map<
+
+    const map = new Map<
       string,
       {
         id: string;
         name: string;
-        icon: keyof typeof Ionicons.glyphMap;
-        curSpend: number;
-        prevSpend: number;
+        spent: number;
         allocated: number;
+        hasBudget: boolean;
+        consumptionPct: number;
+        shareOfTotal: number;
       }
     >();
 
+    // Initialisation avec toutes les catégories actives ou présentes
     for (const c of db.categories) {
-      catMap.set(c.id, {
+      const allocated = budget.allocations[c.id] ?? 0;
+      map.set(c.id, {
         id: c.id,
         name: c.name,
-        // Icône personnalisée et descriptive selon la catégorie (restaurant, voiture, etc.) au lieu du portefeuille uniforme
-        icon: getCategoryIcon(c.name, c.kind),
-        curSpend: 0,
-        prevSpend: 0,
-        allocated: budget.allocations[c.id] ?? 0,
+        spent: 0,
+        allocated,
+        hasBudget: allocated > 0,
+        consumptionPct: 0,
+        shareOfTotal: 0,
       });
     }
 
+    // Cumul des dépenses réelles
     for (const tx of curTxns) {
-      const entry = catMap.get(tx.categoryId);
+      const entry = map.get(tx.categoryId);
       if (entry) {
-        entry.curSpend += Math.round(tx.amount * 1000);
-      }
-    }
-    for (const tx of prevTxns) {
-      const entry = catMap.get(tx.categoryId);
-      if (entry) {
-        entry.prevSpend += Math.round(tx.amount * 1000);
+        entry.spent += Math.round(tx.amount * 1000);
       }
     }
 
-    const list = Array.from(catMap.values())
-      .filter((item) => item.curSpend > 0 || item.prevSpend > 0 || item.allocated > 0)
+    const list = Array.from(map.values())
+      .filter((item) => item.spent > 0 || item.allocated > 0)
       .map((item) => {
-        const curDT = item.curSpend / 1000;
-        const prevDT = item.prevSpend / 1000;
-        const diffCat = curDT - prevDT;
-        const diffCatPct = prevDT > 0 ? (diffCat / prevDT) * 100 : null;
-        const curPct = curTotal > 0 ? (curDT / curTotal) * 100 : 0;
-        const budgetPct = item.allocated > 0 ? (curDT / item.allocated) * 100 : 0;
+        const spentDT = item.spent / 1000;
+        const consumptionPct =
+          item.allocated > 0 ? (spentDT / item.allocated) * 100 : 0;
+        const shareOfTotal = curTotal > 0 ? (spentDT / curTotal) * 100 : 0;
         return {
           ...item,
-          curDT,
-          prevDT,
-          diffCat,
-          diffCatPct,
-          curPct,
-          budgetPct,
+          spent: spentDT,
+          consumptionPct,
+          shareOfTotal,
         };
       });
 
-    return list.sort((a, b) => b.curDT - a.curDT);
-  }, [db.categories, budget, curTxns, prevTxns, curTotal]);
-
-  // Répartition pour le diagramme (Top 5 + Autres)
-  const chartSlices = useMemo(() => {
-    if (curTotal <= 0) return [];
-    const spentOnly = catStats.filter((c) => c.curDT > 0);
-    const top5 = spentOnly.slice(0, 5);
-    const others = spentOnly.slice(5);
-    const othersSum = others.reduce((s, c) => s + c.curDT, 0);
-
-    const slices = top5.map((c, i) => ({
-      id: c.id,
-      name: traduireCategorie(c.name),
-      amount: c.curDT,
-      pct: (c.curDT / curTotal) * 100,
-      color: CAT_COLORS[i % CAT_COLORS.length],
-    }));
-
-    if (othersSum > 0) {
-      slices.push({
-        id: 'autres',
-        name: t('autres'),
-        amount: othersSum,
-        pct: (othersSum / curTotal) * 100,
-        color: CAT_COLORS[5],
-      });
-    }
-
-    return slices;
-  }, [catStats, curTotal, t, traduireCategorie]);
-
-  // Conclusions automatisées
-  const conclusions = useMemo(() => {
-    if (!budget || curTotal <= 0) return [];
-    const phrases: string[] = [];
-
-    // 1. Catégorie la plus dépensée
-    const spentOnly = catStats.filter((c) => c.curDT > 0);
-    if (spentOnly.length > 0) {
-      const maxVal = spentOnly[0].curDT;
-      const exAequo = spentOnly.filter((c) => Math.abs(c.curDT - maxVal) < 0.001);
-      if (exAequo.length > 1) {
-        phrases.push(
-          t('conclusion_top_cat_egalite', {
-            cat1: traduireCategorie(exAequo[0].name),
-            cat2: traduireCategorie(exAequo[1].name),
-            pct: exAequo[0].curPct.toFixed(1),
-          })
-        );
-      } else {
-        phrases.push(
-          t('conclusion_top_cat', {
-            nom: traduireCategorie(spentOnly[0].name),
-            pct: spentOnly[0].curPct.toFixed(1),
-          })
-        );
+    // Tri strict du PLUS FAIBLE au PLUS FORT pourcentage de consommation (Section 5)
+    return list.sort((a, b) => {
+      // Si les deux ont un budget alloué, trier par consumptionPct croissant
+      if (a.hasBudget && b.hasBudget) {
+        return a.consumptionPct - b.consumptionPct;
       }
-    }
-
-    // 2. Catégorie avec la plus forte hausse
-    const hausses = catStats.filter((c) => c.diffCat > 0 && c.prevDT > 0 && c.diffCatPct !== null);
-    if (hausses.length > 0) {
-      hausses.sort((a, b) => (b.diffCatPct ?? 0) - (a.diffCatPct ?? 0));
-      phrases.push(
-        t('conclusion_hausse', {
-          nom: traduireCategorie(hausses[0].name),
-          pct: Math.abs(hausses[0].diffCatPct ?? 0).toFixed(1),
-        })
-      );
-    }
-
-    // 3. Catégorie avec la plus forte baisse
-    const baisses = catStats.filter((c) => c.diffCat < 0 && c.prevDT > 0 && c.diffCatPct !== null);
-    if (baisses.length > 0) {
-      baisses.sort((a, b) => (a.diffCatPct ?? 0) - (b.diffCatPct ?? 0));
-      phrases.push(
-        t('conclusion_baisse', {
-          nom: traduireCategorie(baisses[0].name),
-          pct: Math.abs(baisses[0].diffCatPct ?? 0).toFixed(1),
-        })
-      );
-    }
-
-    // 4. Respect global du budget
-    if (budget.total > 0) {
-      const globalPct = Math.round((curTotal / budget.total) * 100);
-      if (curTotal <= budget.total) {
-        phrases.push(t('respect_global_budget', { pct: globalPct }));
-      } else {
-        phrases.push(
-          t('depassement_global_budget', {
-            montant: formatDT(curTotal - budget.total),
-            pct: globalPct,
-          })
-        );
+      // Les catégories sans budget sont classées par shareOfTotal croissant
+      if (!a.hasBudget && !b.hasBudget) {
+        return a.shareOfTotal - b.shareOfTotal;
       }
+      // Catégories avec budget affichées en premier
+      return a.hasBudget ? -1 : 1;
+    });
+  }, [db.categories, budget, curTxns, curTotal]);
+
+  // Section 7 : Détection automatique de la catégorie requérant le plus d'attention
+  const attentionCategory = useMemo(() => {
+    if (catStats.length === 0 || curTotal <= 0) return null;
+
+    // 1. Chercher d'abord parmi les catégories avec budget qui sont dépassées (> 100%)
+    const exceeded = catStats.filter((c) => c.hasBudget && c.consumptionPct > 100);
+    if (exceeded.length > 0) {
+      // Trier par taux de dépassement le plus critique
+      return [...exceeded].sort((a, b) => b.consumptionPct - a.consumptionPct)[0];
     }
 
-    return phrases;
-  }, [budget, curTotal, catStats, t, traduireCategorie]);
+    // 2. Chercher les catégories avec budget proches de la limite (>= 80%)
+    const approaching = catStats.filter((c) => c.hasBudget && c.consumptionPct >= 80);
+    if (approaching.length > 0) {
+      return [...approaching].sort((a, b) => b.consumptionPct - a.consumptionPct)[0];
+    }
 
-  // Plus grosses dépenses individuelles
-  const topIndividualTxns = useMemo(() => {
-    return [...curTxns].sort((a, b) => b.amount - a.amount).slice(0, 5);
-  }, [curTxns]);
+    // 3. Chercher si une catégorie sans budget pèse de manière disproportionnée (>= 35% du total)
+    const heavyUnallocated = catStats.filter((c) => !c.hasBudget && c.shareOfTotal >= 35);
+    if (heavyUnallocated.length > 0) {
+      return [...heavyUnallocated].sort((a, b) => b.shareOfTotal - a.shareOfTotal)[0];
+    }
 
-  // Produits avec achats pour la courbe d'évolution des prix
-  const userProductsWithPurchases = useMemo(() => {
-    return db.products.filter(
-      (p) => p.userId === me.id && db.purchases.some((pu) => pu.productId === p.id)
-    );
-  }, [db.products, db.purchases, me.id]);
+    // Si toutes les catégories sont saines (< 70% ou dépenses modérées)
+    return null;
+  }, [catStats, curTotal]);
 
-  const activeProductId = selectedProductId || userProductsWithPurchases[0]?.id || null;
-  const activeProduct = db.products.find((p) => p.id === activeProductId);
+  // Section 2 : Génération dynamique de la conclusion et recommandation personnalisée
+  const { conclusionText, recommendationText } = useMemo(() => {
+    if (!budget) return { conclusionText: '', recommendationText: '' };
 
-  const productPurchasesHistory = useMemo(() => {
-    if (!activeProductId) return [];
-    return db.purchases
-      .filter((pu) => pu.productId === activeProductId)
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [db.purchases, activeProductId]);
+    let conclusion = '';
+    let recommendation = '';
 
-  const priceChartPoints = useMemo(() => {
-    return productPurchasesHistory.map((pu) => ({
-      label: pu.date.slice(5),
-      value: unitPrice(pu.price, pu.quantity),
-    }));
-  }, [productPurchasesHistory]);
+    if (curTotal <= 0) {
+      conclusion = 'Aucune transaction enregistrée pour cette période. Vos finances sont intactes.';
+      recommendation = 'Commencez à consigner vos achats du quotidien pour activer vos analyses en temps réel.';
+    } else if (isExceeded) {
+      conclusion = `Budget dépassé : vos dépenses atteignent ${formatDT(curTotal)}, soit un dépassement de ${formatDT(exceededAmount)} (${consumptionPct.toFixed(1)}% du budget initial).`;
+      recommendation = attentionCategory
+        ? `Gelez temporairement les dépenses non indispensables sur « ${traduireCategorie(attentionCategory.name)} » qui a consommé ${attentionCategory.hasBudget ? attentionCategory.consumptionPct.toFixed(0) + '%' : attentionCategory.shareOfTotal.toFixed(0) + '%'} des fonds.`
+        : 'Arrêtez tout achat superflu jusqu’au renouvellement de votre prochain cycle budgétaire.';
+    } else if (consumptionPct >= 85) {
+      conclusion = `Alerte de fin de budget : ${consumptionPct.toFixed(1)}% de votre enveloppe est déjà consommé alors qu'il reste ${daysRemaining} jour(s). Réserve disponible : ${formatDT(remainingBudget)}.`;
+      recommendation = daysRemaining > 0
+        ? `Limitez vos dépenses quotidiennes à ${formatDT(remainingBudget / daysRemaining)}/jour pour ne pas franchir votre plafond.`
+        : 'Vos dépenses sont stabilisées juste sous la limite.';
+    } else if (consumptionPct >= 65) {
+      conclusion = `Consommation intermédiaire : ${consumptionPct.toFixed(1)}% dépensé. Il vous reste ${formatDT(remainingBudget)} pour couvrir les ${daysRemaining} jour(s) à venir.`;
+      recommendation = isPaceSustainable
+        ? `Votre rythme actuel de ${formatDT(avgDailySpend)}/jour est équilibré. Maintenez cette vigilance.`
+        : `Au rythme actuel, une légère réduction de ${formatDT(projectedDifference)} d'ici la fin du mois vous évitera tout dépassement.`;
+    } else {
+      conclusion = `Excellente maîtrise financière : seulement ${consumptionPct.toFixed(1)}% consommé (${formatDT(curTotal)} dépensé sur ${formatDT(totalBudget)}). Réserve restante : ${formatDT(remainingBudget)}.`;
+      recommendation = prevTotal > 0 && isSaving
+        ? `Bravo : vous dépensez moins que la période passée (${formatDT(curTotal)} contre ${formatDT(prevTotal)}). Poursuivez cette discipline d'épargne !`
+        : `Continuez à ce rythme régulier de ${formatDT(avgDailySpend)}/jour pour terminer votre période avec un excédent d'épargne.`;
+    }
 
-  const latestPurchase =
-    productPurchasesHistory.length > 0
-      ? productPurchasesHistory[productPurchasesHistory.length - 1]
-      : null;
-  const latestStoreName = latestPurchase?.store || 'Magasin';
+    return { conclusionText: conclusion, recommendationText: recommendation };
+  }, [
+    budget,
+    curTotal,
+    isExceeded,
+    exceededAmount,
+    consumptionPct,
+    daysRemaining,
+    remainingBudget,
+    attentionCategory,
+    isPaceSustainable,
+    avgDailySpend,
+    projectedDifference,
+    totalBudget,
+    prevTotal,
+    isSaving,
+    traduireCategorie,
+  ]);
 
-  // État vide si aucun budget n'existe
+  // Si aucun budget n'est sélectionné ou actif
   if (!budget) {
     return (
       <Screen title={t('analyses')}>
-        <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
-          {t('analyses').toUpperCase()}
-        </Eyebrow>
         <EmptyState
           icon="stats-chart-outline"
           title={t('aucun_budget_actif')}
@@ -324,17 +266,14 @@ export default function AnalyticsScreen() {
   }
 
   const rangeLabel = fmtRange(budget.start, budget.end);
-  const prevRangeLabel = win ? fmtRange(win.start, win.end) : '';
-
-  const visibleCatStats = expandedDetails ? catStats : catStats.slice(0, 4);
 
   return (
     <Screen title={t('analyses')}>
-      {/* 1. Sélecteur de période cliquable */}
+      {/* Sélecteur de période de référence cliquable */}
       <Pressable
         onPress={() => router.push('/(tabs)/calendrier')}
         style={({ pressed }) => [
-          styles.periodCard,
+          styles.periodSelector,
           { flexDirection: isRTL ? 'row-reverse' : 'row' },
           pressed && { opacity: 0.8 },
         ]}
@@ -361,423 +300,641 @@ export default function AnalyticsScreen() {
         />
       </Pressable>
 
-      {/* 2. Carte de résumé et Comparaison Explicite des Périodes */}
+      {/* ============================================================ */}
+      {/* 1. CARTE DE SYNTHÈSE BUDGÉTAIRE VERT FORÊT */}
+      {/* ============================================================ */}
       <View style={styles.summaryCard}>
-        <Text
-          style={[styles.summaryEyebrow, { textAlign: isRTL ? 'right' : 'left' }]}
+        <View
+          style={{
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
         >
-          {t('depense_totale').toUpperCase()} · {rangeLabel}
-        </Text>
+          <Text style={styles.summaryEyebrow}>
+            {t('synthese_budget').toUpperCase()}
+          </Text>
+          <View
+            style={[
+              styles.summaryBadge,
+              isExceeded && { backgroundColor: 'rgba(220, 38, 38, 0.25)' },
+            ]}
+          >
+            <Text
+              style={[
+                styles.summaryBadgeText,
+                isExceeded && { color: '#FF8A80', fontWeight: '700' },
+              ]}
+            >
+              {isExceeded ? t('depassement_budget') : `${consumptionPct.toFixed(1)}%`}
+            </Text>
+          </View>
+        </View>
+
+        {/* Montant principal consommé */}
         <Text
-          style={[styles.summaryAmount, { textAlign: isRTL ? 'right' : 'left' }]}
+          style={[
+            styles.summaryAmount,
+            { textAlign: isRTL ? 'right' : 'left' },
+            isExceeded && { color: '#FF8A80' },
+          ]}
         >
           {formatDT(curTotal)}
         </Text>
+        <Text style={[styles.summarySub, { textAlign: isRTL ? 'right' : 'left' }]}>
+          {t('montant_consomme')} · {rangeLabel}
+        </Text>
 
-        {/* Bloc explicatif détaillant exactement ce qui est comparé */}
-        <View style={{ marginTop: 10, padding: 10, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, gap: 6 }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.white, textAlign: isRTL ? 'right' : 'left' }}>
-            Comparaison temporelle :
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.track, textAlign: isRTL ? 'right' : 'left' }}>
-            • Période active ({budget.start} au {budget.end}) : {formatDT(curTotal)}
-          </Text>
-          {win && (
-            <Text style={{ fontSize: 12, color: colors.track, textAlign: isRTL ? 'right' : 'left' }}>
-              • Période précédente ({win.start} au {win.end}) : {formatDT(prevTotal)}
+        {/* Grille des 3 métriques clés : Total, Restant / Dépassé, % */}
+        <View
+          style={[
+            styles.summaryGrid,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          {/* Métrique 1 : Budget total */}
+          <View style={styles.summaryGridItem}>
+            <Text style={styles.gridLabel}>{t('budget_total')}</Text>
+            <Text style={styles.gridValue}>{formatDT(totalBudget)}</Text>
+          </View>
+
+          {/* Métrique 2 : Restant ou Dépassé en ROUGE */}
+          <View style={styles.summaryGridItem}>
+            <Text style={styles.gridLabel}>
+              {isExceeded ? t('depassement_budget') : t('budget_restant')}
             </Text>
-          )}
+            <Text
+              style={[
+                styles.gridValue,
+                isExceeded && { color: '#FF8A80', fontWeight: '700' },
+              ]}
+            >
+              {isExceeded ? `+${formatDT(exceededAmount)}` : formatDT(remainingBudget)}
+            </Text>
+          </View>
 
-          {prevTotal === 0 ? (
-            <View style={[styles.noPrevBox, { flexDirection: isRTL ? 'row-reverse' : 'row', marginTop: 4 }]}>
-              <Ionicons name="information-circle-outline" size={16} color={colors.mint} />
-              <Text style={[styles.noPrevText, { textAlign: isRTL ? 'right' : 'left' }]}>
-                {t('pas_de_depense_periode_prec')}
-              </Text>
+          {/* Métrique 3 : Pourcentage global */}
+          <View style={styles.summaryGridItem}>
+            <Text style={styles.gridLabel}>{t('pourcentage_consomme')}</Text>
+            <Text
+              style={[
+                styles.gridValue,
+                isExceeded && { color: '#FF8A80', fontWeight: '700' },
+              ]}
+            >
+              {consumptionPct.toFixed(1)}%
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* ============================================================ */}
+      {/* 2. CONCLUSION FINANCIÈRE ET RECOMMANDATION PERSONNALISÉE */}
+      {/* ============================================================ */}
+      <View style={styles.insightCard}>
+        {/* En-tête : Conclusion financière */}
+        <View
+          style={[
+            styles.insightHeader,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          <Ionicons name="sparkles" size={18} color={colors.forest} />
+          <Text style={styles.insightHeaderTitle}>
+            {t('conclusion_financiere')}
+          </Text>
+        </View>
+        <Text
+          style={[styles.insightBodyText, { textAlign: isRTL ? 'right' : 'left' }]}
+        >
+          {conclusionText}
+        </Text>
+
+        {/* Séparateur fin */}
+        <View style={styles.insightDivider} />
+
+        {/* Sous-section : Recommandation personnalisée */}
+        <View
+          style={[
+            styles.insightHeader,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          <Ionicons name="bulb-outline" size={18} color={colors.green} />
+          <Text style={[styles.insightHeaderTitle, { color: colors.green }]}>
+            {t('recommandation_personnalisee')}
+          </Text>
+        </View>
+        <Text
+          style={[styles.insightBodyText, { textAlign: isRTL ? 'right' : 'left' }]}
+        >
+          {recommendationText}
+        </Text>
+      </View>
+
+      {/* ============================================================ */}
+      {/* 3. COMPARAISON VISUELLE AVEC LA PÉRIODE PRÉCÉDENTE */}
+      {/* ============================================================ */}
+      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
+        {t('comparaison_temporelle')}
+      </SectionTitle>
+
+      <View style={styles.comparisonCard}>
+        {win ? (
+          <>
+            <View
+              style={[
+                styles.comparisonRow,
+                { flexDirection: isRTL ? 'row-reverse' : 'row' },
+              ]}
+            >
+              {/* Colonne Période active */}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.comparisonPeriodTitle}>
+                  {t('periode_actuelle')}
+                </Text>
+                <Text style={styles.comparisonDates}>
+                  {budget.start} au {budget.end}
+                </Text>
+                <Text style={styles.comparisonAmount}>{formatDT(curTotal)}</Text>
+              </View>
+
+              {/* Point de séparation vertical */}
+              <View style={styles.verticalDivider} />
+
+              {/* Colonne Période précédente symétrique */}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.comparisonPeriodTitle}>
+                  {t('periode_precedente')}
+                </Text>
+                <Text style={styles.comparisonDates}>
+                  {win.start} au {win.end}
+                </Text>
+                <Text style={styles.comparisonAmount}>{formatDT(prevTotal)}</Text>
+              </View>
             </View>
-          ) : (
-            <View style={{ marginTop: 6, gap: 4 }}>
+
+            {/* Badge indicateur de tendance */}
+            {prevTotal === 0 ? (
               <View
                 style={[
-                  styles.statusBadge,
+                  styles.trendBadge,
                   {
-                    backgroundColor: diff < 0 ? 'rgba(217, 240, 228, 0.25)' : diff > 0 ? 'rgba(220, 119, 112, 0.25)' : 'rgba(255, 255, 255, 0.2)',
+                    backgroundColor: '#EBF4F0',
                     flexDirection: isRTL ? 'row-reverse' : 'row',
-                    alignSelf: isRTL ? 'flex-end' : 'flex-start',
+                  },
+                ]}
+              >
+                <Ionicons name="information-circle-outline" size={16} color={colors.green} />
+                <Text style={[styles.trendBadgeText, { color: colors.forest }]}>
+                  {t('pas_de_depense_periode_prec')}
+                </Text>
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.trendBadge,
+                  {
+                    backgroundColor: isSaving
+                      ? '#E8F5E9'
+                      : isStable
+                      ? '#F5F5F5'
+                      : '#FFEBEE',
+                    flexDirection: isRTL ? 'row-reverse' : 'row',
                   },
                 ]}
               >
                 <Ionicons
-                  name={diff < 0 ? 'trending-down' : diff > 0 ? 'trending-up' : 'remove-outline'}
-                  size={16}
-                  color={diff < 0 ? colors.mint : diff > 0 ? colors.coral : colors.white}
+                  name={
+                    isSaving
+                      ? 'trending-down'
+                      : isStable
+                      ? 'remove-outline'
+                      : 'trending-up'
+                  }
+                  size={18}
+                  color={isSaving ? colors.green : isStable ? colors.muted : colors.coral}
                 />
                 <Text
                   style={[
-                    styles.statusText,
-                    { color: diff < 0 ? colors.mint : diff > 0 ? colors.coral : colors.white },
+                    styles.trendBadgeText,
+                    {
+                      color: isSaving
+                        ? colors.green
+                        : isStable
+                        ? colors.muted
+                        : colors.coral,
+                    },
                   ]}
                 >
-                  {diff < 0 ? 'Baisse (Économie)' : diff > 0 ? 'Hausse des dépenses' : 'Stabilité des dépenses'} : {diff < 0 ? '−' : diff > 0 ? '+' : ''}{Math.abs(pctDiff ?? 0).toFixed(1)}% ({formatDT(Math.abs(diff))})
+                  {isSaving
+                    ? `Baisse des dépenses (Économie) : −${Math.abs(pctDiff ?? 0).toFixed(1)}% (${formatDT(Math.abs(diff))})`
+                    : isStable
+                    ? `Stabilité des dépenses (0.000 DT)`
+                    : `Hausse des dépenses : +${Math.abs(pctDiff ?? 0).toFixed(1)}% (${formatDT(Math.abs(diff))})`}
                 </Text>
               </View>
-            </View>
-          )}
+            )}
+          </>
+        ) : (
+          <Text style={{ fontSize: 13, color: colors.muted }}>
+            {t('donnees_insuffisantes')}
+          </Text>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/* 4. GRAPHIQUE DE CONSOMMATION DU BUDGET */}
+      {/* ============================================================ */}
+      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
+        {t('graphique_consommation_budget')}
+      </SectionTitle>
+
+      <View style={styles.cardContainer}>
+        {/* En-tête des chiffres de la jauge */}
+        <View
+          style={[
+            styles.gaugeHeader,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          <View>
+            <Text style={styles.gaugeSpentLabel}>{t('montant_consomme')}</Text>
+            <Text
+              style={[
+                styles.gaugeSpentAmount,
+                isExceeded && { color: colors.coral },
+              ]}
+            >
+              {formatDT(curTotal)} ({consumptionPct.toFixed(1)}%)
+            </Text>
+          </View>
+          <View style={{ alignItems: isRTL ? 'flex-start' : 'flex-end' }}>
+            <Text style={styles.gaugeCeilLabel}>{t('seuil_budget_total')}</Text>
+            <Text style={styles.gaugeCeilAmount}>{formatDT(totalBudget)}</Text>
+          </View>
+        </View>
+
+        {/* Barre de progression avec marqueur de seuil 100% */}
+        <View style={styles.gaugeTrack}>
+          <View
+            style={[
+              styles.gaugeFill,
+              {
+                width: `${Math.min(100, consumptionPct)}%`,
+                backgroundColor: isExceeded
+                  ? colors.coral
+                  : consumptionPct >= 80
+                  ? colors.gold
+                  : colors.green,
+                alignSelf: isRTL ? 'flex-end' : 'flex-start',
+              },
+            ]}
+          />
+        </View>
+
+        {/* Sous-titre informatif du solde restant */}
+        <View
+          style={[
+            styles.gaugeFooter,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          <Text style={styles.gaugeFooterText}>
+            {isExceeded
+              ? `Dépassement de ${formatDT(exceededAmount)} au-delà du seuil fixé`
+              : `${formatDT(remainingBudget)} encore disponibles`}
+          </Text>
+          <Text style={styles.gaugeFooterDays}>
+            {daysRemaining} {t('jours_restants').toLowerCase()}
+          </Text>
         </View>
       </View>
 
-      {/* 3. Répartition par catégorie */}
+      {/* ============================================================ */}
+      {/* 5. CONSOMMATION PAR CATÉGORIE (DU PLUS FAIBLE AU PLUS FORT) */}
+      {/* ============================================================ */}
       <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('repartition_categories')}
+        {t('consommation_par_categorie')}
       </SectionTitle>
 
-      {curTotal <= 0 ? (
-        <AlertBanner
-          tone="info"
-          title={t('aucune_depense')}
-          detail={t('pas_encore_comparer')}
-        />
-      ) : (
-        <View style={styles.chartCard}>
-          {/* Diagramme horizontal segmenté proportionnel */}
-          <View
-            style={[
-              styles.segmentedBar,
-              { flexDirection: isRTL ? 'row-reverse' : 'row' },
-            ]}
-          >
-            {chartSlices.map((slice) => (
-              <View
-                key={slice.id}
-                style={{
-                  width: `${slice.pct}%`,
-                  height: '100%',
-                  backgroundColor: slice.color,
-                }}
-              />
-            ))}
-          </View>
-
-          {/* Légende ordonnée du plus dépensé au moins dépensé */}
-          <View style={{ gap: 10, marginTop: 14 }}>
-            {chartSlices.map((slice) => (
-              <View
-                key={slice.id}
-                style={[
-                  styles.legendRow,
-                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.legendLeft,
-                    { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                  ]}
-                >
-                  <View style={[styles.dot, { backgroundColor: slice.color }]} />
-                  <Text style={styles.legendName}>{slice.name}</Text>
-                </View>
-                <View
-                  style={[
-                    styles.legendRight,
-                    { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                  ]}
-                >
-                  <Text style={styles.legendPct}>{slice.pct.toFixed(1)}%</Text>
-                  <Text style={styles.legendAmount}>{formatDT(slice.amount)}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
+      {catStats.length === 0 ? (
+        <View style={styles.cardContainer}>
+          <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center' }}>
+            {t('aucune_depense')}
+          </Text>
         </View>
-      )}
+      ) : (
+        <View style={{ gap: 10 }}>
+          {catStats.map((catItem) => {
+            const rawName = catItem.name;
+            const transName = traduireCategorie(rawName);
+            const icon = getCategoryIcon(rawName);
 
-      {/* 4. Tableau détaillé */}
-      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('tableau_detaille')}
-      </SectionTitle>
+            // Couleur dynamique : vert (< 70%), jaune (70-99%), rouge (>= 100%)
+            const itemColor =
+              catItem.hasBudget
+                ? catItem.consumptionPct >= 100
+                  ? colors.coral
+                  : catItem.consumptionPct >= 70
+                  ? colors.gold
+                  : colors.green
+                : catItem.shareOfTotal >= 35
+                ? colors.gold
+                : colors.green;
 
-      <View style={{ gap: 10 }}>
-        {visibleCatStats.map((item) => {
-          const catTitle = traduireCategorie(item.name);
-          const hasPrev = item.prevDT > 0;
-          const isDecrease = item.diffCat <= 0;
-          const consumptionRatio =
-            item.allocated > 0 ? Math.min(1, item.curDT / item.allocated) : 0;
-          const isOverBudget = item.allocated > 0 && item.curDT > item.allocated;
+            const progressRatio = catItem.hasBudget
+              ? Math.min(100, catItem.consumptionPct)
+              : Math.min(100, catItem.shareOfTotal);
 
-          return (
-            <View key={item.id} style={styles.detailCard}>
-              <View
-                style={[
-                  styles.detailHeader,
-                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                ]}
-              >
-                <Text style={styles.detailTitle}>{catTitle}</Text>
-                <Text style={styles.detailCurrentSpend}>
-                  {formatDT(item.curDT)}
-                  {curTotal > 0 ? ` (${item.curPct.toFixed(1)}%)` : ''}
-                </Text>
-              </View>
-
-              <View
-                style={[
-                  styles.detailSubRow,
-                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                ]}
-              >
-                <Text style={styles.detailPrevText}>
-                  {t('periode_precedente')} : {formatDT(item.prevDT)}
-                </Text>
-
-                {hasPrev ? (
+            return (
+              <View key={catItem.id} style={styles.categoryCard}>
+                {/* Ligne d'en-tête de la catégorie */}
+                <View
+                  style={[
+                    styles.categoryHeaderRow,
+                    { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                  ]}
+                >
                   <View
                     style={[
-                      styles.deltaBadge,
-                      {
-                        backgroundColor: isDecrease ? '#E8F5E9' : '#FFEBEE',
-                        flexDirection: isRTL ? 'row-reverse' : 'row',
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={isDecrease ? 'arrow-down' : 'arrow-up'}
-                      size={12}
-                      color={isDecrease ? colors.green : colors.coral}
-                    />
-                    <Text
-                      style={[
-                        styles.deltaText,
-                        { color: isDecrease ? colors.green : colors.coral },
-                      ]}
-                    >
-                      {Math.abs(item.diffCatPct ?? 0).toFixed(1)}% (
-                      {isDecrease ? '−' : '+'}
-                      {formatDT(Math.abs(item.diffCat))})
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={styles.newBadgeText}>+100%</Text>
-                )}
-              </View>
-
-              {item.allocated > 0 ? (
-                <View style={{ marginTop: 6, gap: 4 }}>
-                  <View style={styles.progressTrack}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        {
-                          width: `${consumptionRatio * 100}%`,
-                          backgroundColor: isOverBudget
-                            ? colors.coral
-                            : item.budgetPct >= 80
-                            ? colors.gold
-                            : colors.green,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <View
-                    style={[
-                      styles.budgetRatioRow,
+                      styles.categoryNameBox,
                       { flexDirection: isRTL ? 'row-reverse' : 'row' },
                     ]}
                   >
-                    <Text style={styles.budgetRatioText}>
-                      {t('consommation_budget')} : {item.budgetPct.toFixed(0)}%
-                    </Text>
-                    <Text style={styles.budgetAllocText}>
-                      {t('enveloppe_budgetaire')} : {formatDT(item.allocated)}
-                    </Text>
+                    <Ionicons name={icon} size={18} color={itemColor} />
+                    <Text style={styles.categoryNameText}>{transName}</Text>
                   </View>
+                  <Text style={styles.categorySpentText}>
+                    {formatDT(catItem.spent)}
+                  </Text>
                 </View>
-              ) : null}
-            </View>
-          );
-        })}
 
-        {catStats.length > 4 ? (
-          <Button
-            label={expandedDetails ? t('voir_moins') : t('voir_plus')}
-            variant="secondary"
-            onPress={() => setExpandedDetails((v) => !v)}
-          />
-        ) : null}
-      </View>
+                {/* Barre de progression visuelle */}
+                <View style={styles.catProgressTrack}>
+                  <View
+                    style={[
+                      styles.catProgressFill,
+                      {
+                        width: `${progressRatio}%`,
+                        backgroundColor: itemColor,
+                        alignSelf: isRTL ? 'flex-end' : 'flex-start',
+                      },
+                    ]}
+                  />
+                </View>
 
-      {/* 5. Carte de conclusions */}
-      {conclusions.length > 0 ? (
-        <>
-          <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-            {t('conclusion_titre')}
-          </SectionTitle>
-          <View style={styles.conclusionsCard}>
-            <View
-              style={[
-                styles.conclusionsHeader,
-                { flexDirection: isRTL ? 'row-reverse' : 'row' },
-              ]}
-            >
-              <Ionicons name="sparkles" size={20} color={colors.green} />
-              <Text style={styles.conclusionsHeaderTitle}>
-                {t('conclusion_titre')}
-              </Text>
-            </View>
-            <View style={{ gap: 8, marginTop: 4 }}>
-              {conclusions.map((phrase, idx) => (
-                <Text
-                  key={idx}
-                  style={[
-                    styles.conclusionParagraph,
-                    { textAlign: isRTL ? 'right' : 'left' },
-                  ]}
-                >
-                  • {phrase}
-                </Text>
-              ))}
-            </View>
-          </View>
-        </>
-      ) : null}
-
-      {/* 6. Deux blocs finaux */}
-      {/* Bloc A : Classement des plus grosses dépenses individuelles */}
-      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('plus_grosses_depenses')}
-      </SectionTitle>
-
-      {topIndividualTxns.length === 0 ? (
-        <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
-          {t('pas_encore_comparer')}
-        </Body>
-      ) : (
-        <View style={{ gap: 8 }}>
-          {topIndividualTxns.map((tx) => (
-            <View
-              key={tx.id}
-              style={[
-                styles.topExpenseCard,
-                { flexDirection: isRTL ? 'row-reverse' : 'row' },
-              ]}
-            >
-              <View style={styles.topExpenseIconBox}>
-                {/* Icône descriptive de l'opération selon sa catégorie réelle */}
-                <Ionicons
-                  name={
-                    tx.kind === 'purchase'
-                      ? 'bag-outline'
-                      : getCategoryIcon(categoryName(db, tx.categoryId), 'expense')
-                  }
-                  size={20}
-                  color={colors.green}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.topExpenseTitle,
-                    { textAlign: isRTL ? 'right' : 'left' },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {tx.title}
-                </Text>
-                <Text
-                  style={[
-                    styles.topExpenseSub,
-                    { textAlign: isRTL ? 'right' : 'left' },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {[categoryName(db, tx.categoryId), tx.date].filter(Boolean).join(' · ')}
-                </Text>
-              </View>
-              <Text style={styles.topExpenseAmount}>{formatDT(tx.amount)}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* Bloc B : Évolution du prix unitaire d'un produit choisi */}
-      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('evolution_prix_unitaire')}
-      </SectionTitle>
-
-      {userProductsWithPurchases.length === 0 ? (
-        <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
-          {t('aucun_produit_enregistre')}
-        </Body>
-      ) : (
-        <View style={{ gap: 12 }}>
-          <Text
-            style={[styles.productPickerPrompt, { textAlign: isRTL ? 'right' : 'left' }]}
-          >
-            {t('selectionner_produit_evolution')}
-          </Text>
-          <Chips
-            options={userProductsWithPurchases.map((p) => ({
-              value: p.id,
-              label: p.name,
-            }))}
-            value={activeProductId ?? ''}
-            onChange={(val) => setSelectedProductId(val)}
-          />
-
-          {activeProduct && priceChartPoints.length > 0 ? (
-            <View style={{ gap: 8 }}>
-              <PriceChart
-                title={activeProduct.name}
-                unit={activeProduct.unit || 'pièce'}
-                points={priceChartPoints}
-              />
-              {latestPurchase ? (
+                {/* Ligne informative : Enveloppe allouée vs Part du total */}
                 <View
                   style={[
-                    styles.latestPriceBox,
+                    styles.categoryMetaRow,
                     { flexDirection: isRTL ? 'row-reverse' : 'row' },
                   ]}
                 >
-                  <Ionicons name="pricetag-outline" size={16} color={colors.forest} />
-                  <Text style={styles.latestPriceText}>
-                    {t('derniers_prix_observes', {
-                      prix: formatDT(unitPrice(latestPurchase.price, latestPurchase.quantity)),
-                      magasin: latestStoreName,
-                    })}
-                  </Text>
+                  {catItem.hasBudget ? (
+                    <>
+                      <Text style={[styles.categoryMetaText, { color: itemColor, fontWeight: '700' }]}>
+                        {catItem.consumptionPct.toFixed(1)}% {t('pourcentage_consomme_enveloppe')}
+                      </Text>
+                      <Text style={styles.categoryMetaAlloc}>
+                        {t('enveloppe_budgetaire')} : {formatDT(catItem.allocated)}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.categoryMetaText}>
+                        {t('part_du_total')} : {catItem.shareOfTotal.toFixed(1)}%
+                      </Text>
+                      <Text style={styles.categoryMetaUnallocated}>
+                        ({t('sans_budget_alloue')})
+                      </Text>
+                    </>
+                  )}
                 </View>
-              ) : null}
-            </View>
-          ) : (
-            <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
-              {t('pas_encore_comparer')}
-            </Body>
-          )}
+              </View>
+            );
+          })}
         </View>
       )}
+
+      {/* ============================================================ */}
+      {/* 6. ANALYSE DU RYTHME QUOTIDIEN (PACE INSIGHT) */}
+      {/* ============================================================ */}
+      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
+        {t('rythme_depenses_quotidien')}
+      </SectionTitle>
+
+      <View style={styles.cardContainer}>
+        {/* Métriques d'allure : Moyenne / jour, Jours écoulés, Jours restants */}
+        <View
+          style={[
+            styles.paceGrid,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          <View style={styles.paceGridItem}>
+            <Text style={styles.paceLabel}>{t('moyenne_par_jour')}</Text>
+            <Text style={styles.paceValue}>{formatDT(avgDailySpend)}</Text>
+          </View>
+          <View style={styles.paceGridItem}>
+            <Text style={styles.paceLabel}>{t('jours_ecoules')}</Text>
+            <Text style={styles.paceValue}>
+              {daysElapsed} / {totalDays}
+            </Text>
+          </View>
+          <View style={styles.paceGridItem}>
+            <Text style={styles.paceLabel}>{t('jours_restants')}</Text>
+            <Text style={styles.paceValue}>{daysRemaining} j</Text>
+          </View>
+        </View>
+
+        <View style={styles.paceDivider} />
+
+        {/* Estimation de fin de période */}
+        <View
+          style={[
+            styles.paceProjectionRow,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.paceProjectionLabel}>
+              {t('depense_estimee_fin_periode')} :
+            </Text>
+            <Text
+              style={[
+                styles.paceProjectionValue,
+                !isPaceSustainable && { color: colors.coral },
+              ]}
+            >
+              {formatDT(projectedTotal)}
+            </Text>
+          </View>
+
+          {/* Badge de durabilité */}
+          <View
+            style={[
+              styles.paceBadge,
+              {
+                backgroundColor: isPaceSustainable ? '#E8F5E9' : '#FFEBEE',
+                flexDirection: isRTL ? 'row-reverse' : 'row',
+              },
+            ]}
+          >
+            <Ionicons
+              name={isPaceSustainable ? 'checkmark-circle' : 'alert-circle'}
+              size={16}
+              color={isPaceSustainable ? colors.green : colors.coral}
+            />
+            <Text
+              style={[
+                styles.paceBadgeText,
+                { color: isPaceSustainable ? colors.green : colors.coral },
+              ]}
+            >
+              {isPaceSustainable ? t('rythme_soutenable') : t('risque_depassement')}
+            </Text>
+          </View>
+        </View>
+
+        {/* Message d'alerte ou de confirmation de rythme */}
+        <Text
+          style={[
+            styles.paceMessageText,
+            { textAlign: isRTL ? 'right' : 'left' },
+            !isPaceSustainable && { color: colors.coral },
+          ]}
+        >
+          {isPaceSustainable
+            ? `Au rythme actuel de ${formatDT(avgDailySpend)}/jour, votre budget est pleinement respecté avec une marge estimée de ${formatDT(projectedDifference)}.`
+            : `Au rythme actuel de ${formatDT(avgDailySpend)}/jour, vous risquez de dépasser votre budget de ${formatDT(projectedDifference)}.`}
+        </Text>
+      </View>
+
+      {/* ============================================================ */}
+      {/* 7. CATÉGORIE REQUÉRANT LE PLUS D'ATTENTION */}
+      {/* ============================================================ */}
+      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
+        {t('categorie_attention')}
+      </SectionTitle>
+
+      {attentionCategory ? (
+        <View style={styles.attentionCard}>
+          <View
+            style={[
+              styles.attentionHeader,
+              { flexDirection: isRTL ? 'row-reverse' : 'row' },
+            ]}
+          >
+            <View
+              style={[
+                styles.attentionTitleBox,
+                { flexDirection: isRTL ? 'row-reverse' : 'row' },
+              ]}
+            >
+              <Ionicons
+                name={getCategoryIcon(attentionCategory.name)}
+                size={22}
+                color={colors.coral}
+              />
+              <Text style={styles.attentionCategoryName}>
+                {traduireCategorie(attentionCategory.name)}
+              </Text>
+            </View>
+            <View style={styles.attentionBadge}>
+              <Text style={styles.attentionBadgeText}>
+                {attentionCategory.hasBudget
+                  ? `${attentionCategory.consumptionPct.toFixed(0)}% consommé`
+                  : `${attentionCategory.shareOfTotal.toFixed(0)}% du total`}
+              </Text>
+            </View>
+          </View>
+
+          {/* Explication du besoin d'attention */}
+          <Text
+            style={[
+              styles.attentionReasonText,
+              { textAlign: isRTL ? 'right' : 'left' },
+            ]}
+          >
+            {attentionCategory.hasBudget
+              ? `Cette catégorie a consommé ${attentionCategory.consumptionPct.toFixed(1)}% de son allocation (${formatDT(attentionCategory.spent)} sur ${formatDT(attentionCategory.allocated)}). Son taux d'épuisement est le plus préoccupant du budget.`
+              : `Cette catégorie représente ${attentionCategory.shareOfTotal.toFixed(1)}% de l'ensemble de vos dépenses actuelles (${formatDT(attentionCategory.spent)}), sans enveloppe budgétaire dédiée.`}
+          </Text>
+
+          {/* Suggestion pratique pour maîtriser les dépenses */}
+          <View style={styles.suggestionBox}>
+            <View
+              style={[
+                styles.suggestionHeader,
+                { flexDirection: isRTL ? 'row-reverse' : 'row' },
+              ]}
+            >
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.forest} />
+              <Text style={styles.suggestionHeaderTitle}>
+                {t('suggestion_action')} :
+              </Text>
+            </View>
+            <Text
+              style={[
+                styles.suggestionBody,
+                { textAlign: isRTL ? 'right' : 'left' },
+              ]}
+            >
+              {attentionCategory.hasBudget
+                ? `Différez les achats non urgents pour cette catégorie ou réallouez une fraction du solde disponible d'un autre poste pour équilibrer.`
+                : `Définissez un plafond budgétaire explicite pour « ${traduireCategorie(attentionCategory.name)} » lors de votre prochaine période pour mieux encadrer ses sorties.`}
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.healthyAttentionCard}>
+          <View
+            style={[
+              styles.attentionTitleBox,
+              { flexDirection: isRTL ? 'row-reverse' : 'row' },
+            ]}
+          >
+            <Ionicons name="checkmark-circle" size={24} color={colors.green} />
+            <Text style={styles.healthyAttentionTitle}>
+              {t('toutes_categories_maitrisees')}
+            </Text>
+          </View>
+          <Text
+            style={[
+              styles.healthyAttentionBody,
+              { textAlign: isRTL ? 'right' : 'left' },
+            ]}
+          >
+            Aucune catégorie ne présente de surconsommation anormale. Toutes vos enveloppes sont sous le seuil critique.
+          </Text>
+        </View>
+      )}
+
+      {/* Espacement de sécurité en bas */}
+      <View style={{ height: 24 }} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  periodCard: {
+  periodSelector: {
     backgroundColor: colors.white,
     borderRadius: radius.card,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     alignItems: 'center',
     gap: 12,
     borderWidth: 1,
     borderColor: colors.border,
   },
   periodLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.forest,
   },
   periodHint: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.muted,
   },
   summaryCard: {
@@ -792,219 +949,364 @@ const styles = StyleSheet.create({
     color: colors.mint,
     letterSpacing: 0.5,
   },
+  summaryBadge: {
+    backgroundColor: 'rgba(217, 240, 228, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  summaryBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.mint,
+  },
   summaryAmount: {
     fontSize: 32,
     fontWeight: '700',
     color: colors.white,
-    lineHeight: 40,
+    lineHeight: 38,
   },
-  noPrevBox: {
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 6,
-    paddingTop: 6,
-  },
-  noPrevText: {
+  summarySub: {
     fontSize: 12,
-    color: colors.mint,
+    color: colors.track,
+    marginBottom: 8,
+  },
+  summaryGrid: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+    paddingTop: 12,
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  summaryGridItem: {
     flex: 1,
   },
+  gridLabel: {
+    fontSize: 11,
+    color: colors.track,
+    marginBottom: 2,
+  },
+  gridValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.white,
+  },
+  insightCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    gap: 8,
+  },
+  insightHeader: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  insightHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  insightBodyText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#333333',
+  },
+  insightDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 4,
+  },
+  comparisonCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    gap: 12,
+  },
   comparisonRow: {
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  comparisonPeriodTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.muted,
+    textTransform: 'uppercase',
+  },
+  comparisonDates: {
+    fontSize: 11,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  comparisonAmount: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.forest,
+    marginTop: 4,
+  },
+  verticalDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+    alignSelf: 'stretch',
+  },
+  trendBadge: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
     alignItems: 'center',
     gap: 8,
   },
-  statusBadge: {
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    gap: 6,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  prevDetailText: {
+  trendBadgeText: {
     fontSize: 12,
-    color: colors.mint,
+    fontWeight: '600',
+    flex: 1,
   },
-  chartCard: {
+  cardContainer: {
     backgroundColor: colors.white,
     borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: 16,
+    gap: 12,
   },
-  segmentedBar: {
-    height: 18,
-    borderRadius: 9,
+  gaugeHeader: {
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  gaugeSpentLabel: {
+    fontSize: 11,
+    color: colors.muted,
+    fontWeight: '500',
+  },
+  gaugeSpentAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.forest,
+    marginTop: 2,
+  },
+  gaugeCeilLabel: {
+    fontSize: 11,
+    color: colors.muted,
+    fontWeight: '500',
+  },
+  gaugeCeilAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.forest,
+    marginTop: 2,
+  },
+  gaugeTrack: {
+    height: 12,
+    backgroundColor: '#EBEBEB',
+    borderRadius: 6,
     overflow: 'hidden',
-    backgroundColor: colors.border,
   },
-  legendRow: {
+  gaugeFill: {
+    height: 12,
+    borderRadius: 6,
+  },
+  gaugeFooter: {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  legendLeft: {
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.forest,
-  },
-  legendRight: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  legendPct: {
-    fontSize: 13,
-    fontWeight: '600',
+  gaugeFooterText: {
+    fontSize: 12,
     color: colors.muted,
+    fontWeight: '500',
   },
-  legendAmount: {
-    fontSize: 13,
-    fontWeight: '700',
+  gaugeFooterDays: {
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.forest,
   },
-  detailCard: {
+  categoryCard: {
     backgroundColor: colors.white,
     borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: 14,
     gap: 8,
   },
-  detailHeader: {
+  categoryHeaderRow: {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  detailTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.forest,
-  },
-  detailCurrentSpend: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.forest,
-  },
-  detailSubRow: {
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  detailPrevText: {
-    fontSize: 12,
-    color: colors.muted,
-  },
-  deltaBadge: {
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    gap: 4,
-  },
-  deltaText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  newBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.green,
-  },
-  progressTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.border,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  budgetRatioRow: {
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  budgetRatioText: {
-    fontSize: 11,
-    color: colors.muted,
-  },
-  budgetAllocText: {
-    fontSize: 11,
-    color: colors.muted,
-  },
-  conclusionsCard: {
-    backgroundColor: colors.white,
-    borderRadius: radius.card,
-    padding: 16,
-    gap: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.green,
-  },
-  conclusionsHeader: {
+  categoryNameBox: {
     alignItems: 'center',
     gap: 8,
   },
-  conclusionsHeaderTitle: {
+  categoryNameText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  categorySpentText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  catProgressTrack: {
+    height: 6,
+    backgroundColor: '#EBEBEB',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  catProgressFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  categoryMetaRow: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  categoryMetaText: {
+    fontSize: 12,
+    color: colors.forest,
+  },
+  categoryMetaAlloc: {
+    fontSize: 12,
+    color: colors.muted,
+  },
+  categoryMetaUnallocated: {
+    fontSize: 12,
+    color: colors.muted,
+    fontStyle: 'italic',
+  },
+  paceGrid: {
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  paceGridItem: {
+    flex: 1,
+  },
+  paceLabel: {
+    fontSize: 11,
+    color: colors.muted,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  paceValue: {
     fontSize: 15,
     fontWeight: '700',
     color: colors.forest,
   },
-  conclusionParagraph: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.forest,
+  paceDivider: {
+    height: 1,
+    backgroundColor: colors.border,
   },
-  topExpenseCard: {
-    backgroundColor: colors.white,
-    borderRadius: radius.card,
-    padding: 12,
+  paceProjectionRow: {
+    justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
   },
-  topExpenseIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.mint,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topExpenseTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.forest,
-  },
-  topExpenseSub: {
-    fontSize: 11,
+  paceProjectionLabel: {
+    fontSize: 12,
     color: colors.muted,
   },
-  topExpenseAmount: {
-    fontSize: 14,
+  paceProjectionValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.forest,
+    marginTop: 2,
+  },
+  paceBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    alignItems: 'center',
+    gap: 6,
+  },
+  paceBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  paceMessageText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.forest,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  attentionCard: {
+    backgroundColor: '#FFF8F8',
+    borderRadius: radius.card,
+    borderWidth: 1.5,
+    borderColor: '#FFCDD2',
+    padding: 16,
+    gap: 10,
+  },
+  attentionHeader: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  attentionTitleBox: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  attentionCategoryName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.coral,
+  },
+  attentionBadge: {
+    backgroundColor: colors.coralSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  attentionBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.coral,
+  },
+  attentionReasonText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#444444',
+  },
+  suggestionBox: {
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+    padding: 12,
+    gap: 6,
+  },
+  suggestionHeader: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  suggestionHeaderTitle: {
+    fontSize: 12,
     fontWeight: '700',
     color: colors.forest,
   },
-  productPickerPrompt: {
-    fontSize: 13,
-    color: colors.muted,
-  },
-  latestPriceBox: {
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.mint,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-    alignSelf: 'flex-start',
-  },
-  latestPriceText: {
+  suggestionBody: {
     fontSize: 12,
-    fontWeight: '600',
+    lineHeight: 17,
+    color: '#333333',
+  },
+  healthyAttentionCard: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+    padding: 16,
+    gap: 8,
+  },
+  healthyAttentionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.green,
+    flex: 1,
+  },
+  healthyAttentionBody: {
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.forest,
   },
 });

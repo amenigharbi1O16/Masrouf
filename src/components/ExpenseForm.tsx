@@ -15,7 +15,8 @@
  * (bleue si dans l'enveloppe, rouge si dépassement), et les boutons d'action.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { View } from 'react-native';
 // Sélecteur déroulant modal
 import { SelectField } from './SelectField';
 // Composants atomiques d'interface utilisateur
@@ -67,13 +68,13 @@ export function ExpenseForm({
   onCancel,
   submitLabel,
 }: Props) {
-  // Récupération de l'état global de la base de données et de l'utilisateur connecté
-  const { db, me } = useStore();
+  // Récupération de l'état global de la base de données, de l'utilisateur connecté et de la période sélectionnée
+  const { db, me, selectedBudget } = useStore();
   // Récupération des utilitaires de traduction et de disposition RTL
   const { t, isRTL, traduireCategorie } = useTranslation();
 
-  // Récupération du budget mensuel actif de l'utilisateur
-  const budget = me ? currentBudget(db, me.id) : null;
+  // Récupération du budget de référence : utilise selectedBudget au lieu de dépendre du mois civil
+  const budget = selectedBudget ?? (me ? currentBudget(db, me.id) : null);
   // Liste des identifiants de catégories ayant une enveloppe allouée dans le budget en cours
   const allocatedCatIds = budget ? Object.keys(budget.allocations) : [];
   // Liste des identifiants des catégories sélectionnées par l'utilisateur lors de son onboarding
@@ -122,9 +123,29 @@ export function ExpenseForm({
   const [amount, setAmount] = useState(
     initial?.amount !== undefined ? String(initial.amount) : ''
   );
-  const [date, setDate] = useState(initial?.date ?? todayISO());
+
+  // Date par défaut rattachée à la période budgétaire de référence
+  const defaultDate = useMemo(() => {
+    if (initial?.date) return initial.date;
+    const today = todayISO();
+    if (budget) {
+      if (today >= budget.start && today <= budget.end) {
+        return today;
+      }
+      return budget.start;
+    }
+    return today;
+  }, [initial?.date, budget]);
+
+  const [date, setDate] = useState(defaultDate);
   const [note, setNote] = useState(initial?.note ?? '');
   const [error, setError] = useState('');
+
+  // Détection si la date choisie est en dehors de la période budgétaire sélectionnée
+  const isOutsidePeriod = !!budget && !!date && (date < budget.start || date > budget.end);
+  const targetCorrectionDate = budget
+    ? (todayISO() >= budget.start && todayISO() <= budget.end ? todayISO() : budget.start)
+    : todayISO();
 
   // Simulation dynamique d'impact budgétaire basée sur le montant saisi
   const a = toNum(amount);
@@ -219,6 +240,26 @@ export function ExpenseForm({
         placeholder="YYYY-MM-DD"
         keyboardType="numbers-and-punctuation"
       />
+
+      {/* Alerte et action rapide si la date est hors de la période budgétaire sélectionnée */}
+      {isOutsidePeriod && budget ? (
+        <View style={{ gap: 6, marginVertical: 4 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('date_hors_periode')}
+            detail={t('date_hors_periode_detail', {
+              date,
+              start: budget.start,
+              end: budget.end,
+            })}
+          />
+          <Button
+            label={t('ajuster_date_periode', { date: targetCorrectionDate })}
+            variant="secondary"
+            onPress={() => setDate(targetCorrectionDate)}
+          />
+        </View>
+      ) : null}
 
       {/* Champ note facultative */}
       <Input

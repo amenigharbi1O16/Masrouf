@@ -124,6 +124,23 @@ export function traduireNomCategorie(nom: string, langue: Langue): string {
 }
 
 /**
+ * Traduit un nom de niveau de gamification (Beginner, Saver, Expert) dans la langue active.
+ */
+export function traduireNiveau(niveau: string, langue: Langue): string {
+  const n = (niveau || '').toLowerCase();
+  if (n === 'beginner' || n === 'débutant' || n === 'debutant' || n === 'apprenti') {
+    return langue === 'ar' ? 'مبتدئ' : langue === 'en' ? 'Beginner' : 'Débutant';
+  }
+  if (n === 'saver' || n === 'économe' || n === 'econome') {
+    return langue === 'ar' ? 'مقتصد' : langue === 'en' ? 'Saver' : 'Économe';
+  }
+  if (n === 'expert') {
+    return langue === 'ar' ? 'خبير' : 'Expert';
+  }
+  return niveau;
+}
+
+/**
  * MISSION DE LA FONCTION : translate
  *   Recherche la valeur d'une clé textuelle dans le fichier de langue actif, avec
  *   remplacement dynamique de paramètres ({nom}, {montant}, etc.) et repli automatique
@@ -315,6 +332,7 @@ export function useTranslation() {
   return {
     t: (cle: string, params?: Record<string, string | number>) => translate(cle, langueActive, params),
     traduireCategorie: (nom: string) => traduireNomCategorie(nom, langueActive),
+    traduireNiveau: (niveau: string) => traduireNiveau(niveau, langueActive),
     langue: langueActive,
     isRTL: langueActive === 'ar',
     changerLangue,

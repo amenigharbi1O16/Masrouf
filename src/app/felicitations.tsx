@@ -62,8 +62,8 @@ export default function CongratulationsScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   // Extraction des données de la base, de l'utilisateur connecté et des actions
   const { db, me, actions } = useStore();
-  // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  // Fonctions de traduction, sens de lecture et traduction des niveaux
+  const { t, isRTL, traduireNiveau } = useTranslation();
 
   // Calcul du solde de points et de l'historique des périodes réussies depuis SQLite
   const pts = me ? pointsFor(db, me) : null;
@@ -135,11 +135,11 @@ export default function CongratulationsScreen() {
         />
       ) : null}
 
-      {/* Ligne 2 : Cumul global des points et niveau actuel atteint */}
+      {/* Ligne 2 : Cumul global des points et niveau actuel traduit */}
       {pts ? (
         <InfoRow
           label={t('total_points_label')}
-          value={`${pts.total}  ·  ${pts.level}`}
+          value={`${pts.total}  ·  ${traduireNiveau(pts.level)}`}
         />
       ) : null}
 

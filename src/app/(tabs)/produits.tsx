@@ -22,7 +22,7 @@ import { useRouter } from 'expo-router';
 // Hooks d'état et de mémorisation React
 import React, { useMemo, useState } from 'react';
 // Composants de mise en page et interactions tactiles React Native
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 // Carte visuelle d'un produit avec catégorie, unité et dernier prix
 import { ProductCard } from '@/components/Cards';
 // Conteneur d'écran avec tiroir latéral et marges de sécurité
@@ -94,13 +94,26 @@ export default function ProductsScreen() {
     return Array.from(seen.values());
   }, [db.products, me?.id]);
 
-  // Liste des catégories de type 'produit' actives
-  const chipCats = useMemo(() => {
-    // Extraction des catégories produit associées à l'utilisateur
-    return db.categories.filter(
-      (c) => c.kind === 'product' && (me?.categoryIds ?? []).includes(c.id)
-    );
-  }, [db.categories, me?.categoryIds]);
+  // Toutes les catégories de type 'produit' pertinentes pour l'utilisateur
+  const relevantCategories = useMemo(() => {
+    const catIdSet = new Set<string>();
+    // Catégories des produits déjà suivis par l'utilisateur
+    for (const p of mine) {
+      if (p.categoryId) catIdSet.add(p.categoryId);
+    }
+    // Catégories de type 'produit' sélectionnées lors de l'onboarding
+    for (const id of me?.categoryIds ?? []) {
+      const c = db.categories.find((cat) => cat.id === id && cat.kind === 'product');
+      if (c) catIdSet.add(c.id);
+    }
+    // Si l'utilisateur n'en a aucune, inclure toutes les catégories produit actives
+    if (catIdSet.size === 0) {
+      for (const c of db.categories) {
+        if (c.kind === 'product' && c.active) catIdSet.add(c.id);
+      }
+    }
+    return db.categories.filter((c) => catIdSet.has(c.id) && c.kind === 'product');
+  }, [mine, me?.categoryIds, db.categories]);
 
   // Filtrage et tri dynamiques des produits selon la saisie et les sélections
   const list = useMemo(() => {
@@ -109,24 +122,28 @@ export default function ProductsScreen() {
     // Application des filtres dès le premier caractère saisi
     return mine
       .filter((p) => {
-        // Vérification de la catégorie sélectionnée
+        // 1. Vérification de la catégorie sélectionnée
         const matchesCategory = cat === 'all' || p.categoryId === cat;
-        // Si la catégorie ne correspond pas, exclusion
         if (!matchesCategory) return false;
-        // Si la recherche est vide, on inclut le produit
+
+        // 2. Si la recherche est vide, on inclut le produit
         if (!s) return true;
-        // Correspondance insensible à la casse dès la première lettre sur le nom du produit
+
+        // 3. Recherche dynamique dès le premier caractère sur le nom, la marque ET le nom de la catégorie
         const nameMatch = p.name.trim().toLowerCase().includes(s);
-        // Correspondance insensible à la casse dès la première lettre sur la marque
         const brandMatch = (p.brand ?? '').trim().toLowerCase().includes(s);
-        // Inclusion si le nom ou la marque contient la lettre ou suite de lettres saisie
-        return nameMatch || brandMatch;
+        const rawCat = categoryName(db, p.categoryId).trim().toLowerCase();
+        const transCat = traduireCategorie(categoryName(db, p.categoryId)).trim().toLowerCase();
+        const catMatch = rawCat.includes(s) || transCat.includes(s);
+
+        // Inclusion si le nom, la marque ou la catégorie contient la chaîne recherchée
+        return nameMatch || brandMatch || catMatch;
       })
       // Tri alphabétique direct A–Z ou inverse Z–A
       .sort((a, b) =>
         asc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)
       );
-  }, [mine, q, cat, asc]);
+  }, [mine, q, cat, asc, db, traduireCategorie]);
 
   return (
     // Conteneur Screen standardisé avec titre traduit
@@ -171,10 +188,12 @@ export default function ProductsScreen() {
         autoCapitalize="none"
       />
 
-      {/* Ligne horizontale de sélection des filtres de catégories si des produits existent */}
+      {/* Ligne horizontale défilable de tous les filtres de catégories si des produits existent */}
       {mine.length > 0 && (
-        <View
-          style={[
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[
             styles.filterRow,
             { flexDirection: isRTL ? 'row-reverse' : 'row' },
           ]}
@@ -194,8 +213,8 @@ export default function ProductsScreen() {
             </Text>
           </Pressable>
 
-          {/* Pastilles pour les deux premières catégories produits de l'utilisateur */}
-          {chipCats.slice(0, 2).map((c) => (
+          {/* Affichage de toutes les catégories de produits pertinentes */}
+          {relevantCategories.map((c) => (
             <React.Fragment key={c.id}>
               {/* Point de séparation */}
               <Text style={styles.filterDot}>·</Text>
@@ -215,7 +234,7 @@ export default function ProductsScreen() {
               </Pressable>
             </React.Fragment>
           ))}
-        </View>
+        </ScrollView>
       )}
 
       {/* Ligne récapitulative : nombre de produits et bouton de tri alphabétique */}
@@ -306,16 +325,14 @@ export default function ProductsScreen() {
 
 // Feuilles de styles du catalogue produits
 const styles = StyleSheet.create({
-  // Rangée de liens horizontaux de filtrage par catégorie
+  // Rangée défilable de liens horizontaux de filtrage par catégorie
   filterRow: {
     // Alignement vertical centré
     alignItems: 'center',
     // Espacement horizontal entre les filtres
     gap: 8,
     // Marge verticale
-    marginVertical: 2,
-    // Débordement masqué
-    overflow: 'hidden',
+    paddingVertical: 4,
   },
   // Texte d'un filtre de catégorie
   filterLink: {

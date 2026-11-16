@@ -27,7 +27,7 @@
 // Outils de navigation Expo Router
 import { useRouter } from 'expo-router';
 // Hooks d'état React
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 // Composants visuels et interactifs React Native
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 // Icônes vectorielles Ionicons
@@ -62,8 +62,8 @@ import { useTranslation } from '@/utils/i18n';
 export default function AddProductScreen() {
   // Hook de navigation Expo Router
   const router = useRouter();
-  // Extraction des données de catalogue, du profil et des actions d'insertion
-  const { db, me, actions } = useStore();
+  // Extraction des données de catalogue, du profil, du budget sélectionné et des actions d'insertion
+  const { db, me, selectedBudget, actions } = useStore();
   // Fonctions de traduction et sens de lecture
   const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
@@ -92,10 +92,29 @@ export default function AddProductScreen() {
   const [unit, setUnit] = useState('L');
   // Magasin d'achat (ex: Monoprix)
   const [store, setStore] = useState('');
+
+  // Date par défaut rattachée à la période budgétaire sélectionnée
+  const defaultDate = useMemo(() => {
+    const today = todayISO();
+    if (selectedBudget) {
+      if (today >= selectedBudget.start && today <= selectedBudget.end) {
+        return today;
+      }
+      return selectedBudget.start;
+    }
+    return today;
+  }, [selectedBudget]);
+
   // Date d'achat au format ISO
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(defaultDate);
   // Message d'erreur de validation éventuel
   const [error, setError] = useState('');
+
+  // Détection si la date choisie est en dehors de la période budgétaire sélectionnée
+  const isOutsidePeriod = !!selectedBudget && !!date && (date < selectedBudget.start || date > selectedBudget.end);
+  const targetCorrectionDate = selectedBudget
+    ? (todayISO() >= selectedBudget.start && todayISO() <= selectedBudget.end ? todayISO() : selectedBudget.start)
+    : todayISO();
 
   /**
    * MISSION DE LA FONCTION : save
@@ -291,6 +310,26 @@ export default function AddProductScreen() {
         placeholder={fmtDateLocale(todayISO(), langue)}
         keyboardType="numbers-and-punctuation"
       />
+
+      {/* Alerte et action rapide si la date est hors de la période budgétaire sélectionnée */}
+      {isOutsidePeriod && selectedBudget ? (
+        <View style={{ gap: 6, marginVertical: 4 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('date_hors_periode')}
+            detail={t('date_hors_periode_detail', {
+              date,
+              start: selectedBudget.start,
+              end: selectedBudget.end,
+            })}
+          />
+          <Button
+            label={t('ajuster_date_periode', { date: targetCorrectionDate })}
+            variant="secondary"
+            onPress={() => setDate(targetCorrectionDate)}
+          />
+        </View>
+      ) : null}
 
       {/* Texte d'aide listant les catégories disponibles sous le formulaire */}
       <Text

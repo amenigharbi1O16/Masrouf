@@ -16,7 +16,8 @@
  * une note pédagogique et les boutons d'action d'enregistrement et d'annulation.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { View } from 'react-native';
 // Composant d'information bicolore
 import { InfoRow } from './Cards';
 // Sélecteur déroulant modal
@@ -72,7 +73,7 @@ export function PurchaseForm({
   onCancel,
   submitLabel,
 }: Props) {
-  const { db, me } = useStore();
+  const { db, me, selectedBudget } = useStore();
   const { t, isRTL } = useTranslation();
 
   // Produits appartenant à l'utilisateur connecté
@@ -90,8 +91,28 @@ export function PurchaseForm({
   );
   const [unit, setUnit] = useState(initial?.unit ?? product?.unit ?? 'L');
   const [store, setStore] = useState(initial?.store ?? '');
-  const [date, setDate] = useState(initial?.date ?? todayISO());
+
+  // Date par défaut rattachée à la période budgétaire sélectionnée
+  const defaultDate = useMemo(() => {
+    if (initial?.date) return initial.date;
+    const today = todayISO();
+    if (selectedBudget) {
+      if (today >= selectedBudget.start && today <= selectedBudget.end) {
+        return today;
+      }
+      return selectedBudget.start;
+    }
+    return today;
+  }, [initial?.date, selectedBudget]);
+
+  const [date, setDate] = useState(defaultDate);
   const [error, setError] = useState('');
+
+  // Détection si la date choisie est en dehors de la période budgétaire sélectionnée
+  const isOutsidePeriod = !!selectedBudget && !!date && (date < selectedBudget.start || date > selectedBudget.end);
+  const targetCorrectionDate = selectedBudget
+    ? (todayISO() >= selectedBudget.start && todayISO() <= selectedBudget.end ? todayISO() : selectedBudget.start)
+    : todayISO();
 
   // Conversion numérique et calcul dynamique du prix unitaire
   const p = toNum(price);
@@ -207,6 +228,26 @@ export function PurchaseForm({
         placeholder="YYYY-MM-DD"
         keyboardType="numbers-and-punctuation"
       />
+
+      {/* Alerte et action rapide si la date est hors de la période budgétaire sélectionnée */}
+      {isOutsidePeriod && selectedBudget ? (
+        <View style={{ gap: 6, marginVertical: 4 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('date_hors_periode')}
+            detail={t('date_hors_periode_detail', {
+              date,
+              start: selectedBudget.start,
+              end: selectedBudget.end,
+            })}
+          />
+          <Button
+            label={t('ajuster_date_periode', { date: targetCorrectionDate })}
+            variant="secondary"
+            onPress={() => setDate(targetCorrectionDate)}
+          />
+        </View>
+      ) : null}
 
       {/* Ligne prix unitaire calculé automatiquement */}
       <InfoRow

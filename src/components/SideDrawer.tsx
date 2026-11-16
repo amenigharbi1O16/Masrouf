@@ -84,7 +84,7 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
         Animated.timing(fade, { toValue: 0, duration: 180, useNativeDriver: true }),
       ]).start(() => setMounted(false));
     }
-  }, [visible, drawerW, hiddenX]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visible, drawerW, hiddenX, isRTL]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Si le tiroir est fermé et non monté, aucun composant n'est rendu pour économiser la mémoire
   if (!mounted) return null;
@@ -122,8 +122,22 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
           style={[
             styles.drawer,
             isRTL
-              ? { right: 0, borderTopLeftRadius: 24, borderBottomLeftRadius: 24 }
-              : { left: 0, borderTopRightRadius: 24, borderBottomRightRadius: 24 },
+              ? {
+                  right: 0,
+                  left: undefined,
+                  borderTopLeftRadius: 24,
+                  borderBottomLeftRadius: 24,
+                  borderTopRightRadius: 0,
+                  borderBottomRightRadius: 0,
+                }
+              : {
+                  left: 0,
+                  right: undefined,
+                  borderTopRightRadius: 24,
+                  borderBottomRightRadius: 24,
+                  borderTopLeftRadius: 0,
+                  borderBottomLeftRadius: 0,
+                },
             {
               width: drawerW,
               paddingTop: insets.top + 24,
@@ -170,7 +184,15 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                   accessibilityRole="button"
                 >
                   <Ionicons name={it.icon} size={22} color={colors.white} />
-                  <Text style={[styles.itemText, on && { fontWeight: '600' }]}>{it.label}</Text>
+                  <Text
+                    style={[
+                      styles.itemText,
+                      on && { fontWeight: '600' },
+                      { textAlign: isRTL ? 'right' : 'left' },
+                    ]}
+                  >
+                    {it.label}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -194,7 +216,12 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
             style={[styles.logout, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
             accessibilityRole="button"
           >
-            <Ionicons name="log-out-outline" size={22} color={colors.white} />
+            <Ionicons
+              name="log-out-outline"
+              size={22}
+              color={colors.white}
+              style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }}
+            />
             <Text style={styles.logoutText}>{t('se_deconnecter')}</Text>
           </Pressable>
         </Animated.View>

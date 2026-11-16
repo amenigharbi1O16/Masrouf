@@ -69,8 +69,8 @@ export default function PointsScreen() {
   const router = useRouter();
   // Extraction des données de la base et du profil utilisateur connecté
   const { db, me } = useStore();
-  // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  // Fonctions de traduction, sens de lecture et traduction des niveaux de gamification
+  const { t, isRTL, traduireNiveau } = useTranslation();
 
   // Sécurité : si la session est expirée
   if (!me) return null;
@@ -108,15 +108,15 @@ export default function PointsScreen() {
         <Text style={{ color: colors.mint, fontSize: 12, fontWeight: '500' }}>
           {t('niveau_actuel')}
         </Text>
-        {/* Nom du rang atteint (ex: Économe) en grands caractères blancs de 30px */}
+        {/* Nom du rang atteint traduit en arabe ou français (ex: Économe / مقتصد / Saver) en grands caractères blancs */}
         <Text style={{ color: colors.white, fontSize: 30, fontWeight: '700' }}>
-          {p.level}
+          {traduireNiveau(p.level)}
         </Text>
         {/* Détail chiffré des points cumulés et des points manquants pour passer au rang suivant */}
         <Text style={{ color: colors.mint, fontSize: 14 }}>
           {p.total} {t('points').toLowerCase()}
           {p.next
-            ? `  ·  ${p.next.at - p.total} ${t('pour_atteindre_niveau')} ${p.next.name}`
+            ? `  ·  ${p.next.at - p.total} ${t('pour_atteindre_niveau')} ${traduireNiveau(p.next.name)}`
             : `  ·  ${t('niveau_maximal_atteint')}`}
         </Text>
 

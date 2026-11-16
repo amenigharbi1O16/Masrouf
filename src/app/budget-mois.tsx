@@ -62,8 +62,13 @@ import { useTranslation } from '@/utils/i18n';
 export default function BudgetPeriodScreen() {
   // Hook de navigation Expo Router
   const router = useRouter();
-  // Extraction des paramètres d'URL (mode='edit' et id du budget)
-  const { mode, id } = useLocalSearchParams<{ mode?: string; id?: string }>();
+  // Extraction des paramètres d'URL (mode='edit', id du budget, defaultStart et defaultEnd transmis depuis le calendrier)
+  const { mode, id, defaultStart, defaultEnd } = useLocalSearchParams<{
+    mode?: string;
+    id?: string;
+    defaultStart?: string;
+    defaultEnd?: string;
+  }>();
   // Extraction des données SQLite, du profil connecté et des actions
   const { db, me, actions } = useStore();
   // Fonctions de traduction et sens de lecture
@@ -81,10 +86,15 @@ export default function BudgetPeriodScreen() {
     );
   }, [editing, id, db, me]);
 
-  // État local de la date de début (initialisée à aujourd'hui ou à la date du budget existant)
-  const [start, setStart] = useState(existing?.start ?? todayISO());
-  // État local de la date de fin (initialisée à J+29 par défaut)
-  const [end, setEnd] = useState(existing?.end ?? addDays(todayISO(), 29));
+  // Date du jour pour contrôle des périodes clôturées
+  const today = todayISO();
+  // Une période existante dont la date de fin est antérieure à aujourd'hui est clôturée (lecture seule)
+  const isClosedPeriod = !!(editing && existing && existing.end < today);
+
+  // État local de la date de début (initialisée avec la période sélectionnée, le budget existant ou aujourd'hui)
+  const [start, setStart] = useState(existing?.start ?? defaultStart ?? today);
+  // État local de la date de fin (initialisée avec la fin de période exacte, le budget existant ou J+29)
+  const [end, setEnd] = useState(existing?.end ?? defaultEnd ?? addDays(start, 29));
   // État local du montant total en Dinars Tunisiens (chaîne de caractères pour saisie fluide)
   const [total, setTotal] = useState(existing ? String(existing.total) : '');
 
@@ -144,6 +154,12 @@ export default function BudgetPeriodScreen() {
    * Retourne une chaîne vide si tout est correct, ou un message d'erreur précis affiché dans la bannière rouge.
    */
   const validate = (): string => {
+    if (isClosedPeriod) {
+      return t('budget_periode_cloturee_erreur');
+    }
+    if (!editing && end < today) {
+      return t('impossible_creer_budget_passe');
+    }
     if (!isValidISO(start) || !isValidISO(end)) {
       return t('erreur_format_dates');
     }
@@ -236,6 +252,15 @@ export default function BudgetPeriodScreen() {
         </SectionTitle>
       )}
 
+      {/* Bannière d'avertissement si la période est passée et clôturée (lecture seule) */}
+      {isClosedPeriod ? (
+        <AlertBanner
+          tone="warning"
+          title={t('periode_cloturee_titre')}
+          detail={t('periode_cloturee_detail')}
+        />
+      ) : null}
+
       {/* Bannière rouge d'erreur affichée en cas de date invalide ou de montant non positif */}
       {error ? (
         <AlertBanner
@@ -311,11 +336,11 @@ export default function BudgetPeriodScreen() {
             detail={t('fonds_non_alloues_info')}
           />
 
-          {/* Bouton vert forêt : enregistre les modifications dans SQLite */}
+          {/* Bouton vert forêt : enregistre les modifications dans SQLite (désactivé si la période est clôturée) */}
           <Button
-            label={t('enregistrer_modifications')}
+            label={isClosedPeriod ? t('periode_cloturee_badge') : t('enregistrer_modifications')}
             onPress={save}
-            disabled={!validRange}
+            disabled={!validRange || isClosedPeriod}
           />
           {/* Bouton secondaire clair d'annulation */}
           <Button
