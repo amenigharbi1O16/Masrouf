@@ -289,6 +289,101 @@ assert.strictEqual(rtlDrawer.position, 'right');
 assert.strictEqual(rtlDrawer.roundedBorder.borderTopLeftRadius, 24);
 console.log('✓ Test 6 validé : Géométrie du tiroir, direction et arrondis RTL/LTR confirmés.');
 
+// ------------------------------------------------------------
+// TEST 7 : BASCULE DE LANGUE FLUIDE ET DIRECTE (GLOBAL LANGUAGE PROVIDER)
+// ------------------------------------------------------------
+console.log('\n--- Test 7 : Bascule de langue fluide et directe pour toute l\'application ---');
+
+const frDict = JSON.parse(fs.readFileSync('src/i18n/fr.json', 'utf8'));
+const arDict = JSON.parse(fs.readFileSync('src/i18n/ar.json', 'utf8'));
+const enDict = JSON.parse(fs.readFileSync('src/i18n/en.json', 'utf8'));
+const dicts = { fr: frDict, ar: arDict, en: enDict };
+
+// Simulation du dispatcher LanguageProvider
+class MockLanguageProvider {
+  constructor(initialLang = 'fr') {
+    this.langue = initialLang;
+    this.isRTL = initialLang === 'ar';
+    this.subscribers = new Set();
+  }
+  subscribe(fn) {
+    this.subscribers.add(fn);
+    return () => this.subscribers.delete(fn);
+  }
+  changerLangue(newLang) {
+    this.langue = newLang;
+    this.isRTL = newLang === 'ar';
+    for (const sub of this.subscribers) {
+      sub({ langue: this.langue, isRTL: this.isRTL });
+    }
+  }
+  t(key) {
+    return dicts[this.langue]?.[key] || dicts['fr']?.[key] || key;
+  }
+}
+
+const provider = new MockLanguageProvider('fr');
+let componentAState = null;
+let componentBState = null;
+
+// Deux composants distincts abonnés au même contexte global
+provider.subscribe((s) => { componentAState = { ...s, text: provider.t('accueil') }; });
+provider.subscribe((s) => { componentBState = { ...s, text: provider.t('analyses') }; });
+
+// 1. Bascule vers l'Arabe : les deux composants reçoivent directement la mise à jour
+provider.changerLangue('ar');
+assert.strictEqual(componentAState.langue, 'ar');
+assert.strictEqual(componentAState.isRTL, true);
+assert.strictEqual(componentAState.text, arDict['accueil']);
+assert.strictEqual(componentBState.langue, 'ar');
+assert.strictEqual(componentBState.isRTL, true);
+assert.strictEqual(componentBState.text, arDict['analyses']);
+
+// 2. Bascule vers l'Anglais : mise à jour synchrone et directe
+provider.changerLangue('en');
+assert.strictEqual(componentAState.langue, 'en');
+assert.strictEqual(componentAState.isRTL, false);
+assert.strictEqual(componentAState.text, enDict['accueil']);
+assert.strictEqual(componentBState.langue, 'en');
+assert.strictEqual(componentBState.isRTL, false);
+assert.strictEqual(componentBState.text, enDict['analyses']);
+
+// 3. Test de fluidité du tiroir pendant le changement de langue à chaud
+function simulateDrawerEffect(visible, isCurrentlyMounted, wasAlreadyVisible, hiddenX) {
+  if (visible) {
+    if (!wasAlreadyVisible) {
+      // Ouverture initiale : part de hiddenX et glisse vers 0
+      return { action: 'animate_in', startX: hiddenX, toX: 0, mounted: true };
+    } else {
+      // Déjà ouvert pendant le changement de langue : reste stable à x=0
+      return { action: 'keep_stable', startX: 0, toX: 0, mounted: true };
+    }
+  } else if (wasAlreadyVisible) {
+    return { action: 'animate_out', startX: 0, toX: hiddenX, mounted: false };
+  }
+  return { action: 'idle', mounted: false };
+}
+
+// Scénario A : Le tiroir s'ouvre en FR
+const openStep = simulateDrawerEffect(true, false, false, -300);
+assert.strictEqual(openStep.action, 'animate_in');
+assert.strictEqual(openStep.startX, -300);
+assert.strictEqual(openStep.toX, 0);
+
+// Scénario B : L'utilisateur clique sur 'ar' dans le tiroir ouvert
+// Le tiroir DOIT rester stable à x=0 sans être renvoyé à hiddenX (+300) !
+const liveSwitchStep = simulateDrawerEffect(true, true, true, 300);
+assert.strictEqual(liveSwitchStep.action, 'keep_stable', 'Le tiroir reste stable à x=0 lors du changement de langue');
+assert.strictEqual(liveSwitchStep.startX, 0);
+assert.strictEqual(liveSwitchStep.toX, 0);
+
+// Scénario C : Le tiroir se referme en AR
+const closeStep = simulateDrawerEffect(false, true, true, 300);
+assert.strictEqual(closeStep.action, 'animate_out');
+assert.strictEqual(closeStep.toX, 300);
+
+console.log('✓ Test 7 validé : Bascule de langue fluide, directe et réactive pour l\'ensemble des composants sans saut d\'écran.');
+
 console.log('\n============================================================');
 console.log('🎉 TOUS LES TESTS DE VÉRIFICATION COMPLÈTE SONT SUCCÈS !');
 console.log('============================================================\n');

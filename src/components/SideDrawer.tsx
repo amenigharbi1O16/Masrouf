@@ -64,27 +64,40 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
   const x = useRef(new Animated.Value(hiddenX)).current;
   const fade = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
+  const wasVisible = useRef(false);
 
   /**
    * 🎬 Cycle d'animation du tiroir :
    * - À l'ouverture : fait glisser le tiroir en 200ms et assombrit l'arrière-plan.
+   * - Si déjà ouvert lors d'un changement de langue : reste ouvert à x=0 de manière fluide sans clignotement.
    * - À la fermeture : fait glisser le tiroir en sens inverse puis démonte le composant.
    */
   useEffect(() => {
     if (visible) {
-      setMounted(true);
-      x.setValue(hiddenX);
-      Animated.parallel([
-        Animated.timing(x, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(fade, { toValue: 0.25, duration: 200, useNativeDriver: true }),
-      ]).start();
-    } else if (mounted) {
+      if (!wasVisible.current) {
+        // Ouverture initiale : glisse depuis le bord masqué
+        wasVisible.current = true;
+        setMounted(true);
+        x.setValue(hiddenX);
+        Animated.parallel([
+          Animated.timing(x, { toValue: 0, duration: 200, useNativeDriver: true }),
+          Animated.timing(fade, { toValue: 0.25, duration: 200, useNativeDriver: true }),
+        ]).start();
+      } else {
+        // Déjà ouvert pendant le changement de langue en direct :
+        // Maintien instantané et stable sans repli ni clignotement
+        x.setValue(0);
+        fade.setValue(0.25);
+      }
+    } else if (wasVisible.current) {
+      // Fermeture du tiroir
+      wasVisible.current = false;
       Animated.parallel([
         Animated.timing(x, { toValue: hiddenX, duration: 180, useNativeDriver: true }),
         Animated.timing(fade, { toValue: 0, duration: 180, useNativeDriver: true }),
       ]).start(() => setMounted(false));
     }
-  }, [visible, drawerW, hiddenX, isRTL]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visible, hiddenX]);
 
   // Si le tiroir est fermé et non monté, aucun composant n'est rendu pour économiser la mémoire
   if (!mounted) return null;

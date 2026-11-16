@@ -22,7 +22,14 @@
 //      droite-à-gauche naturelle aux utilisateurs arabophones.
 // ============================================================
 
-import { useState, useEffect } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { Alert, I18nManager, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
@@ -31,8 +38,8 @@ import fr from '../i18n/fr.json';
 import ar from '../i18n/ar.json';
 import en from '../i18n/en.json';
 
-// Contexte d'authentification et requêtes SQLite
-import { useAuth } from './auth';
+// Accès au magasin global et requêtes SQLite
+import { useStore } from '../state/store';
 import { updateLangue } from '../db/queries';
 
 // ------------------------------------------------------------
@@ -62,6 +69,9 @@ const PRE_LOGIN_LANG_KEY = 'masrouf_langue_pre_login';
 /** Table de correspondance des ressources de traduction */
 const traductions: Record<Langue, Record<string, string>> = { fr, ar, en };
 
+/** Variable réactive au niveau module pour les appels hors arborescence React (tests, scripts) */
+let moduleLangue: Langue = 'fr';
+
 /**
  * Dictionnaire multilingue complet des catégories système.
  * Permet de traduire instantanément les noms des 28 catégories prédéfinies
@@ -75,7 +85,7 @@ const NOMS_CATEGORIES_LOCALISES: Record<string, Record<Langue, string>> = {
   'Matériel informatique': { fr: 'Matériel informatique', en: 'Computer equipment', ar: 'أجهزة إلكترونية' },
   'Santé et médicaments': { fr: 'Santé et médicaments', en: 'Health and medicines', ar: 'صحة وأدوية' },
   'Maison et entretien': { fr: 'Maison et entretien', en: 'Home and cleaning', ar: 'صيانة منزلية' },
-  'Beauté et coiffure': { fr: 'Beauté et coiffure', en: 'Beauty and hair', ar: 'تجمil وحلاقة' },
+  'Beauté et coiffure': { fr: 'Beauté et coiffure', en: 'Beauty and hair', ar: 'تجميل وحلاقة' },
   'Animaux': { fr: 'Animaux', en: 'Pets', ar: 'حيوانات أليفة' },
 
   'Transport': { fr: 'Transport', en: 'Transport', ar: 'نقل ومواصلات' },
@@ -103,17 +113,6 @@ const NOMS_CATEGORIES_LOCALISES: Record<string, Record<Langue, string>> = {
  * MISSION DE LA FONCTION : traduireNomCategorie
  *   Convertit le nom clé d'une catégorie (ex: 'Alimentation') vers le texte localisé
  *   dans la langue courante (ex: 'تغذية' en arabe ou 'Food' en anglais).
- *
- * RÔLE DANS L'APPLICATION :
- *   Appelé par les sélecteurs de catégories, les cartes budgétaires et les graphiques
- *   d'analyses pour afficher des catégories compréhensibles dans la langue de l'utilisateur.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Une chaîne de caractères affichée dans les pastilles de catégories (Chips),
- *   les cartes du tableau de bord ou la liste de l'assistant onboarding.
- *
- * @param nom Nom technique ou français de la catégorie stocké en base.
- * @param langue Langue cible active ('fr', 'ar', 'en').
  */
 export function traduireNomCategorie(nom: string, langue: Langue): string {
   const match = NOMS_CATEGORIES_LOCALISES[nom];
@@ -145,17 +144,6 @@ export function traduireNiveau(niveau: string, langue: Langue): string {
  *   Recherche la valeur d'une clé textuelle dans le fichier de langue actif, avec
  *   remplacement dynamique de paramètres ({nom}, {montant}, etc.) et repli automatique
  *   sur le français si la clé manque dans la langue active.
- *
- * RÔLE DANS L'APPLICATION :
- *   Moteur central d'affichage des textes. Garantit qu'aucun écran ne montre de code brut
- *   comme "home_title" à l'utilisateur : il verra toujours "Tableau de bord" ou "Accueil".
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Le texte finalisé prêt à être inséré dans un composant <Text> de React Native.
- *
- * @param cle Identifiant unique du texte (ex: 'bienvenue', 'enregistrer').
- * @param langue Code langue actuel ('fr', 'ar', 'en').
- * @param params Objet clé-valeur optionnel pour insérer des variables dynamiques.
  */
 export function translate(
   cle: string,
@@ -188,16 +176,6 @@ export function translate(
 /**
  * MISSION DE LA FONCTION : appliquerDirectionLangue
  *   Configure le sens d'affichage global du moteur React Native (LTR vs RTL) via I18nManager.
- *
- * RÔLE DANS L'APPLICATION :
- *   Active le mode miroir complet de droite à gauche lorsque la langue 'ar' (arabe) est active,
- *   et rétablit le mode gauche à droite standard pour le français et l'anglais.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Inverse automatiquement la disposition horizontale des colonnes, tiroirs, icônes
- *   et listes pour respecter les règles typographiques de la langue arabe.
- *
- * @param langue Langue active ('fr', 'ar', 'en').
  */
 export function appliquerDirectionLangue(langue: Langue): void {
   const isRTL = langue === 'ar';
@@ -214,13 +192,6 @@ export function appliquerDirectionLangue(langue: Langue): void {
 /**
  * MISSION DE LA FONCTION : getLanguePreLogin
  *   Récupère la préférence linguistique choisie par le visiteur avant qu'il ne soit connecté.
- *
- * RÔLE DANS L'APPLICATION :
- *   Permet à un nouvel utilisateur de choisir sa langue dès le premier écran (login ou inscription),
- *   et de conserver ce choix même s'il quitte et relance l'application.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Aucun rendu direct : fournit la langue au sélecteur de langue et aux formulaires de connexion.
  */
 export async function getLanguePreLogin(): Promise<Langue> {
   try {
@@ -236,23 +207,12 @@ export async function getLanguePreLogin(): Promise<Langue> {
       return val;
     }
   } catch { }
-  // Français par défaut en cas d'absence
   return 'fr';
 }
 
 /**
  * MISSION DE LA FONCTION : setLanguePreLogin
- *   Sauvegarde durablement la langue choisie dans le coffre sécurisé de l'appareil
- *   (SecureStore sur iOS/Android, localStorage sur le Web).
- *
- * RÔLE DANS L'APPLICATION :
- *   Garantit que la sélection de langue effectuée sur l'écran d'accueil ou de bienvenue
- *   reste mémorisée de manière persistante entre deux sessions.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Aucun rendu direct : met à jour le stockage physique de l'appareil.
- *
- * @param langue Code langue à enregistrer ('fr', 'ar', 'en').
+ *   Sauvegarde durablement la langue choisie dans le coffre sécurisé de l'appareil.
  */
 export async function setLanguePreLogin(langue: Langue): Promise<void> {
   try {
@@ -266,75 +226,142 @@ export async function setLanguePreLogin(langue: Langue): Promise<void> {
   } catch { }
 }
 
+// ------------------------------------------------------------
+// CONTEXTE ET FOURNISSEUR GLOBAL DE LANGUE (REACT CONTEXT)
+// ------------------------------------------------------------
+
+export interface LanguageContextType {
+  langue: Langue;
+  isRTL: boolean;
+  changerLangue: (nouvelleLangue: Langue) => Promise<void>;
+  t: (cle: string, params?: Record<string, string | number>) => string;
+  traduireCategorie: (nom: string) => string;
+  traduireNiveau: (niveau: string) => string;
+}
+
+export const LanguageContext = createContext<LanguageContextType | null>(null);
+
+/**
+ * MISSION DU COMPOSANT : LanguageProvider
+ *   Fournisseur global d'internationalisation réactive.
+ *   Enveloppe l'application entière pour garantir qu'un clic sur une langue
+ *   bascule DIRECTEMENT et SYNCHRONIQUEMENT tous les écrans, tiroirs, formulaires
+ *   et composants sans délai ni besoin de recharger l'application.
+ */
+export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  const { me, actions } = useStore();
+  const [langue, setLangueState] = useState<Langue>(() => {
+    if (me?.langue && (me.langue === 'fr' || me.langue === 'ar' || me.langue === 'en')) {
+      return me.langue;
+    }
+    return moduleLangue;
+  });
+
+  // 1. Initialisation réactive au montage
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      // Priorité 1 : préférence de l'utilisateur connecté dans SQLite
+      if (me?.langue && (me.langue === 'fr' || me.langue === 'ar' || me.langue === 'en')) {
+        if (active) {
+          setLangueState(me.langue);
+          moduleLangue = me.langue;
+          appliquerDirectionLangue(me.langue);
+        }
+        return;
+      }
+      // Priorité 2 : préférence persistée en local (SecureStore / localStorage)
+      const saved = await getLanguePreLogin();
+      if (active && saved) {
+        setLangueState(saved);
+        moduleLangue = saved;
+        appliquerDirectionLangue(saved);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // 2. Synchronisation quand l'utilisateur change ou se connecte
+  useEffect(() => {
+    if (me?.langue && (me.langue === 'fr' || me.langue === 'ar' || me.langue === 'en')) {
+      if (me.langue !== langue) {
+        setLangueState(me.langue);
+        moduleLangue = me.langue;
+        appliquerDirectionLangue(me.langue);
+      }
+    }
+  }, [me?.langue]);
+
+  // 3. Bascule fluide, immédiate et globale de la langue
+  const changerLangue = useCallback(
+    async (nouvelleLangue: Langue) => {
+      // Étape 1 : Mise à jour synchrone de l'état React global -> tous les écrans se re-rendent directement
+      moduleLangue = nouvelleLangue;
+      setLangueState(nouvelleLangue);
+
+      // Étape 2 : Application du sens de lecture
+      appliquerDirectionLangue(nouvelleLangue);
+
+      // Étape 3 : Persistance locale asynchrone (SecureStore sur mobile, localStorage sur web)
+      try {
+        await setLanguePreLogin(nouvelleLangue);
+      } catch {}
+
+      // Étape 4 : Si un utilisateur est connecté, synchronisation immédiate SQLite et store
+      if (me) {
+        try {
+          updateLangue(Number(me.id) || 1, nouvelleLangue);
+        } catch {}
+        try {
+          actions.setLanguage(nouvelleLangue);
+        } catch {}
+      }
+    },
+    [me, actions]
+  );
+
+  const isRTL = langue === 'ar';
+
+  const value = useMemo<LanguageContextType>(
+    () => ({
+      langue,
+      isRTL,
+      changerLangue,
+      t: (cle: string, params?: Record<string, string | number>) => translate(cle, langue, params),
+      traduireCategorie: (nom: string) => traduireNomCategorie(nom, langue),
+      traduireNiveau: (niveau: string) => traduireNiveau(niveau, langue),
+    }),
+    [langue, isRTL, changerLangue]
+  );
+
+  return React.createElement(LanguageContext.Provider, { value }, children);
+}
+
 /**
  * MISSION DE LA FONCTION : useTranslation
  *   Hook React personnalisé fournissant tous les outils de traduction et de gestion
  *   de langue à n'importe quel composant de l'application.
- *
- * RÔLE DANS L'APPLICATION :
- *   C'est le pont entre les composants visuels et le moteur de traduction.
- *   Fournit `t()`, `traduireCategorie()`, `langue`, `isRTL` et `changerLangue()`.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   - Met immédiatement à jour tous les textes du composant quand la langue change.
- *   - Affiche une boîte de dialogue explicative si le sens de lecture (RTL/LTR) est modifié
- *     pour informer l'utilisateur qu'un redémarrage ou rafraîchissement prendra effet.
+ *   Consomme le LanguageContext global pour une synchronisation directe dans 100% de l'application.
  */
-export function useTranslation() {
-  const { user, refreshUser, setLanguage } = useAuth();
-  const [langueLocale, setLangueLocale] = useState<Langue>('fr');
-
-  useEffect(() => {
-    // Si l'utilisateur est authentifié, on synchronise sa langue de profil SQLite
-    if (user?.langue) {
-      const l = (user.langue === 'ar' || user.langue === 'en') ? user.langue : 'fr';
-      setLangueLocale(l);
-      appliquerDirectionLangue(l);
-    } else {
-      // Sinon, on lit la langue mémorisée avant connexion
-      getLanguePreLogin().then((l) => {
-        setLangueLocale(l);
-        appliquerDirectionLangue(l);
-      });
-    }
-  }, [user?.langue]);
-
-  // Détermine la langue prioritaire active
-  const langueActive: Langue = (
-    user?.langue && (user.langue === 'ar' || user.langue === 'en' || user.langue === 'fr')
-      ? user.langue
-      : langueLocale
-  ) as Langue;
-
-  /**
-   * Modifie la langue active, persiste le choix dans SQLite (si connecté)
-   * et dans SecureStore/localStorage, puis actualise l'interface en temps réel.
-   */
-  const changerLangue = async (nouvelleLangue: Langue) => {
-    // 1. Application immédiate de la direction : RTL pour l'arabe, LTR pour français/anglais
-    appliquerDirectionLangue(nouvelleLangue);
-    // 2. Persistance locale du choix linguistique
-    await setLanguePreLogin(nouvelleLangue);
-    // 3. Bascule instantanée de l'état réactif
-    setLangueLocale(nouvelleLangue);
-
-    // 4. Si un utilisateur est connecté, synchronisation immédiate de son profil SQLite
-    if (user) {
-      // Mise à jour de la colonne 'langue' dans la table SQLite 'user'
-      updateLangue(Number(user.id) || 1, nouvelleLangue);
-      if (setLanguage) {
-        setLanguage(nouvelleLangue);
-      }
-      await refreshUser();
-    }
-  };
-
+export function useTranslation(): LanguageContextType {
+  const ctx = useContext(LanguageContext);
+  if (ctx) {
+    return ctx;
+  }
+  // Repli sécurisé pour exécution hors LanguageProvider (ex: tests automatisés)
+  const isRTL = moduleLangue === 'ar';
   return {
-    t: (cle: string, params?: Record<string, string | number>) => translate(cle, langueActive, params),
-    traduireCategorie: (nom: string) => traduireNomCategorie(nom, langueActive),
-    traduireNiveau: (niveau: string) => traduireNiveau(niveau, langueActive),
-    langue: langueActive,
-    isRTL: langueActive === 'ar',
-    changerLangue,
+    langue: moduleLangue,
+    isRTL,
+    changerLangue: async (nouvelleLangue: Langue) => {
+      moduleLangue = nouvelleLangue;
+      appliquerDirectionLangue(nouvelleLangue);
+      await setLanguePreLogin(nouvelleLangue);
+    },
+    t: (cle: string, params?: Record<string, string | number>) => translate(cle, moduleLangue, params),
+    traduireCategorie: (nom: string) => traduireNomCategorie(nom, moduleLangue),
+    traduireNiveau: (niveau: string) => traduireNiveau(niveau, moduleLangue),
   };
 }

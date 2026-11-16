@@ -39,6 +39,8 @@ import { DrawerHost } from '@/components/DrawerHost';
 import { LoadingScreen } from '@/components/ui';
 // Fournisseur du magasin d'état global SQLite
 import { StoreProvider, useStore } from '@/state/store';
+// Fournisseur global d'internationalisation réactive (FR / AR / EN + RTL)
+import { LanguageProvider } from '@/utils/i18n';
 // Utilitaire déterminant la route d'accueil selon le profil utilisateur
 import { homeRouteFor } from '@/utils/session';
 
@@ -151,22 +153,25 @@ export default function RootLayout() {
 
       {/* Fournisseur de persistance SQLite et gestion d'état */}
       <StoreProvider>
-        {/* Fournisseur du menu tiroir latéral */}
-        <DrawerProvider>
-          {/* Gardien de navigation et contrôle d'accès */}
-          <Gate>
-            {/* Pile de navigation Expo Router sans barre supérieure native */}
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                animation: 'fade_from_bottom',
-                contentStyle: { backgroundColor: '#F5F3ED' },
-              }}
-            />
-            {/* Rendu dynamique du tiroir latéral selon le profil connecté */}
-            <DrawerHost />
-          </Gate>
-        </DrawerProvider>
+        {/* Fournisseur global d'internationalisation réactive (FR / AR / EN + RTL) */}
+        <LanguageProvider>
+          {/* Fournisseur du menu tiroir latéral */}
+          <DrawerProvider>
+            {/* Gardien de navigation et contrôle d'accès */}
+            <Gate>
+              {/* Pile de navigation Expo Router sans barre supérieure native */}
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: 'fade_from_bottom',
+                  contentStyle: { backgroundColor: '#F5F3ED' },
+                }}
+              />
+              {/* Rendu dynamique du tiroir latéral selon le profil connecté */}
+              <DrawerHost />
+            </Gate>
+          </DrawerProvider>
+        </LanguageProvider>
       </StoreProvider>
     </SafeAreaProvider>
   );

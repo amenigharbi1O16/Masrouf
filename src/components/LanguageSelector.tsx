@@ -69,7 +69,7 @@ export function LanguageSelector({ style, variant = 'pills' }: LanguageSelectorP
 
   // Affichage standard sous forme de pastilles (Login, Inscription, Réglages)
   return (
-    <View style={[styles.container, style]}>
+    <View style={[styles.container, { flexDirection: isRTL ? 'row-reverse' : 'row' }, style]}>
       {LANGUES_DISPONIBLES.map((cfg) => {
         const active = langue === cfg.code;
         return (
