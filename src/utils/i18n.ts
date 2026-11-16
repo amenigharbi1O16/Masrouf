@@ -294,11 +294,14 @@ export function useTranslation() {
    * et dans SecureStore/localStorage, puis actualise l'interface en temps réel.
    */
   const changerLangue = async (nouvelleLangue: Langue) => {
-    const directionChangee = (langueActive === 'ar') !== (nouvelleLangue === 'ar');
+    // 1. Application immédiate de la direction : RTL pour l'arabe, LTR pour français/anglais
     appliquerDirectionLangue(nouvelleLangue);
+    // 2. Persistance locale du choix linguistique
     await setLanguePreLogin(nouvelleLangue);
+    // 3. Bascule instantanée de l'état réactif
     setLangueLocale(nouvelleLangue);
 
+    // 4. Si un utilisateur est connecté, synchronisation immédiate de son profil SQLite
     if (user) {
       // Mise à jour de la colonne 'langue' dans la table SQLite 'user'
       updateLangue(Number(user.id) || 1, nouvelleLangue);
@@ -306,15 +309,6 @@ export function useTranslation() {
         setLanguage(nouvelleLangue);
       }
       await refreshUser();
-    }
-
-    // Alerte d'information en cas de basculement RTL/LTR sur mobile natif
-    if (directionChangee && Platform.OS !== 'web') {
-      Alert.alert(
-        translate('changement_langue_titre', nouvelleLangue),
-        translate(nouvelleLangue === 'ar' ? 'redemarrage_rtl_message' : 'redemarrage_ltr_message', nouvelleLangue),
-        [{ text: translate('compris', nouvelleLangue) }]
-      );
     }
   };
 

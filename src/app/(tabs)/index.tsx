@@ -7,8 +7,9 @@ import { AlertBanner, Button, EmptyState, Eyebrow, LoadingScreen, SectionTitle }
 import { colors } from '@/constants/theme';
 import { categoryName, currentBudget, pointsFor, summarize, userTxns } from '@/state/selectors';
 import { useStore } from '@/state/store';
-import { fmtDate, fmtRange, greeting, money, monthName, parseISO, short } from '@/utils/format';
+import { fmtDate, fmtDateLocale, fmtRange, greeting, money, monthName, parseISO, short } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
+import { getCategoryIcon } from '@/utils/categoryIcons';
 
 /**
  * MISSION DE LA FONCTION : HomeScreen
@@ -33,17 +34,17 @@ export default function HomeScreen() {
   // Outil de redirection et de changement de page
   const router = useRouter();
 
-  // Accès à la base locale SQLite et aux informations du profil connecté
-  const { db, me } = useStore();
+  // Accès à la base locale SQLite, au profil connecté et à la période centrale sélectionnée
+  const { db, me, selectedBudget } = useStore();
 
-  // Fonctions de traduction multilingue (français/arabe) et détection du sens d'écriture droite-à-gauche
-  const { t, isRTL, traduireCategorie } = useTranslation();
+  // Fonctions de traduction multilingue (français/anglais/arabe) et détection du sens d'écriture droite-à-gauche
+  const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
   // État local pour afficher plus ou moins de catégories dans le tableau de bord
   const [expanded, setExpanded] = useState(false);
 
-  // Récupération du budget actif aujourd'hui pour l'utilisateur
-  const budget = me ? currentBudget(db, me.id) : null;
+  // La période sélectionnée est la référence centrale absolue de l'écran d'accueil
+  const budget = selectedBudget;
 
   // Calcul statistique du budget (dépensé, restant, pourcentage consommé, état healthy/warning/exceeded)
   const sum = budget && me ? summarize(db, me.id, budget) : null;
@@ -71,8 +72,13 @@ export default function HomeScreen() {
   // Si l'utilisateur n'est pas encore chargé depuis la mémoire, affichage du sablier animé
   if (!me) return <LoadingScreen />;
 
-  // Récupération des 4 dernières dépenses ou achats de l'utilisateur
-  const txns = userTxns(db, me.id).slice(0, 4);
+  // Récupération des 4 transactions les plus récentes rattachées à la période centrale sélectionnée
+  const txns = useMemo(() => {
+    if (!me) return [];
+    const all = userTxns(db, me.id);
+    if (!budget) return all.slice(0, 4);
+    return all.filter((t) => t.date >= budget.start && t.date <= budget.end).slice(0, 4);
+  }, [db, me, budget]);
 
   // Filtrage des catégories associées au budget ayant soit une allocation, soit des dépenses enregistrées
   const allocCats = budget
@@ -92,15 +98,32 @@ export default function HomeScreen() {
     <Screen
       // Titre en haut de page avec salutation selon l'heure et prénom de l'utilisateur
       title={`${greeting()}, ${me.name.split(' ')[0]}`}
-      // Bouton flottant d'action principale (+ Ajouter achat)
-      fab={{ label: `＋ ${t('ajouter_achat')}`, onPress: () => router.push('/nouvel-achat') }}
+      // Bouton flottant d'action principale (+ Ajouter un achat) ouvrant le formulaire complet
+      fab={{ label: `＋ ${t('ajouter_un_achat')}`, onPress: () => router.push('/nouveau-produit') }}
     >
       {budget && sum && d ? (
         <>
-          {/* Libellé du mois en cours et intervalle de dates du budget (ex: "NOVEMBRE 2026 · 1 Nov - 30 Nov") */}
-          <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
-            {monthName(d.getUTCMonth()).toUpperCase()} {d.getUTCFullYear()}  ·  {fmtRange(budget.start, budget.end)}
-          </Eyebrow>
+          {/* Libellé du mois et intervalle exact de dates de la période de budget sélectionnée */}
+          <View
+            style={{
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
+              {monthName(d.getUTCMonth()).toUpperCase()} {d.getUTCFullYear()}  ·  {fmtRange(budget.start, budget.end)}
+            </Eyebrow>
+            <Pressable
+              onPress={() => router.push('/(tabs)/calendrier')}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.green }}>
+                {t('calendrier')} ›
+              </Text>
+            </Pressable>
+          </View>
 
           {/* Carte principale de budget avec jauge colorée */}
           <BudgetCard
@@ -147,15 +170,26 @@ export default function HomeScreen() {
             {t('vos_categories')}
           </SectionTitle>
 
-          {/* Cartes individuelles des catégories affichées */}
-          {shown.map((id) => (
-            <CategoryCard
-              key={id}
-              name={traduireCategorie(categoryName(db, id))}
-              spent={sum.byCat[id] ?? 0}
-              allocation={budget.allocations[id] ?? 0}
-            />
-          ))}
+          {/* Cartes individuelles des catégories affichées avec icône descriptive */}
+          {shown.map((id) => {
+            // Récupération du libellé de référence de la catégorie
+            const rawCatName = categoryName(db, id);
+            // Traduction automatique dans la langue courante
+            const translatedCatName = traduireCategorie(rawCatName);
+            // Résolution de l'icône évocatrice dédiée (ex: restaurant, voiture, reçu)
+            const catIcon = getCategoryIcon(rawCatName);
+
+            return (
+              // Carte de catégorie avec son icône propre
+              <CategoryCard
+                key={id}
+                name={translatedCatName}
+                icon={catIcon}
+                spent={sum.byCat[id] ?? 0}
+                allocation={budget.allocations[id] ?? 0}
+              />
+            );
+          })}
 
           {/* Ligne récapitulative des autres catégories lorsque la liste est repliée */}
           {!expanded && rest.length > 0 && (
@@ -227,36 +261,51 @@ export default function HomeScreen() {
           detail="Ajoutez votre premier achat ou dépense pour la voir apparaître ici."
         />
       ) : (
-        txns.map((tItem) =>
-          tItem.kind === 'purchase' ? (
+        // Parcours et affichage sécurisé de chaque transaction récente
+        txns.filter(Boolean).map((tItem) => {
+          // Date sécurisée de l'opération
+          const safeDate = tItem.date || '';
+          // Détails textuels (magasin ou note)
+          const safeDetail = tItem.detail || '';
+          // Titre descriptif
+          const safeTitle = tItem.title || 'Transaction';
+          // Montant numérique garanti
+          const safeAmount = Number(tItem.amount) || 0;
+          // Libellé de date localisé (ex: "12 nov. 2026")
+          const formattedDate = safeDate ? fmtDateLocale(safeDate, langue) : '';
+          // Concaténation élégante du magasin et de la date
+          const fullDetail = [safeDetail, formattedDate].filter(Boolean).join(' · ');
+
+          return tItem.kind === 'purchase' ? (
             // Ligne de transaction pour un ticket de supermarché / achat d'articles
             <TransactionRow
               key={tItem.id}
-              title={tItem.title}
-              detail={`${tItem.detail} · ${fmtDate(tItem.date)}`}
-              amount={`−${money(tItem.amount).replace(' DT', '')}`}
+              title={safeTitle}
+              detail={fullDetail}
+              amount={`−${money(safeAmount).replace(' DT', '')}`}
               onPress={() =>
                 router.push({ pathname: '/modifier-achat', params: { id: tItem.id } } as never)
               }
             />
           ) : (
-            // Carte de transaction pour une dépense globale (ex: loyer, facture, essence)
+            // Carte de transaction pour une dépense globale avec son icône descriptive dédiée
             <ExpenseCard
               key={tItem.id}
-              title={tItem.title}
-              detail={`${tItem.detail} · ${fmtDate(tItem.date)}`}
-              amount={money(tItem.amount)}
+              title={safeTitle}
+              detail={fullDetail}
+              icon={getCategoryIcon(categoryName(db, tItem.categoryId), 'expense')}
+              amount={money(safeAmount)}
               onPress={() =>
                 router.push({ pathname: '/modifier-depense', params: { id: tItem.id } } as never)
               }
             />
-          )
-        )
+          );
+        })
       )}
 
       {/* Bouton secondaire d'ajout de dépense simple */}
       <Button
-        label={t('ajouter_depense')}
+        label={t('ajouter_depense_simple')}
         variant="secondary"
         onPress={() => router.push('/nouvelle-depense')}
       />

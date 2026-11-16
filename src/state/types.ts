@@ -140,6 +140,24 @@ export interface AppSettings {
 }
 
 /**
+ * Entité Notification interne et alerte réelle smartphone stockée dans SQLite.
+ */
+export interface InAppNotification {
+  id: string;
+  userId: string;
+  type: 'alert_80' | 'alert_100' | 'period_end' | 'budget_change';
+  title: string;
+  body: string;
+  periodLabel: string;
+  periodId: string;
+  amountSpent: number;
+  budgetTotal: number;
+  actionRecommended: string;
+  isRead: boolean;
+  createdAt: string; // Format ISO : YYYY-MM-DDTHH:mm:ss.sssZ
+}
+
+/**
  * Schéma complet de l'état mémoire en miroir de la base SQLite locale.
  */
 export interface DB {
@@ -153,13 +171,18 @@ export interface DB {
   products: Product[];
   purchases: Purchase[];
   expenses: Expense[];
+  notifications: InAppNotification[];
   sessionUserId: string | null;
 }
 
 /**
- * Type de retour universel des opérations d'écriture.
+ * Type de retour universel des opérations d'écriture et d'authentification.
  */
 export interface Result {
+  // Indique si l'opération a réussi
   ok: boolean;
+  // Message explicatif en cas d'échec
   error?: string;
+  // Profil utilisateur renvoyé en cas de connexion réussie
+  user?: User;
 }

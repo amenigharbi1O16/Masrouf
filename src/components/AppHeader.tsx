@@ -24,6 +24,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/theme';
 // Hook d'authentification pour connaître le rôle de l'utilisateur
 import { useAuth } from '@/utils/auth';
+// Accès au store global Masrouf pour le badge de notifications
+import { useStore } from '@/state/store';
 // Système d'internationalisation (FR, EN, AR) et détection RTL
 import { useTranslation } from '@/utils/i18n';
 // Contexte du menu tiroir latéral
@@ -48,6 +50,7 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
   const router = useRouter();
   const { open } = useDrawer();
   const { isAdmin } = useAuth();
+  const { unreadNotificationsCount } = useStore();
   const { t, isRTL } = useTranslation();
 
   /**
@@ -106,27 +109,65 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
         {title}
       </Text>
 
-      {/* 3. Bouton d'action droit : Profil & Réglages */}
+      {/* 3. Boutons d'action droits : Notifications et Profil */}
       {plain ? (
         <View style={styles.slot} />
       ) : (
-        <Pressable
-          onPress={() =>
-            router.navigate(
-              (isAdmin ? '/(admin)/reglages' : '/(tabs)/reglages') as never
-            )
-          }
-          hitSlop={12}
-          style={styles.slot}
-          accessibilityRole="button"
-          accessibilityLabel={t('profil_et_reglages')}
-        >
-          <Ionicons
-            name="person-circle-outline"
-            size={26}
-            color={colors.forest}
-          />
-        </Pressable>
+        <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', gap: 6 }}>
+          {/* Bouton cloche des notifications avec badge d'alertes non lues */}
+          <Pressable
+            onPress={() => router.push('/notifications')}
+            hitSlop={8}
+            style={styles.slot}
+            accessibilityRole="button"
+            accessibilityLabel={t('notifications')}
+          >
+            <Ionicons
+              name={unreadNotificationsCount > 0 ? 'notifications' : 'notifications-outline'}
+              size={22}
+              color={colors.forest}
+            />
+            {unreadNotificationsCount > 0 && (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  right: 2,
+                  backgroundColor: colors.coral,
+                  borderRadius: 7,
+                  minWidth: 15,
+                  height: 15,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 2,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </Text>
+              </View>
+            )}
+          </Pressable>
+
+          {/* Bouton profil & réglages */}
+          <Pressable
+            onPress={() =>
+              router.navigate(
+                (isAdmin ? '/(admin)/reglages' : '/(tabs)/reglages') as never
+              )
+            }
+            hitSlop={8}
+            style={styles.slot}
+            accessibilityRole="button"
+            accessibilityLabel={t('profil_et_reglages')}
+          >
+            <Ionicons
+              name="person-circle-outline"
+              size={24}
+              color={colors.forest}
+            />
+          </Pressable>
+        </View>
       )}
     </View>
   );

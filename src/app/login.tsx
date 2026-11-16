@@ -48,6 +48,8 @@ import {
 import { colors } from '@/constants/theme';
 // Hook d'authentification sécurisée connecté à SQLite
 import { useAuth } from '@/utils/auth';
+// Détermination de la route d'accueil prioritaire selon le rôle et le statut
+import { homeRouteFor } from '@/utils/session';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
 
@@ -79,35 +81,49 @@ export default function LoginScreen() {
 
   /**
    * MISSION DE LA FONCTION :
-   * Authentifier l'utilisateur auprès du moteur de persistance SQLite.
+   * Authentifier l'utilisateur auprès du moteur de persistance SQLite et naviguer instantanément.
    *
    * RÔLE DANS L'APPLICATION :
-   * Appelle `login(email, password)` qui exécute la requête `SELECT * FROM users WHERE email = ?`,
-   * compare les empreintes cryptographiques et vérifie que `status === 'active'`.
+   * Appelle `login(email, password)` qui compare les empreintes cryptographiques dans SQLite,
+   * déverrouille la session en mémoire et redirige directement l'utilisateur vers son tableau de bord.
    *
    * CE QUI EST AFFICHÉ À L'ÉCRAN :
    * En cas d'erreur : affiche la bannière rouge (ex: 'Email ou mot de passe incorrect' ou 'Compte suspendu').
-   * En cas de succès : active la session et laisse le gardien `Gate` rediriger automatiquement vers le bon espace.
+   * En cas de succès : transition immédiate et fluide vers `/(admin)/dashboard` ou `/(tabs)`.
    */
   const submit = async () => {
     // Vérification que les champs ne sont pas vides
     if (!email.trim() || !password) {
+      // Affichage du message d'erreur si l'un des champs est manquant
       setError(`${t('erreur')} : ${t('connexion_sous_titre')}`);
+      // Arrêt prématuré de la soumission
       return;
     }
 
+    // Effacement de l'éventuelle erreur précédente
+    setError('');
     // Début de l'animation de chargement sur le bouton
     setBusy(true);
     // Exécution de l'authentification dans SQLite
     const res = await login(email, password);
+    // Fin de l'animation de chargement
     setBusy(false);
 
     // Si les identifiants sont invalides ou si le compte est suspendu
     if (!res.ok) {
+      // Affichage du message d'erreur retourné par le store
       setError(res.error ?? t('erreur'));
+      // Arrêt de la procédure de connexion
+      return;
     }
-    // En cas de succès : le gardien de navigation Gate dans _layout.tsx
-    // redirige automatiquement l'utilisateur selon son rôle (admin ou utilisateur).
+
+    // En cas de succès, redirection explicite et immédiate vers l'espace cible
+    if (res.user) {
+      // Calcul de la destination selon le profil (admin -> /(admin)/dashboard, user -> /(tabs))
+      const destination = homeRouteFor(res.user);
+      // Remplacement de la route actuelle sans retour possible en arrière vers login
+      router.replace(destination as never);
+    }
   };
 
   return (

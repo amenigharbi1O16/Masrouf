@@ -24,12 +24,16 @@
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+// Icônes vectorielles Ionicons pour illustrer chaque catégorie
+import { Ionicons } from '@expo/vector-icons';
 // Palette de couleurs de Masrouf (vert forêt #102B27)
 import { colors } from '@/constants/theme';
 // Type TypeScript représentant une catégorie
 import type { Category } from '@/state/types';
 // Système de traduction multilingue (FR, AR, EN)
 import { useTranslation } from '@/utils/i18n';
+// Résolveur d'icône représentative par catégorie
+import { getCategoryIcon } from '@/utils/categoryIcons';
 // Composant de titre de section réutilisable
 import { SectionTitle } from './ui';
 
@@ -91,21 +95,54 @@ export function CategoryPicker({ categories, selected, onToggle }: CategoryPicke
                 accessibilityState={{ checked: on }}
                 accessibilityLabel={labelNom}
               >
-                {/* Libellé de la catégorie : gris ardoise par défaut, vert forêt plus soutenu si sélectionné */}
-                <Text
-                  style={[
-                    styles.name,
-                    { textAlign: isRTL ? 'right' : 'left' },
-                    on && styles.nameSelected,
-                  ]}
+                {/* Conteneur gauche associant l'icône évocatrice et le libellé de la catégorie */}
+                <View
+                  style={{
+                    flexDirection: isRTL ? 'row-reverse' : 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    flex: 1,
+                  }}
                 >
-                  {labelNom}
-                </Text>
+                  {/* Icône Ionicons descriptive propre à la catégorie (restaurant, voiture, reçu, etc.) */}
+                  <Ionicons
+                    name={getCategoryIcon(c.name, c.kind)}
+                    size={20}
+                    color={on ? colors.forest : colors.muted}
+                  />
+                  {/* Libellé traduit de la catégorie */}
+                  <Text
+                    style={[
+                      styles.name,
+                      { textAlign: isRTL ? 'right' : 'left' },
+                      on && styles.nameSelected,
+                    ]}
+                  >
+                    {labelNom}
+                  </Text>
+                </View>
 
-                {/* Bouton textuel d'état : affiche '✓ Sélectionné' ou 'Choisir' */}
-                <Text style={[styles.state, on && styles.stateSelected]}>
-                  {on ? `✓ ${t('selectionne')}` : t('selectionner')}
-                </Text>
+                {/* Bouton d'action avec icône vectorielle Ionicons : affiche une coche vectorielle + 'Sélectionné' ou 'Choisir' sans aucun emoji */}
+                <View
+                  style={{
+                    flexDirection: isRTL ? 'row-reverse' : 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  {/* Coche vectorielle Ionicons lorsque la catégorie est sélectionnée */}
+                  {on && (
+                    <Ionicons
+                      name="checkmark"
+                      size={15}
+                      color={colors.forest}
+                    />
+                  )}
+                  {/* Libellé textuel traduit ('Sélectionné' ou 'Choisir') */}
+                  <Text style={[styles.state, on && styles.stateSelected]}>
+                    {on ? t('selectionne') : t('selectionner')}
+                  </Text>
+                </View>
               </Pressable>
             );
           })}

@@ -59,7 +59,7 @@ import { useTranslation } from '@/utils/i18n';
  */
 export default function CalendarScreen() {
   const router = useRouter();
-  const { db, me } = useStore();
+  const { db, me, selectedBudgetId, actions } = useStore();
   const { t, isRTL } = useTranslation();
 
   const now = new Date();
@@ -250,39 +250,139 @@ export default function CalendarScreen() {
               onAction={() => router.push('/budget-mois')}
             />
           ) : (
-            // Liste des périodes de budget chevauchant le mois
+            // Liste des périodes de budget chevauchant le mois avec sélection centrale
             selected.map((b) => {
               const s = summarize(db, me.id, b);
+              const isActive = selectedBudgetId === b.id;
               return (
-                // ACTION-USER-10 : Accéder à l'édition de la période au toucher
-                <Pressable
+                <View
                   key={b.id}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/budget-mois',
-                      params: { mode: 'edit', id: b.id },
-                    } as never)
-                  }
-                  accessibilityRole="button"
+                  style={{
+                    backgroundColor: colors.white,
+                    borderRadius: 14,
+                    borderWidth: 1.5,
+                    borderColor: isActive ? colors.green : colors.border,
+                    padding: 14,
+                    gap: 10,
+                  }}
                 >
-                  <InfoRow
-                    label={fmtRange(b.start, b.end)}
-                    value={`${money(s.spent, 0)} / ${money(b.total, 0)}`}
-                    tone={s.status === 'exceeded' ? 'danger' : undefined}
-                  />
-                </Pressable>
+                  <View
+                    style={{
+                      flexDirection: isRTL ? 'row-reverse' : 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 15,
+                          fontWeight: '700',
+                          color: colors.forest,
+                          textAlign: isRTL ? 'right' : 'left',
+                        }}
+                      >
+                        {fmtRange(b.start, b.end)}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          color: s.status === 'exceeded' ? colors.coral : colors.muted,
+                          fontWeight: '600',
+                          marginTop: 2,
+                          textAlign: isRTL ? 'right' : 'left',
+                        }}
+                      >
+                        {money(s.spent, 0)} / {money(b.total, 0)}
+                      </Text>
+                    </View>
+
+                    {isActive && (
+                      <View
+                        style={{
+                          backgroundColor: '#E8F5E9',
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: colors.green,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: colors.green }}>
+                          ✓ Active
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View
+                    style={{
+                      flexDirection: isRTL ? 'row-reverse' : 'row',
+                      gap: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    {!isActive && (
+                      <Pressable
+                        onPress={() => {
+                          actions.setSelectedBudgetId(b.id);
+                          router.push('/(tabs)');
+                        }}
+                        style={{
+                          flex: 1,
+                          backgroundColor: colors.forest,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                        }}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                          Sélectionner comme référence
+                        </Text>
+                      </Pressable>
+                    )}
+
+                    <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: '/budget-mois',
+                          params: { mode: 'edit', id: b.id },
+                        } as never)
+                      }
+                      style={{
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        backgroundColor: '#EFEFEF',
+                        borderRadius: 8,
+                        alignItems: 'center',
+                      }}
+                      accessibilityRole="button"
+                    >
+                      <Text style={{ color: colors.forest, fontSize: 12, fontWeight: '600' }}>
+                        {t('modifier')}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
               );
             })
+          )}
+
+          {/* Bouton de création d'une nouvelle période vert foncé (affiché uniquement lorsqu'il y a des périodes listées) */}
+          {selected.length > 0 && (
+            <Button
+              // Libellé traduit
+              label={t('creer_periode_budget')}
+              // Redirection vers la création de période
+              onPress={() => router.push('/budget-mois')}
+            />
           )}
         </>
       )}
 
-      {/* ECRAN-TAB-03-07 : Bouton de création d'une nouvelle période */}
-      <Button
-        label={t('creer_periode_budget')}
-        variant="secondary"
-        onPress={() => router.push('/budget-mois')}
-      />
+      {/* Marge inférieure de sécurité */}
+      <View style={{ height: 16 }} />
     </Screen>
   );
 }

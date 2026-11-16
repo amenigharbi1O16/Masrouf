@@ -23,6 +23,8 @@
 
 import React, { useState } from 'react';
 import { Switch, Text, TextInput, View } from 'react-native';
+// Icônes vectorielles Ionicons pour illustrer chaque catégorie
+import { Ionicons } from '@expo/vector-icons';
 // Composant conteneur d'écran avec gestion du défilement et barre de statut
 import { Screen } from '@/components/Screen';
 // Composant de sélection déroulante personnalisée pour le type de catégorie
@@ -37,6 +39,8 @@ import { useStore } from '@/state/store';
 import type { CategoryKind } from '@/state/types';
 // Système d'internationalisation (FR, EN, AR) et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
+// Résolveur d'icône représentative par catégorie
+import { getCategoryIcon } from '@/utils/categoryIcons';
 
 /**
  * MISSION DU COMPOSANT :
@@ -157,6 +161,13 @@ export default function AdminCategoriesScreen() {
                   minHeight: 56,
                 }}
               >
+                {/* Icône descriptive de la catégorie (restaurant, voiture, reçu, manette, etc.) */}
+                <Ionicons
+                  name={getCategoryIcon(cat.name, cat.kind)}
+                  size={22}
+                  color={colors.forest}
+                />
+
                 {/* Champ texte permettant de renommer directement le titre de la catégorie */}
                 <TextInput
                   defaultValue={cat.name}

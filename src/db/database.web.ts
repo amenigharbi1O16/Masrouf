@@ -136,7 +136,7 @@ class WebDatabaseStore {
       salt: DEFAULT_SALT,
       role: 'admin',
       is_active: 1,
-      must_change_password: 1,
+      must_change_password: 0,
       onboarding_done: 1,
       hash_version: 1,
       budget_mensuel: 0,
@@ -157,6 +157,21 @@ class WebDatabaseStore {
       budget_mensuel: 1200,
       langue: 'fr',
       created_at: '2026-11-02 14:30:00',
+    },
+    {
+      id: 3,
+      name: 'Ines Ben Ali',
+      email: 'ines.benali@email.tn',
+      password_hash: DEFAULT_USER_HASH,
+      salt: DEFAULT_SALT,
+      role: 'user',
+      is_active: 1,
+      must_change_password: 0,
+      onboarding_done: 1,
+      hash_version: 1,
+      budget_mensuel: 1200,
+      langue: 'fr',
+      created_at: '2026-11-01 10:00:00',
     },
   ];
 
@@ -180,46 +195,35 @@ class WebDatabaseStore {
   ];
 
   category: CategoryRow[] = [
-    // Type Product
-    { id: 1, name_key: 'Alimentation', type: 'product', icon: '🍞', default_percent: 25, is_default: 1, is_active: 1, is_system: 0, theme: 'Essentiel' },
-    { id: 2, name_key: 'Vêtements et chaussures', type: 'product', icon: '👕', default_percent: 8, is_default: 1, is_active: 1, is_system: 0, theme: 'Personnel' },
-    { id: 3, name_key: 'Hygiène et soins personnels', type: 'product', icon: '🧼', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Vie quotidienne' },
-    { id: 4, name_key: 'Maison et équipement', type: 'product', icon: '🛋️', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Logement' },
-    { id: 5, name_key: 'Matériel informatique', type: 'product', icon: '💻', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Études et travail' },
-    { id: 6, name_key: 'Santé', type: 'product', icon: '💊', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Santé' },
-    // Type Expense
-    { id: 7, name_key: 'Transport', type: 'expense', icon: '🚗', default_percent: 10, is_default: 1, is_active: 1, is_system: 0, theme: 'Essentiel' },
-    { id: 8, name_key: 'Factures', type: 'expense', icon: '🧾', default_percent: 14, is_default: 1, is_active: 1, is_system: 0, theme: 'Logement' },
-    { id: 9, name_key: 'Études', type: 'expense', icon: '📚', default_percent: 10, is_default: 1, is_active: 1, is_system: 0, theme: 'Études et travail' },
-    { id: 10, name_key: 'Loisirs et sorties', type: 'expense', icon: '🎮', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Personnel' },
-    { id: 11, name_key: 'Enfants', type: 'expense', icon: '👶', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Famille' },
-    { id: 12, name_key: 'Aide à la famille', type: 'expense', icon: '🤝', default_percent: 2, is_default: 1, is_active: 1, is_system: 0, theme: 'Famille' },
-    { id: 13, name_key: 'Épargne', type: 'expense', icon: '💰', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
-    { id: 14, name_key: 'Dons et charité', type: 'expense', icon: '🤲', default_percent: 1, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
-    { id: 15, name_key: 'Frais bancaires', type: 'expense', icon: '🏦', default_percent: 2, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
-    { id: 16, name_key: 'Autres', type: 'expense', icon: '📦', default_percent: 5, is_default: 1, is_active: 1, is_system: 1, theme: 'Divers' },
+    // Type Product avec icônes vectorielles sans emojis
+    { id: 1, name_key: 'Alimentation', type: 'product', icon: 'restaurant-outline', default_percent: 25, is_default: 1, is_active: 1, is_system: 0, theme: 'Essentiel' },
+    { id: 2, name_key: 'Vêtements et chaussures', type: 'product', icon: 'shirt-outline', default_percent: 8, is_default: 1, is_active: 1, is_system: 0, theme: 'Personnel' },
+    { id: 3, name_key: 'Hygiène et soins personnels', type: 'product', icon: 'sparkles-outline', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Vie quotidienne' },
+    { id: 4, name_key: 'Maison et équipement', type: 'product', icon: 'home-outline', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Logement' },
+    { id: 5, name_key: 'Matériel informatique', type: 'product', icon: 'laptop-outline', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Études et travail' },
+    { id: 6, name_key: 'Santé', type: 'product', icon: 'medkit-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Santé' },
+    // Type Expense avec icônes vectorielles sans emojis
+    { id: 7, name_key: 'Transport', type: 'expense', icon: 'car-outline', default_percent: 10, is_default: 1, is_active: 1, is_system: 0, theme: 'Essentiel' },
+    { id: 8, name_key: 'Factures', type: 'expense', icon: 'receipt-outline', default_percent: 14, is_default: 1, is_active: 1, is_system: 0, theme: 'Logement' },
+    { id: 9, name_key: 'Études', type: 'expense', icon: 'school-outline', default_percent: 10, is_default: 1, is_active: 1, is_system: 0, theme: 'Études et travail' },
+    { id: 10, name_key: 'Loisirs et sorties', type: 'expense', icon: 'game-controller-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Personnel' },
+    { id: 11, name_key: 'Enfants', type: 'expense', icon: 'happy-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Famille' },
+    { id: 12, name_key: 'Aide à la famille', type: 'expense', icon: 'people-outline', default_percent: 2, is_default: 1, is_active: 1, is_system: 0, theme: 'Famille' },
+    { id: 13, name_key: 'Épargne', type: 'expense', icon: 'cash-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
+    { id: 14, name_key: 'Dons et charité', type: 'expense', icon: 'heart-outline', default_percent: 1, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
+    { id: 15, name_key: 'Frais bancaires', type: 'expense', icon: 'business-outline', default_percent: 2, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
+    { id: 16, name_key: 'Autres', type: 'expense', icon: 'cart-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 1, theme: 'Divers' },
   ];
 
-  product: ProductRow[] = [
-    { id: 1, user_id: 2, name: 'Lait demi-écrémé', brand: 'Délice', category_id: 1, photo_path: '', unit: 'L', created_at: '2026-11-02' },
-  ];
-
-  purchase: PurchaseRow[] = [
-    { id: 1, user_id: 2, product_id: 1, category_id: 1, price: 1.85, quantity: 2, unit: 'L', store: 'Carrefour', date: '2026-11-10', month: '2026-11', notes: '', created_at: '2026-11-10' },
-  ];
-
-  expense: ExpenseRow[] = [
-    { id: 1, user_id: 2, category_id: 7, amount: 25.0, label: 'Taxi & Déplacement', date: '2026-11-09', month: '2026-11', notes: '', created_at: '2026-11-09' },
-  ];
-
-  month_budget: MonthBudgetRow[] = [
-    { id: 1, user_id: 2, month: '2026-11', total: 800, is_evaluated: 0, created_at: '2026-11-01' },
-  ];
-
-  category_budget: CategoryBudgetRow[] = [
-    { id: 1, user_id: 2, month: '2026-11', category_id: 1, amount: 200, percent: 25, created_at: '2026-11-01' },
-    { id: 2, user_id: 2, month: '2026-11', category_id: 7, amount: 80, percent: 10, created_at: '2026-11-01' },
-  ];
+  // ============================================================
+  // MISSION ARCHITECTURALE : ZÉRO DONNÉE EN DUR
+  // RÔLE : Catalogue de produits, achats, dépenses et budgets vierges au démarrage.
+  // ============================================================
+  product: ProductRow[] = [];
+  purchase: PurchaseRow[] = [];
+  expense: ExpenseRow[] = [];
+  month_budget: MonthBudgetRow[] = [];
+  category_budget: CategoryBudgetRow[] = [];
 
   settings: SettingsRow = {
     id: 1,
@@ -254,9 +258,31 @@ class WebDatabaseStore {
           if (parsed.user) {
             this.user = parsed.user.map((u: any) => ({
               ...u,
+              // Déverrouillage systématique des comptes de test pour le Web
+              is_active: ['admin@masrouf.tn', 'ines.benali@email.tn', 'user@masrouf.tn'].includes(String(u.email).toLowerCase()) ? 1 : (u.is_active ?? 1),
+              must_change_password: ['admin@masrouf.tn', 'ines.benali@email.tn', 'user@masrouf.tn'].includes(String(u.email).toLowerCase()) ? 0 : (u.must_change_password ?? 0),
               onboarding_done: u.onboarding_done ?? 1,
               hash_version: u.hash_version ?? 1,
             }));
+
+            // Si Ines Ben Ali est absente de la sauvegarde Web locale, l'injecter
+            if (!this.user.some((u) => u.email.toLowerCase() === 'ines.benali@email.tn')) {
+              this.user.push({
+                id: 3,
+                name: 'Ines Ben Ali',
+                email: 'ines.benali@email.tn',
+                password_hash: DEFAULT_USER_HASH,
+                salt: DEFAULT_SALT,
+                role: 'user',
+                is_active: 1,
+                must_change_password: 0,
+                onboarding_done: 1,
+                hash_version: 1,
+                budget_mensuel: 1200,
+                langue: 'fr',
+                created_at: '2026-11-01 10:00:00',
+              });
+            }
           }
           if (parsed.user_category) this.user_category = parsed.user_category;
           if (parsed.category) this.category = parsed.category;
@@ -447,17 +473,17 @@ export const db = {
       const [nom, typeOrIcon, iconOrPct, pctOrTheme, theme] = params;
       let nameKey = nom;
       let catType: 'product' | 'expense' = 'product';
-      let icon = '📦';
+      let icon = 'cart-outline';
       let defPct = 0;
       let th = 'Divers';
 
       if (params.length === 5) {
         catType = typeOrIcon === 'expense' ? 'expense' : 'product';
-        icon = iconOrPct || '📦';
+        icon = iconOrPct || 'cart-outline';
         defPct = pctOrTheme || 0;
         th = theme || 'Divers';
       } else {
-        icon = typeOrIcon || '📦';
+        icon = typeOrIcon || 'cart-outline';
         defPct = iconOrPct || 0;
         th = pctOrTheme || 'Divers';
       }
@@ -661,9 +687,43 @@ export const db = {
           unite: p.unit,
           photo_uri: p.photo_path,
           categorie_nom: cat?.name_key ?? 'Autres',
-          categorie_icone: cat?.icon ?? '📦',
+          categorie_icone: cat?.icon ?? 'cart-outline',
         };
       }) as unknown as T[];
+    }
+
+    // BUDGET (Périodes personnalisées)
+    if (s.includes('FROM BUDGET')) {
+      // Transformation des month_budget en budget de période pour le Web
+      return store.month_budget.map((mb) => ({
+        id: mb.id,
+        user_id: mb.user_id,
+        start_date: `${mb.month}-01`,
+        end_date: `${mb.month}-30`,
+        month: mb.month,
+        total: mb.total,
+        is_evaluated: mb.is_evaluated,
+      })) as unknown as T[];
+    }
+
+    // CATEGORY_BUDGET (Enveloppes allouées)
+    if (s.includes('FROM CATEGORY_BUDGET')) {
+      // Récupération des allocations filtrées par utilisateur si fourni
+      const [userId] = params;
+      const rows = store.category_budget.filter(
+        (cb) => userId === undefined || cb.user_id === userId
+      );
+      return rows as unknown as T[];
+    }
+
+    // PURCHASES (Achats de produits détaillés)
+    if (s.includes('FROM PURCHASE')) {
+      return store.purchase as unknown as T[];
+    }
+
+    // EXPENSES (Dépenses directes)
+    if (s.includes('FROM EXPENSE')) {
+      return store.expense as unknown as T[];
     }
 
     return [];

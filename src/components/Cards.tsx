@@ -6,6 +6,7 @@ import { dt, money, short } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
 import type { Product } from '@/state/types';
 import { ProductThumb } from './ProductThumb';
+import { getCategoryIcon } from '@/utils/categoryIcons';
 
 /** Style de base réutilisé pour donner un fond blanc et des coins arrondis à toutes les cartes */
 const card = { backgroundColor: colors.white, borderRadius: radius.card } as const;
@@ -67,22 +68,46 @@ export function BudgetCard({ available, spent, total, pct, range, over, onPress 
  * 🎯 COMPOSANT : CategoryCard
  * 📌 Mission : Afficher l'état d'une enveloppe budgétaire pour une catégorie précise (ex: Alimentation, Transport).
  * 👁️ Ce que l'utilisateur voit à l'écran :
- *    - Une icône de portefeuille avec le nom de la catégorie.
- *    - La consommation par rapport au plafond alloué (ex: "120 / 300 DT").
+ *    - Une icône évocatrice dédiée à la catégorie (fourchette pour alimentation, voiture pour transport, etc.).
+ *    - La consommation par rapport au plafond alloué (ex: "320 / 500 DT").
  *    - Une mini barre de jauge verte, virant au rouge corail en cas de dépassement.
  */
-export function CategoryCard({ name, spent, allocation, onPress }: { name: string; spent: number; allocation: number; onPress?: () => void }) {
+// Carte représentative d'une enveloppe catégorielle
+export function CategoryCard({
+  name,
+  spent,
+  allocation,
+  icon,
+  onPress,
+}: {
+  // Nom de la catégorie
+  name: string;
+  // Montant consommé en DT
+  spent: number;
+  // Montant total alloué en DT
+  allocation: number;
+  // Nom optionnel d'icône Ionicons spécifique
+  icon?: keyof typeof Ionicons.glyphMap;
+  // Callback de clic tactile optionnel
+  onPress?: () => void;
+}) {
   // Calcul du ratio de consommation pour déterminer la largeur de la jauge
   const ratio = allocation > 0 ? Math.min(1, spent / allocation) : spent > 0 ? 1 : 0;
   // Détecte si le montant dépensé dépasse le plafond prévu
   const over = spent > allocation;
+  // Détermination de l'icône représentative : priorité à l'icône transmise, sinon résolution automatique selon le nom
+  const iconName = icon ?? getCategoryIcon(name);
 
   return (
+    // Carte tactile stylisée avec fond blanc et coins arrondis
     <Pressable onPress={onPress} disabled={!onPress} style={[card, { padding: 16, gap: 10 }]}>
+      {/* Ligne supérieure avec icône, titre et montant */}
       <View style={styles.rowBetween}>
-        {/* Nom et icône de la catégorie */}
+        {/* Nom et icône représentative de la catégorie */}
         <View style={styles.iconTitle}>
-          <Ionicons name="wallet-outline" size={22} color={colors.green} />
+          {/* Icône Ionicons vectorielle personnalisée selon la catégorie (ex: restaurant, voiture, reçu) */}
+          <Ionicons name={iconName} size={22} color={colors.green} />
+          {/* Titre de la catégorie en vert forêt */}
           <Text style={styles.cardTitle}>{name}</Text>
         </View>
         {/* Montant dépensé vs montant alloué (coloré en rouge corail si dépassé) */}
@@ -90,6 +115,7 @@ export function CategoryCard({ name, spent, allocation, onPress }: { name: strin
       </View>
       {/* Jauge fine visuelle de la catégorie */}
       <View style={styles.trackLight}>
+        {/* Barre de progression verte ou corail */}
         <View style={{ width: `${ratio * 100}%`, height: 6, borderRadius: 3, backgroundColor: over ? colors.coral : colors.green }} />
       </View>
     </Pressable>
@@ -98,99 +124,226 @@ export function CategoryCard({ name, spent, allocation, onPress }: { name: strin
 
 /**
  * 🎯 COMPOSANT : TransactionRow
- * 📌 Mission : Afficher une ligne compacte de transaction récente (achat ou dépense).
+ * 📌 Mission : Afficher une ligne compacte de transaction récente (achat de produit ou dépense directe).
  * 👁️ Ce que l'utilisateur voit à l'écran :
- *    - Un carré coloré contenant l'icône du type d'achat (sac de courses, portefeuille, etc.).
- *    - Le titre de la transaction (ex: "Courses Carrefour").
- *    - Les détails en gris (ex: "3 articles · 14 Nov").
- *    - Le montant total débité aligné à droite (ex: "42,50 DT").
+ *    - Un carré vert menthe avec l'icône du type d'achat (sac de courses, portefeuille).
+ *    - Le titre de la transaction (ex: date en gras ou nom de l'article).
+ *    - Les détails en gris (ex: magasin, unité ou note).
+ *    - Le montant total débité aligné en gras à droite (ex: "14.500 DT").
  */
-export function TransactionRow({ title, detail, amount, icon = 'bag-outline', onPress }: {
-  title: string; detail: string; amount: string; icon?: keyof typeof Ionicons.glyphMap; onPress?: () => void;
+// Composant de ligne de transaction
+export function TransactionRow({ title, detail, amount, isConfirmed, icon = 'bag-outline', onPress }: {
+  title: string; detail: string; amount?: string; isConfirmed?: boolean; icon?: keyof typeof Ionicons.glyphMap; onPress?: () => void;
 }) {
+  // Récupération de la détection du sens d'écriture droite-à-gauche pour l'arabe
+  const { isRTL } = useTranslation();
+
+  // Rendu cliquable de la ligne de transaction
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={[card, styles.txn]} accessibilityRole={onPress ? 'button' : undefined}>
-      {/* Pastille carrée contenant l'icône vectorielle */}
-      <View style={styles.tile}><Ionicons name={icon} size={22} color={colors.green} /></View>
+    <Pressable
+      // Gestionnaire de clic
+      onPress={onPress}
+      // Désactivation si aucune action n'est définie
+      disabled={!onPress}
+      // Style avec inversion RTL si nécessaire
+      style={[
+        card,
+        styles.txn,
+        { flexDirection: isRTL ? 'row-reverse' : 'row' },
+      ]}
+      // Rôle d'accessibilité
+      accessibilityRole={onPress ? 'button' : undefined}
+    >
+      {/* Pastille carrée vert menthe contenant l'icône vectorielle */}
+      <View style={styles.tile}>
+        <Ionicons name={icon} size={22} color={colors.forest} />
+      </View>
       
       {/* Intitulé et métadonnées de la transaction */}
-      <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
-        <Text style={styles.txnDetail} numberOfLines={1}>{detail}</Text>
+      <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
+        {/* Titre principal */}
+        <Text style={[styles.cardTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+          {title}
+        </Text>
+        {/* Détails secondaires */}
+        <Text style={[styles.txnDetail, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
+          {detail}
+        </Text>
       </View>
 
-      {/* Montant de la dépense affiché à droite */}
-      <Text style={styles.cardTitle}>{amount}</Text>
+      {/* Montant de la dépense ou icône vectorielle de confirmation sans aucun emoji */}
+      {isConfirmed || amount === 'confirmed' ? (
+        // Rendu de l'icône vectorielle de validation verte
+        <Ionicons name="checkmark-circle" size={20} color={colors.forest} />
+      ) : (
+        // Affichage standard du montant chiffré
+        <Text style={[styles.cardTitle, { textAlign: isRTL ? 'left' : 'right' }]}>
+          {amount ?? ''}
+        </Text>
+      )}
     </Pressable>
   );
 }
 
 /**
  * 🎯 COMPOSANT : ExpenseCard
- * 📌 Mission : Afficher une fiche de dépense globale dans la liste des dépenses.
+ * 📌 Mission : Afficher une fiche de dépense globale dans la liste des dépenses avec une icône adaptée.
  * 👁️ Ce que l'utilisateur voit à l'écran :
- *    - L'icône de portefeuille verte.
+ *    - L'icône représentative du poste de dépense (voiture pour transport, reçu pour facture, etc.).
  *    - Le titre de la dépense et sa sous-catégorie / date.
  *    - Le montant de la dépense.
  */
-export function ExpenseCard({ title, detail, amount, onPress }: { title: string; detail: string; amount: string; onPress?: () => void }) {
+// Composant de carte de dépense simple avec icône spécifique
+export function ExpenseCard({
+  title,
+  detail,
+  amount,
+  icon,
+  onPress,
+}: {
+  // Titre ou nom de la dépense
+  title: string;
+  // Détail ou date formatée
+  detail: string;
+  // Montant textuel formaté en DT
+  amount: string;
+  // Nom d'icône Ionicons spécifique optionnel
+  icon?: keyof typeof Ionicons.glyphMap;
+  // Action au clic
+  onPress?: () => void;
+}) {
+  // Récupération de l'orientation RTL
+  const { isRTL } = useTranslation();
+  // Résolution de l'icône selon l'icône fournie ou le titre de la catégorie
+  const iconName = icon ?? getCategoryIcon(title, 'expense');
+
+  // Rendu de la carte de dépense
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={[card, styles.expense]} accessibilityRole={onPress ? 'button' : undefined}>
-      <Ionicons name="wallet-outline" size={22} color={colors.green} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
-        <Text style={styles.cardSub} numberOfLines={1}>{detail}</Text>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={[
+        card,
+        styles.expense,
+        { flexDirection: isRTL ? 'row-reverse' : 'row' },
+      ]}
+      accessibilityRole={onPress ? 'button' : undefined}
+    >
+      {/* Vignette avec icône évocatrice sur fond vert menthe */}
+      <View style={styles.tile}>
+        {/* Rendu de l'icône adaptée (voiture, reçu, etc. au lieu du portefeuille uniforme) */}
+        <Ionicons name={iconName} size={22} color={colors.forest} />
       </View>
-      <Text style={[styles.cardTitle, { fontSize: 13 }]}>{amount}</Text>
+      {/* Colonne textuelle */}
+      <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
+        <Text style={[styles.cardTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{title}</Text>
+        <Text style={[styles.cardSub, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{detail}</Text>
+      </View>
+      {/* Montant de la dépense */}
+      <Text style={[styles.cardTitle, { fontSize: 13, textAlign: isRTL ? 'left' : 'right' }]}>{amount}</Text>
     </Pressable>
   );
 }
 
 /**
  * 🎯 COMPOSANT : ProductCard
- * 📌 Mission : Afficher un produit dans la liste du comparateur de prix ou du catalogue.
+ * 📌 Mission : Afficher un produit dans la liste du catalogue ou des essentiels du quotidien.
  * 👁️ Ce que l'utilisateur voit à l'écran :
- *    - La photo miniature du produit (ou son icône de secours).
- *    - Le nom du produit et sa marque / catégorie.
- *    - Le dernier prix unitaire constaté et son unité (ex: "3,200 DT / kg").
+ *    - La vignette miniature vert menthe avec l'icône du sac de courses ou la photo enregistrée.
+ *    - Le nom du produit en gras vert forêt (ex: "Huile d’olive").
+ *    - La sous-ligne formatée "Catégorie · Unité · Prix DT" (ex: "Alimentation · 1 L · 14.500 DT").
  */
+// Composant de carte de produit
 export function ProductCard({ product, categoryName, latestUnitPrice, unit, onPress }: {
   product: Product; categoryName: string; latestUnitPrice?: number; unit: string; onPress?: () => void;
 }) {
+  // Détection du sens de lecture RTL pour l'arabe
+  const { isRTL } = useTranslation();
+
+  // Formatage de la ligne de sous-titre combinant catégorie, unité et dernier prix en DT
+  const subLine = [
+    categoryName,
+    unit,
+    latestUnitPrice !== undefined ? `${dt(latestUnitPrice)} DT` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  // Rendu de la carte du produit
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={[card, styles.product]} accessibilityRole={onPress ? 'button' : undefined}>
-      {/* Vignette miniature de la photo du produit */}
-      <ProductThumb name={product.name} uri={product.photo} />
+    <Pressable
+      // Gestionnaire de navigation vers la fiche détaillée du produit
+      onPress={onPress}
+      // Désactivation si non interactive
+      disabled={!onPress}
+      // Style avec gestion de l'alignement RTL
+      style={[
+        card,
+        styles.product,
+        { flexDirection: isRTL ? 'row-reverse' : 'row' },
+      ]}
+      // Déclaration d'accessibilité
+      accessibilityRole={onPress ? 'button' : undefined}
+    >
+      {/* Vignette miniature carrée vert menthe avec icône sac de courses */}
+      <ProductThumb name={product.name} uri={product.photo} size={48} />
 
-      {/* Libellé du produit, marque et catégorie associée */}
-      <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle} numberOfLines={1}>{product.name}</Text>
-        <Text style={styles.cardSub} numberOfLines={1}>{[product.brand, categoryName].filter(Boolean).join(' · ')}</Text>
+      {/* Bloc descriptif du produit */}
+      <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
+        {/* Nom de l'article en gras vert forêt */}
+        <Text
+          style={[styles.cardTitle, { textAlign: isRTL ? 'right' : 'left' }]}
+          numberOfLines={1}
+        >
+          {product.name}
+        </Text>
+        {/* Sous-ligne complète : Catégorie · Unité · Prix en DT */}
+        <Text
+          style={[styles.cardSub, { textAlign: isRTL ? 'right' : 'left' }]}
+          numberOfLines={1}
+        >
+          {subLine}
+        </Text>
       </View>
-
-      {/* Bloc prix unitaire et unité (ex: DT / L ou DT / kg) */}
-      {latestUnitPrice !== undefined ? (
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={styles.cardTitle}>{dt(latestUnitPrice)}</Text>
-          <Text style={styles.cardSub}>DT / {unit}</Text>
-        </View>
-      ) : null}
     </Pressable>
   );
 }
 
 /**
  * 🎯 COMPOSANT : InfoRow
- * 📌 Mission : Afficher une ligne d'information clé/valeur (ex: "Dernier prix : 2,500 DT", "Magasin : Monoprix").
+ * 📌 Mission : Afficher une ligne d'information clé/valeur (ex: "Dernier prix : 14.500 DT / L", "Magasin : Monoprix").
  * 👁️ Ce que l'utilisateur voit à l'écran :
- *    - Le label descriptif en gris clair à gauche.
- *    - La valeur mise en valeur à droite (qui peut être teintée en rouge si danger/inflation ou en vert si économie).
+ *    - Le label descriptif en vert grisé à gauche (ou à droite en arabe).
+ *    - La valeur mise en valeur en vert forêt à droite (ou à gauche en arabe).
  */
-export function InfoRow({ label, value, tone }: { label: string; value: string; tone?: 'danger' | 'good' }) {
+// Composant de ligne clé/valeur
+export function InfoRow({ label, value, tone, plain = false }: {
+  label: string; value: string; tone?: 'danger' | 'good'; plain?: boolean;
+}) {
+  // Détection du sens d'écriture
+  const { isRTL } = useTranslation();
+
+  // Rendu de la ligne
   return (
-    <View style={[card, styles.info]}>
-      <Text style={styles.cardSub}>{label}</Text>
-      <Text style={[styles.cardTitle, tone === 'danger' && { color: colors.coral }, tone === 'good' && { color: colors.green }]}>{value}</Text>
+    <View
+      style={[
+        plain ? styles.infoPlain : [card, styles.info],
+        { flexDirection: isRTL ? 'row-reverse' : 'row' },
+      ]}
+    >
+      {/* Label descriptif */}
+      <Text style={[styles.cardSub, { textAlign: isRTL ? 'right' : 'left' }]}>{label}</Text>
+      {/* Valeur mise en évidence */}
+      <Text
+        style={[
+          styles.cardTitle,
+          { textAlign: isRTL ? 'left' : 'right' },
+          tone === 'danger' && { color: colors.coral },
+          tone === 'good' && { color: colors.green },
+        ]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -217,4 +370,5 @@ const styles = StyleSheet.create({
   expense: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, minHeight: 80 },
   product: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, minHeight: 72 },
   info: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+  infoPlain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, gap: 12 },
 });

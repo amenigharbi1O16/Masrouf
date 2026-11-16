@@ -87,6 +87,12 @@ export default function BudgetPeriodScreen() {
   const [end, setEnd] = useState(existing?.end ?? addDays(todayISO(), 29));
   // État local du montant total en Dinars Tunisiens (chaîne de caractères pour saisie fluide)
   const [total, setTotal] = useState(existing ? String(existing.total) : '');
+
+  // Détection stricte d'un budget préexistant pour ces mêmes dates (Règle : un seul budget par période)
+  const duplicateBudget = useMemo(() => {
+    if (editing || !me) return null;
+    return db.budgets.find((b) => b.userId === me.id && b.start === start && b.end === end) ?? null;
+  }, [editing, me, db.budgets, start, end]);
   // État local des montants alloués par catégorie en mode édition
   const [alloc, setAlloc] = useState<Record<string, string>>(
     Object.fromEntries(
@@ -146,6 +152,10 @@ export default function BudgetPeriodScreen() {
     }
     if (!Number.isFinite(totalN) || totalN <= 0) {
       return t('erreur_total_positif');
+    }
+    // Règle stricte d'unicité : interdiction absolue de créer un second budget pour la même période
+    if (!editing && duplicateBudget) {
+      return `Un budget existe déjà pour cette période (${fmtRange(start, end)}). Chaque période ne peut comporter qu'un seul budget.`;
     }
     if (editing && allocSum > totalN) {
       return `${t('erreur_depassement_allocations')}${money(allocSum - totalN)}.`;
@@ -306,6 +316,32 @@ export default function BudgetPeriodScreen() {
             label={t('enregistrer_modifications')}
             onPress={save}
             disabled={!validRange}
+          />
+          {/* Bouton secondaire clair d'annulation */}
+          <Button
+            label={t('annuler')}
+            variant="secondary"
+            onPress={() => router.back()}
+          />
+        </>
+      ) : duplicateBudget ? (
+        <>
+          {/* Alerte stricte informant que la période existe déjà et empêchant le doublon */}
+          <AlertBanner
+            tone="warning"
+            title="Période déjà existante"
+            detail={`Un budget de ${money(duplicateBudget.total)} existe déjà pour cette période exacte (${fmtRange(start, end)}). Conformément à la règle de gestion Masrouf, chaque période ne peut comporter qu'un seul budget. Vous pouvez modifier ce budget existant.`}
+          />
+
+          {/* Bouton pour rediriger directement vers la modification du budget existant */}
+          <Button
+            label="Modifier le budget existant"
+            onPress={() =>
+              router.replace({
+                pathname: '/budget-mois',
+                params: { mode: 'edit', id: duplicateBudget.id },
+              } as never)
+            }
           />
           {/* Bouton secondaire clair d'annulation */}
           <Button

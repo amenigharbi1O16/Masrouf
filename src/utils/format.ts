@@ -10,6 +10,7 @@
 //   - Toutes les dates sont stockées sous format normalisé ISO-8601 (YYYY-MM-DD).
 // ============================================================
 
+// Noms complets des 12 mois du calendrier en langue anglaise
 const MONTHS = [
   'January',
   'February',
@@ -25,11 +26,99 @@ const MONTHS = [
   'December',
 ];
 
-/** Retourne le nom complet du mois en anglais */
+// Abréviations officielles des mois en français (alignées sur le design de l'application)
+const MONTHS_FR = [
+  'Janv.',
+  'Févr.',
+  'Mars',
+  'Avr.',
+  'Mai',
+  'Juin',
+  'Juil.',
+  'Août',
+  'Sept.',
+  'Oct.',
+  'Nov.',
+  'Déc.',
+];
+
+// Noms abrégés des mois en arabe
+const MONTHS_AR = [
+  'جانفي',
+  'فيفري',
+  'مارس',
+  'أفريل',
+  'ماي',
+  'جوان',
+  'جويلية',
+  'أوت',
+  'سبتمبر',
+  'أكتوبر',
+  'نوفمبر',
+  'ديسمبر',
+];
+
+/**
+ * MISSION DE LA FONCTION : monthName
+ *   Retourne le nom complet d'un mois en anglais selon son indice 0-11.
+ * RÔLE DANS L'APPLICATION : Utilisé pour les en-têtes calendaires et récapitulatifs mensuels.
+ * CE QUI EST AFFICHÉ À L'ÉCRAN : Le libellé complet du mois (ex: "November").
+ */
+// Définition de la fonction retournant le nom complet du mois
 export const monthName = (i: number) => MONTHS[i];
 
-/** Retourne l'abréviation de 3 lettres du mois */
+/**
+ * MISSION DE LA FONCTION : monthShort
+ *   Retourne l'abréviation de 3 lettres d'un mois en anglais.
+ * RÔLE DANS L'APPLICATION : Formatage condensé des dates.
+ * CE QUI EST AFFICHÉ À L'ÉCRAN : L'abréviation de 3 lettres (ex: "Nov").
+ */
+// Définition de la fonction d'abréviation du mois
 export const monthShort = (i: number) => MONTHS[i].slice(0, 3);
+
+/**
+ * MISSION DE LA FONCTION : monthShortLocale
+ *   Retourne le nom abrégé du mois adapté à la langue sélectionnée par l'utilisateur (FR, AR, EN).
+ * RÔLE DANS L'APPLICATION : Permet d'afficher les graduations exactes de l'axe temporel sur les courbes de prix.
+ * CE QUI EST AFFICHÉ À L'ÉCRAN : Des étiquettes claires sous la courbe (ex: "Août", "Sept.", "Oct.", "Nov.").
+ */
+// Fonction de formatage abrégé du mois localisé
+export function monthShortLocale(i: number, lang: 'fr' | 'ar' | 'en' = 'fr'): string {
+  // Sécurisation de l'indice de mois entre 0 et 11
+  const safeIdx = Math.max(0, Math.min(11, Math.floor(Number(i)) || 0));
+  // Sélection de la liste arabe si la langue est 'ar'
+  if (lang === 'ar') return MONTHS_AR[safeIdx] ?? 'نوفمبر';
+  // Sélection de la liste française si la langue est 'fr'
+  if (lang === 'fr') return MONTHS_FR[safeIdx] ?? 'Nov.';
+  // Repli sur l'anglais par défaut
+  return MONTHS[safeIdx]?.slice(0, 3) ?? 'Nov';
+}
+
+/**
+ * MISSION DE LA FONCTION : fmtDateLocale
+ *   Formate une date ISO (YYYY-MM-DD) dans la langue active avec le mois abrégé et l'année.
+ * RÔLE DANS L'APPLICATION : Affichage harmonisé des dates des tickets de caisse et passages en caisse.
+ * CE QUI EST AFFICHÉ À L'ÉCRAN : "12 nov. 2026", "12 Nov 2026", ou "12 نوفمبر 2026".
+ */
+// Fonction de formatage d'une date ISO complète localisée
+export function fmtDateLocale(iso?: string, lang: 'fr' | 'ar' | 'en' = 'fr'): string {
+  // Sécurisation contre les valeurs nulles ou indéfinies
+  if (!iso || typeof iso !== 'string') return '';
+  // Nettoyage de l'éventuelle composante horaire
+  const clean = iso.split(' ')[0] || iso;
+  // Vérification de la validité du format ISO
+  if (!isValidISO(clean)) return clean;
+  // Décomposition de la date en composantes UTC
+  const d = parseISO(clean);
+  // Récupération du numéro de jour
+  const jour = d.getUTCDate();
+  // Récupération du nom abrégé du mois selon la langue
+  const mois = monthShortLocale(d.getUTCMonth(), lang);
+  // Récupération de l'année à 4 chiffres
+  const annee = d.getUTCFullYear();
+  // Assemblage du libellé de date
+  return `${jour} ${mois ? mois.toLowerCase() : ''} ${annee}`;
+}
 
 /**
  * Génère un identifiant unique aléatoire combinant timestamp et entropie.

@@ -47,6 +47,8 @@ import { colors } from '@/constants/theme';
 import { useStore } from '@/state/store';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
+// Résolveur d'icône représentative par catégorie
+import { getCategoryIcon } from '@/utils/categoryIcons';
 
 // Liste des identifiants de catégories cochées par défaut à la première ouverture pour faciliter la prise en main
 const DEFAULTS = ['food', 'transport', 'bills', 'entertainment', 'savings'];
@@ -191,10 +193,14 @@ export default function OnboardingScreen() {
             icon="trending-down"
           />
           <TransactionRow
+            // Libellé de la catégorie Transport
             title={traduireCategorie('Transport')}
+            // Description du suivi budgétaire
             detail={t('onboarding_budget_desc')}
+            // Montant de démonstration
             amount="−35.000 DT"
-            icon="wallet-outline"
+            // Icône descriptive de transport (voiture) au lieu de l'icône de portefeuille uniforme
+            icon="car-outline"
           />
 
           {/* Bouton vert forêt pour avancer vers le choix des catégories */}
@@ -256,18 +262,23 @@ export default function OnboardingScreen() {
             {t('categories_selectionnees_compte', { count: selected.length })}
           </Body>
 
-          {/* Liste récapitulative : chaque catégorie sélectionnée est confirmée par une coche verte '✓' */}
+          {/* Liste récapitulative : chaque catégorie sélectionnée est confirmée par une coche verte vectorielle */}
           {chosen.map((c) => (
             <TransactionRow
+              // Clé unique React
               key={c.id}
+              // Nom traduit de la catégorie
               title={traduireCategorie(c.name)}
+              // Description du type de catégorie
               detail={
                 c.kind === 'product'
                   ? t('categorie_produit')
                   : t('categorie_depense')
               }
-              amount="✓"
-              icon={c.kind === 'product' ? 'bag-outline' : 'wallet-outline'}
+              // Coche de validation vectorielle Ionicons sans caractère texte
+              isConfirmed
+              // Icône représentative dédiée à la catégorie (restaurant, voiture, reçu, manette, etc.)
+              icon={getCategoryIcon(c.name, c.kind)}
             />
           ))}
 

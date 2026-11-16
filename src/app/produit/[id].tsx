@@ -1,56 +1,48 @@
 /**
  * FICHIER : src/app/produit/[id].tsx
  * IDENTIFIANT INVENTAIRE : FICHIER-031
- * ÉCRAN : ECRAN-PROD-01 (Fiche Détail Produit et Suivi des Prix Unitaires)
+ * ÉCRAN : ECRAN-PROD-01 (Fiche Détails d'un Produit et Suivi des Prix Unitaires)
  *
  * MISSION DU FICHIER :
  * Présenter l'observatoire complet des prix et l'identité d'un article d'épicerie :
- * 1. Affiche l'identité du produit (photo carrée ou icône stylisée `ProductThumb`, nom, marque, catégorie et unité).
- * 2. Calcule et affiche le dernier prix unitaire payé en Dinars Tunisiens (DT), la date et l'enseigne du dernier achat.
- * 3. Affiche la pastille de variation d'inflation `PriceIndicator` (verte si baisse de prix, rouge si hausse).
- * 4. Trace le graphique vectoriel SVG `PriceChart` montrant l'évolution historique des prix unitaires.
- * 5. Offre des raccourcis pour voir l'historique chronologique complet (`/produit/historique`),
- *    enregistrer un nouvel achat immédiat pour ce produit (`/nouvel-achat?productId=...`), ou éditer la fiche (`/modifier-produit`).
+ * 1. Carte Hero vert menthe affichant le nom du produit en capitales, la marque en très grand (30px) et la ligne "Catégorie · Emballage · Unité".
+ * 2. Lignes d'informations synthétiques : Dernier prix unitaire, Dernier achat, Magasin.
+ * 3. Carte de variation du prix vert menthe avec icône de tendance et écart chiffré (ex: "−0.500 DT / −3.3%").
+ * 4. Graphique linéaire vectoriel `PriceChart` traçant l'évolution temporelle avec les mois en abscisse.
+ * 5. Trois boutons d'action conformes au design : 'Voir l'historique des achats' (menthe), '+ Ajouter un achat' (vert forêt) et 'Modifier le produit' (menthe).
  *
  * DANS QUOI CE FICHIER AIDE DANS L'APPLICATION :
- * Il donne au consommateur une arme contre l'inflation. Avant d'acheter ou dans les rayons du supermarché,
- * l'utilisateur vérifie combien il payait ce produit il y a un ou deux mois et dans quel magasin il était le moins cher.
+ * Il permet à l'utilisateur de constater l'évolution de ses prix en magasin et de savoir si un produit est plus cher ou moins cher qu'auparavant.
  *
  * CE QUI EST AFFICHÉ À L'ÉCRAN POUR L'UTILISATEUR :
- * - Un en-tête avec le nom du produit et la flèche de retour.
- * - Le surtitre 'DÉTAILS DU PRODUIT'.
- * - Une carte blanche avec une vignette photo de 72x72px à gauche, le nom en grand (22px vert forêt), la marque et le rayon.
- * - Si des achats existent :
- *   1. Ligne 'Dernier prix unitaire' (ex: 1.450 DT / L).
- *   2. Ligne 'Dernier achat' (ex: 14/11/2026).
- *   3. Ligne 'Magasin' (ex: Monoprix Ariana).
- *   4. Pastille colorée de variation de prix (+0.100 DT, +7.4%).
- *   5. Graphique vectoriel SVG des 6 derniers relevés de prix.
- * - Si aucun achat n'existe : illustration accueillante avec bouton invitant à noter le premier passage en caisse.
- * - Trois boutons verticaux : 'Historique complet des achats', 'Ajouter un achat' et 'Modifier le produit'.
+ * - En-tête avec nom de l'article et bouton de retour.
+ * - Surtitre 'DÉTAILS DU PRODUIT'.
+ * - Grande carte Hero vert menthe `#D9F0E4`.
+ * - Liste des détails : Dernier prix unitaire, Dernier achat, Magasin.
+ * - Carte de variation avec flèche de tendance et pourcentage.
+ * - Carte blanche 'Évolution du prix' avec courbe SVG et mois.
+ * - Les 3 boutons verticaux d'action.
  */
 
+// Outils d'extraction de paramètres d'URL et de navigation Expo Router
 import { useLocalSearchParams, useRouter } from 'expo-router';
+// Importation de React
 import React from 'react';
-import { Text, View } from 'react-native';
-// Ligne d'information synthétique bicolore
+// Composants visuels et de mise en page React Native
+import { StyleSheet, Text, View } from 'react-native';
+// Icônes vectorielles Ionicons
+import { Ionicons } from '@expo/vector-icons';
+// Ligne d'information synthétique clé/valeur
 import { InfoRow } from '@/components/Cards';
 // Graphique vectoriel SVG d'évolution des prix
 import { PriceChart } from '@/components/PriceChart';
-// Vignette d'affichage de la photo du produit avec coins arrondis
-import { ProductThumb } from '@/components/ProductThumb';
-// Conteneur d'écran avec retour arrière et gestion du défilement
+// Conteneur d'écran avec retour arrière et marges
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
-import {
-  Button,
-  EmptyState,
-  Eyebrow,
-  PriceIndicator,
-} from '@/components/ui';
-// Constantes de thème (couleurs vert forêt, blanc, bordures et arrondis)
+import { Button, EmptyState, Eyebrow } from '@/components/ui';
+// Constantes de thème officielles
 import { colors, radius } from '@/constants/theme';
-// Sélecteurs de calcul financier SQLite (nom de catégorie, variation de prix, achats)
+// Sélecteurs de calcul financier SQLite
 import {
   categoryName,
   priceChange,
@@ -59,21 +51,19 @@ import {
 } from '@/state/selectors';
 // Magasin d'état global connecté à SQLite
 import { useStore } from '@/state/store';
-// Fonctions utilitaires de formatage monétaire et de dates
-import { dt, fmtDate, monthShort, parseISO } from '@/utils/format';
-// Système d'internationalisation et détection du sens d'écriture RTL
+// Fonctions utilitaires de calcul monétaire et de dates
+import { dt, fmtDateLocale, monthShortLocale, parseISO } from '@/utils/format';
+// Système d'internationalisation et détection RTL
 import { useTranslation } from '@/utils/i18n';
 
 /**
- * MISSION DU COMPOSANT :
- * Gérer l'écran de la fiche détaillée d'un article et son suivi de prix.
- *
+ * MISSION DU COMPOSANT : ProductDetailsScreen
+ *   Gérer l'écran de la fiche détaillée d'un article et son suivi de prix unitaire.
  * RÔLE DANS L'APPLICATION :
- * Charge les données de l'article depuis SQLite via son ID dynamique (`/produit/[id]`),
- * extrait tous ses achats et génère les points du graphique temporel.
- *
+ *   Charge les données de l'article depuis SQLite via son ID dynamique (`/produit/[id]`),
+ *   calcule les variations de prix et affiche la courbe temporelle.
  * CE QUI EST AFFICHÉ À L'ÉCRAN :
- * La fiche d'identité du produit, son dernier cours unitaire, sa pastille d'inflation et les boutons d'action.
+ *   La carte d'identité Hero menthe, les statistiques de prix, la variation d'inflation, la courbe et les 3 boutons.
  */
 export default function ProductDetailsScreen() {
   // Hook de navigation Expo Router
@@ -83,7 +73,7 @@ export default function ProductDetailsScreen() {
   // Extraction des données de la base SQLite
   const { db } = useStore();
   // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
   // Recherche du produit ciblé dans la table SQLite 'products'
   const product = db.products.find((p) => p.id === id);
@@ -112,103 +102,155 @@ export default function ProductDetailsScreen() {
     ? [...list].reverse().find((p) => p !== last && p.unit === last.unit)
     : undefined;
   // Calcul du différentiel et du pourcentage d'inflation/économie
-  const change =
-    last && prev ? priceChange(unitOf(prev), unitOf(last)) : null;
+  const change = last && prev ? priceChange(unitOf(prev), unitOf(last)) : null;
+  // Unité physique active
   const unit = last?.unit ?? product.unit;
 
-  // Préparation des 6 derniers points chronologiques pour tracer la courbe SVG
+  // Préparation des points chronologiques pour tracer la courbe SVG
   const series = list
     .filter((p) => p.unit === unit)
     .slice(-6)
     .map((p) => ({
-      label: monthShort(parseISO(p.date).getUTCMonth()),
+      label: monthShortLocale(parseISO(p.date).getUTCMonth(), langue),
       value: unitOf(p),
     }));
 
+  // Libellé de conditionnement (ex: Bouteille si litre)
+  const packaging = product.unit === 'L' ? t('bouteille_label') : undefined;
+  // Nom traduit de la catégorie de produit
+  const catNom = traduireCategorie(categoryName(db, product.categoryId));
+  // Sous-ligne Hero combinant catégorie, emballage et unité
+  const heroSubLine = [catNom, packaging, `${last?.quantity ?? 1} ${unit}`]
+    .filter(Boolean)
+    .join('  ·  ');
+
+  // Détermination du titre de la carte de variation de prix
+  const variationTitle = !last
+    ? t('premier_achat_enregistre_titre')
+    : !change
+    ? t('premier_achat_enregistre_titre')
+    : change.direction === 'down'
+    ? t('moins_cher_que_dernier_achat')
+    : change.direction === 'up'
+    ? t('plus_cher_que_dernier_achat')
+    : t('meme_prix_que_dernier_achat');
+
   return (
-    // Screen : conteneur assurant les marges physiques et le défilement fluide
+    // Conteneur Screen avec flèche de retour
     <Screen title={product.name} back>
-      {/* Surtitre explicatif en lettres capitales */}
+      {/* Surtitre discret en majuscules 'DÉTAILS DU PRODUIT' */}
       <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
         {t('details_du_produit')}
       </Eyebrow>
 
-      {/* Carte d'identité visuelle du produit avec photo ou vignette */}
-      <View
-        style={{
-          backgroundColor: colors.white,
-          borderRadius: radius.card,
-          padding: 16,
-          flexDirection: isRTL ? 'row-reverse' : 'row',
-          gap: 14,
-          alignItems: 'center',
-        }}
-      >
-        {/* Vignette carrée de 72px avec photo ou première lettre */}
-        <ProductThumb name={product.name} uri={product.photo} size={72} />
-        
-        {/* Détails textuels : catégorie, nom complet et unité par défaut */}
-        <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-          <Text
-            style={{
-              fontSize: 12,
-              fontWeight: '600',
-              color: colors.muted,
-              textAlign: isRTL ? 'right' : 'left',
-            }}
-          >
-            {product.name.toUpperCase()}
-          </Text>
-          <Text
-            style={{
-              fontSize: 22,
-              fontWeight: '600',
-              color: colors.forest,
-              textAlign: isRTL ? 'right' : 'left',
-            }}
-          >
-            {product.brand || product.name}
-          </Text>
-          <Text
-            style={{
-              fontSize: 13,
-              color: colors.muted,
-              textAlign: isRTL ? 'right' : 'left',
-            }}
-          >
-            {categoryName(db, product.categoryId)} · {product.unit}
-          </Text>
-        </View>
+      {/* Carte Hero vert menthe présentant l'identité du produit */}
+      <View style={styles.heroCard}>
+        {/* Ligne 1 : Nom du produit en petites lettres capitales */}
+        <Text
+          style={[
+            styles.heroEyebrow,
+            { textAlign: isRTL ? 'right' : 'left' },
+          ]}
+        >
+          {product.name.toUpperCase()}
+        </Text>
+
+        {/* Ligne 2 : Marque commerciale en grand titre gras */}
+        <Text
+          style={[
+            styles.heroBrand,
+            { textAlign: isRTL ? 'right' : 'left' },
+          ]}
+        >
+          {product.brand || product.name}
+        </Text>
+
+        {/* Ligne 3 : Catégorie · Emballage · Format */}
+        <Text
+          style={[
+            styles.heroSub,
+            { textAlign: isRTL ? 'right' : 'left' },
+          ]}
+        >
+          {heroSubLine}
+        </Text>
       </View>
 
-      {/* Rendu des statistiques de prix si l'article a déjà été acheté au moins une fois */}
+      {/* Statistiques et observations si le produit a déjà été acheté */}
       {last ? (
         <>
-          {/* Ligne 1 : Dernier prix unitaire calculé */}
-          <InfoRow
-            label={t('dernier_prix_unitaire')}
-            value={`${dt(unitOf(last))} DT / ${last.unit}`}
-          />
-          {/* Ligne 2 : Date du dernier achat relevé */}
-          <InfoRow
-            label={t('dernier_achat_label')}
-            value={fmtDate(last.date)}
-          />
-          {/* Ligne 3 : Enseigne du dernier passage en caisse */}
-          <InfoRow label={t('magasin_label')} value={last.store || '—'} />
-          
-          {/* Pastille visuelle : flèche rouge si le prix a augmenté, verte s'il a baissé */}
-          <PriceIndicator change={change} unitLabel={last.unit} />
+          {/* Lignes d'informations synthétiques épurées */}
+          <View style={styles.infoSection}>
+            {/* Ligne 1 : Dernier prix unitaire */}
+            <InfoRow
+              plain
+              label={t('dernier_prix_unitaire')}
+              value={`${dt(unitOf(last))} DT / ${last.unit}`}
+            />
+            {/* Ligne 2 : Date du dernier achat */}
+            <InfoRow
+              plain
+              label={t('dernier_achat_label')}
+              value={fmtDateLocale(last.date, langue)}
+            />
+            {/* Ligne 3 : Magasin du dernier achat */}
+            <InfoRow
+              plain
+              label={t('magasin_label')}
+              value={last.store || '—'}
+            />
+          </View>
 
-          {/* Graphique SVG d'évolution du prix unitaire */}
+          {/* Carte de variation de prix vert menthe */}
+          <View style={styles.variationCard}>
+            {/* Titre de statut de la variation */}
+            <Text
+              style={[
+                styles.variationTitle,
+                { textAlign: isRTL ? 'right' : 'left' },
+              ]}
+            >
+              {variationTitle}
+            </Text>
+
+            {/* Ligne affichant l'icône de tendance et les chiffres */}
+            <View
+              style={[
+                styles.variationRow,
+                { flexDirection: isRTL ? 'row-reverse' : 'row' },
+              ]}
+            >
+              {/* Icône flèche diagonale de variation */}
+              <Ionicons
+                name={
+                  !change || change.direction === 'same'
+                    ? 'remove-outline'
+                    : change.direction === 'down'
+                    ? 'trending-down-outline'
+                    : 'trending-up-outline'
+                }
+                size={26}
+                color={colors.forest}
+              />
+
+              {/* Texte chiffré de l'écart en DT et en pourcentage */}
+              <Text style={styles.variationValue}>
+                {change
+                  ? `${change.diff < 0 ? '−' : '+'}${dt(Math.abs(change.diff))} DT  /  ${change.pct < 0 ? '−' : '+'}${Math.abs(change.pct).toFixed(1)}%`
+                  : `0.000 DT  /  0.0%`}
+              </Text>
+            </View>
+          </View>
+
+          {/* Graphique SVG d'évolution temporelle du prix */}
           <PriceChart
             title={t('evolution_du_prix')}
-            unit={`DT / ${last.unit}`}
+            unit={`DT / ${unit}`}
             points={series}
           />
         </>
       ) : (
-        // Illustration accueillante si aucun achat n'a encore été enregistré pour cet article
+        // Illustration accueillante si aucun ticket n'a encore été enregistré
         <EmptyState
           icon="pricetag-outline"
           title={t('aucun_achat_enregistre')}
@@ -216,9 +258,10 @@ export default function ProductDetailsScreen() {
         />
       )}
 
-      {/* Bouton vert forêt : ouvre l'historique complet de tous les tickets de cet article */}
+      {/* Bouton 1 (Menthe) : Voir l'historique complet des achats */}
       <Button
-        label={t('historique_achats_btn')}
+        label={t('voir_historique_achats')}
+        variant="secondary"
         onPress={() =>
           router.push({
             pathname: '/produit/historique',
@@ -228,10 +271,9 @@ export default function ProductDetailsScreen() {
         disabled={!last}
       />
 
-      {/* Bouton secondaire clair : ouvre directement le formulaire pour ajouter un achat de ce produit */}
+      {/* Bouton 2 (Vert forêt) : + Ajouter un achat pour ce produit */}
       <Button
         label={t('ajouter_un_achat')}
-        variant="secondary"
         onPress={() =>
           router.push({
             pathname: '/nouvel-achat',
@@ -240,7 +282,7 @@ export default function ProductDetailsScreen() {
         }
       />
 
-      {/* Bouton secondaire clair : permet de modifier le nom, la photo ou la marque du produit */}
+      {/* Bouton 3 (Menthe) : Modifier le produit */}
       <Button
         label={t('modifier_le_produit')}
         variant="secondary"
@@ -251,6 +293,98 @@ export default function ProductDetailsScreen() {
           } as never)
         }
       />
+
+      {/* Espace bas de respiration */}
+      <View style={{ height: 16 }} />
     </Screen>
   );
 }
+
+// Feuilles de styles StyleSheet de la fiche détaillée
+const styles = StyleSheet.create({
+  // Grande carte Hero vert menthe
+  heroCard: {
+    // Fond vert menthe officiel
+    backgroundColor: colors.mint,
+    // Coins arrondis de 20px
+    borderRadius: 20,
+    // Espacement intérieur de 20px
+    padding: 20,
+    // Espacement entre les lignes
+    gap: 6,
+  },
+  // Nom du produit en majuscules discrètes
+  heroEyebrow: {
+    // Taille de 11px
+    fontSize: 11,
+    // Graisse très affirmée 700
+    fontWeight: '700',
+    // Espacement des lettres
+    letterSpacing: 0.5,
+    // Couleur vert forêt
+    color: colors.forest,
+  },
+  // Marque commerciale en très grand titre gras
+  heroBrand: {
+    // Taille de police 30px
+    fontSize: 30,
+    // Graisse très affirmée 700
+    fontWeight: '700',
+    // Hauteur de ligne resserrée
+    lineHeight: 38,
+    // Couleur vert forêt institutionnelle
+    color: colors.forest,
+  },
+  // Sous-ligne Hero descriptive
+  heroSub: {
+    // Taille de 13px
+    fontSize: 13,
+    // Graisse semi-grasse 500
+    fontWeight: '500',
+    // Couleur vert forêt
+    color: colors.forest,
+    // Marge haute
+    marginTop: 2,
+  },
+  // Section des lignes clés/valeurs sans bordure lourde
+  infoSection: {
+    // Espacement vertical
+    paddingVertical: 2,
+  },
+  // Carte de variation du prix
+  variationCard: {
+    // Fond vert menthe officiel
+    backgroundColor: colors.mint,
+    // Coins arrondis de 16px
+    borderRadius: radius.card,
+    // Espacement intérieur de 16px
+    padding: 16,
+    // Espacement entre les blocs
+    gap: 8,
+  },
+  // Titre de la variation
+  variationTitle: {
+    // Taille de 13px
+    fontSize: 13,
+    // Graisse semi-grasse 600
+    fontWeight: '600',
+    // Couleur vert forêt
+    color: colors.forest,
+  },
+  // Ligne de l'icône et de la valeur de variation
+  variationRow: {
+    // Alignement vertical centré
+    alignItems: 'center',
+    // Espacement entre l'icône et la valeur
+    gap: 10,
+  },
+  // Chiffre de l'écart et pourcentage
+  variationValue: {
+    // Taille très lisible de 22px
+    fontSize: 22,
+    // Graisse très affirmée 700
+    fontWeight: '700',
+    // Couleur vert forêt sombre
+    color: colors.forest,
+  },
+});

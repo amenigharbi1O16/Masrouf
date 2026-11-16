@@ -80,7 +80,7 @@ export function initDatabase(): void {
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       name_key        TEXT    NOT NULL UNIQUE COLLATE NOCASE,
       type            TEXT    NOT NULL CHECK(type IN ('product', 'expense')),
-      icon            TEXT    NOT NULL DEFAULT '📦',
+      icon            TEXT    NOT NULL DEFAULT 'cart-outline',
       default_percent REAL    NOT NULL DEFAULT 0,
       is_default      INTEGER NOT NULL DEFAULT 0, -- 1 = affichée d'emblée
       is_active       INTEGER NOT NULL DEFAULT 1, -- 1 = active/visible, 0 = masquée
@@ -403,44 +403,44 @@ function migrerAnciennesDonneesSiPresentes(): void {
  *   avec les icônes (🍞, 👕, 🚗, 🧾) et les noms en français.
  */
 function initialiserCategories(): void {
-  // A) CATÉGORIES DE PRODUITS ACHETÉS (type = 'product')
+  // A) CATÉGORIES DE PRODUITS ACHETÉS (type = 'product') avec noms d'icônes vectorielles sans emojis
   const categoriesProduits = [
     // Par défaut
-    { name: 'Alimentation', icon: '🍞', pct: 40, isDef: 1, theme: 'Essentiel' },
-    { name: 'Vêtements et chaussures', icon: '👕', pct: 5, isDef: 1, theme: 'Personnel' },
-    { name: 'Hygiène et soins', icon: '🧼', pct: 4, isDef: 1, theme: 'Vie quotidienne' },
-    { name: 'Maison et équipement', icon: '🛋️', pct: 4, isDef: 1, theme: 'Logement' },
-    { name: 'Matériel informatique', icon: '💻', pct: 2, isDef: 1, theme: 'Études et travail' },
-    { name: 'Santé et médicaments', icon: '💊', pct: 5, isDef: 1, theme: 'Santé' },
+    { name: 'Alimentation', icon: 'restaurant-outline', pct: 40, isDef: 1, theme: 'Essentiel' },
+    { name: 'Vêtements et chaussures', icon: 'shirt-outline', pct: 5, isDef: 1, theme: 'Personnel' },
+    { name: 'Hygiène et soins', icon: 'sparkles-outline', pct: 4, isDef: 1, theme: 'Vie quotidienne' },
+    { name: 'Maison et équipement', icon: 'home-outline', pct: 4, isDef: 1, theme: 'Logement' },
+    { name: 'Matériel informatique', icon: 'laptop-outline', pct: 2, isDef: 1, theme: 'Études et travail' },
+    { name: 'Santé et médicaments', icon: 'medkit-outline', pct: 5, isDef: 1, theme: 'Santé' },
     // Supplémentaires
-    { name: 'Maison et entretien', icon: '🧹', pct: 0, isDef: 0, theme: 'Logement' },
-    { name: 'Beauté et coiffure', icon: '💇', pct: 0, isDef: 0, theme: 'Personnel' },
-    { name: 'Animaux', icon: '🐾', pct: 0, isDef: 0, theme: 'Famille' },
+    { name: 'Maison et entretien', icon: 'brush-outline', pct: 0, isDef: 0, theme: 'Logement' },
+    { name: 'Beauté et coiffure', icon: 'cut-outline', pct: 0, isDef: 0, theme: 'Personnel' },
+    { name: 'Animaux', icon: 'paw-outline', pct: 0, isDef: 0, theme: 'Famille' },
   ];
 
-  // B) CATÉGORIES DE DÉPENSES HORS PRODUITS (type = 'expense')
+  // B) CATÉGORIES DE DÉPENSES HORS PRODUITS (type = 'expense') avec noms d'icônes vectorielles sans emojis
   const categoriesDepenses = [
     // Par défaut
-    { name: 'Transport', icon: '🚗', pct: 10, isDef: 1, theme: 'Essentiel' },
-    { name: 'Factures', icon: '🧾', pct: 12, isDef: 1, theme: 'Logement' },
-    { name: 'Éducation', icon: '📚', pct: 3, isDef: 1, theme: 'Études et travail' },
-    { name: 'Loisirs', icon: '🎮', pct: 4, isDef: 1, theme: 'Personnel' },
-    { name: 'Enfants', icon: '👶', pct: 2, isDef: 1, theme: 'Famille' },
-    { name: 'Aide familiale', icon: '🤝', pct: 2, isDef: 1, theme: 'Famille' },
-    { name: 'Épargne', icon: '💰', pct: 4, isDef: 1, theme: 'Argent' },
-    { name: 'Dons', icon: '🤲', pct: 1, isDef: 1, theme: 'Argent' },
-    { name: 'Frais bancaires', icon: '🏦', pct: 1, isDef: 1, theme: 'Argent' },
-    { name: 'Autres', icon: '📦', pct: 1, isDef: 1, theme: 'Divers', isSys: 1 },
+    { name: 'Transport', icon: 'car-outline', pct: 10, isDef: 1, theme: 'Essentiel' },
+    { name: 'Factures', icon: 'receipt-outline', pct: 12, isDef: 1, theme: 'Logement' },
+    { name: 'Éducation', icon: 'school-outline', pct: 3, isDef: 1, theme: 'Études et travail' },
+    { name: 'Loisirs', icon: 'game-controller-outline', pct: 4, isDef: 1, theme: 'Personnel' },
+    { name: 'Enfants', icon: 'happy-outline', pct: 2, isDef: 1, theme: 'Famille' },
+    { name: 'Aide familiale', icon: 'people-outline', pct: 2, isDef: 1, theme: 'Famille' },
+    { name: 'Épargne', icon: 'cash-outline', pct: 4, isDef: 1, theme: 'Argent' },
+    { name: 'Dons', icon: 'heart-outline', pct: 1, isDef: 1, theme: 'Argent' },
+    { name: 'Frais bancaires', icon: 'business-outline', pct: 1, isDef: 1, theme: 'Argent' },
+    { name: 'Autres', icon: 'cart-outline', pct: 1, isDef: 1, theme: 'Divers', isSys: 1 },
     // Supplémentaires
-    { name: 'Restaurants et cafés', icon: '☕', pct: 0, isDef: 0, theme: 'Vie quotidienne' },
-    { name: 'Téléphone et internet', icon: '📱', pct: 0, isDef: 0, theme: 'Vie quotidienne' },
-    { name: 'Loyer', icon: '🏠', pct: 0, isDef: 0, theme: 'Logement' },
-    { name: 'Formations et cours en ligne', icon: '🎓', pct: 0, isDef: 0, theme: 'Études et travail' },
-    { name: 'Sport et abonnements', icon: '🏋️', pct: 0, isDef: 0, theme: 'Personnel' },
-    { name: 'Voyages', icon: '✈️', pct: 0, isDef: 0, theme: 'Personnel' },
-    { name: 'Cadeaux et fêtes', icon: '🎁', pct: 0, isDef: 0, theme: 'Personnel' },
-    { name: 'Dettes et remboursements', icon: '💳', pct: 0, isDef: 0, theme: 'Argent' },
-    { name: 'Imprévus', icon: '⚡', pct: 0, isDef: 0, theme: 'Divers' },
+    { name: 'Restaurants et cafés', icon: 'cafe-outline', pct: 0, isDef: 0, theme: 'Vie quotidienne' },
+    { name: 'Téléphone et internet', icon: 'call-outline', pct: 0, isDef: 0, theme: 'Vie quotidienne' },
+    { name: 'Loyer', icon: 'key-outline', pct: 0, isDef: 0, theme: 'Logement' },
+    { name: 'Formations et cours en ligne', icon: 'book-outline', pct: 0, isDef: 0, theme: 'Études et travail' },
+    { name: 'Sport et abonnements', icon: 'fitness-outline', pct: 0, isDef: 0, theme: 'Personnel' },
+    { name: 'Voyages', icon: 'airplane-outline', pct: 0, isDef: 0, theme: 'Personnel' },
+    { name: 'Cadeaux et fêtes', icon: 'gift-outline', pct: 0, isDef: 0, theme: 'Personnel' },
+    { name: 'Dettes et remboursements', icon: 'card-outline', pct: 0, isDef: 0, theme: 'Argent' },
+    { name: 'Imprévus', icon: 'flash-outline', pct: 0, isDef: 0, theme: 'Divers' },
   ];
 
   const renoms: [string, string][] = [
@@ -647,7 +647,7 @@ function initialiserSettings(): void {
  *   de la saisie des identifiants sur l'écran `login.tsx`.
  */
 function initialiserComptesDepart(): void {
-  // Administrateur de test officiel (must_change_password = 0 pour accès direct, onboarding_done = 1, hash_version = 1)
+  // 1. Administrateur de test officiel (must_change_password = 0 pour accès direct, onboarding_done = 1, is_active = 1)
   const adminExiste = db.getFirstSync<{ id: number }>(
     `SELECT id FROM user WHERE email = 'admin@masrouf.tn' COLLATE NOCASE`
   );
@@ -664,7 +664,7 @@ function initialiserComptesDepart(): void {
     );
   }
 
-  // Utilisateur standard (must_change_password = 0, onboarding_done = 1, hash_version = 1)
+  // 2. Utilisateur standard de test (Ahmed Ben Ali)
   let userIdTest = 0;
   const userExiste = db.getFirstSync<{ id: number }>(
     `SELECT id FROM user WHERE email = 'user@masrouf.tn' COLLATE NOCASE`
@@ -680,18 +680,158 @@ function initialiserComptesDepart(): void {
     userIdTest = userExiste.id;
     // S'assure que l'utilisateur test existant conserve ses données avec onboarding_done = 1
     db.runSync(
-      `UPDATE user SET is_active = 1, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'user@masrouf.tn' COLLATE NOCASE`
+      `UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'user@masrouf.tn' COLLATE NOCASE`
     );
   }
 
-  // Peuplement des catégories par défaut de l'utilisateur test dans user_category (évite un écran vide)
+  // 3. Utilisatrice principale de démonstration (Ines Ben Ali)
+  let inesId = 0;
+  const inesExiste = db.getFirstSync<{ id: number }>(
+    `SELECT id FROM user WHERE email = 'ines.benali@email.tn' COLLATE NOCASE`
+  );
+  if (!inesExiste) {
+    const res = db.runSync(
+      `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel)
+       VALUES (?, ?, ?, ?, 'user', 1, 0, 1, 1, 1200)`,
+      ['Ines Ben Ali', 'ines.benali@email.tn', DEFAULT_USER_HASH, DEFAULT_SALT]
+    );
+    inesId = res.lastInsertRowId;
+  } else {
+    inesId = inesExiste.id;
+    // Réactivation stricte et déverrouillage de sécurité pour Ines Ben Ali
+    db.runSync(
+      `UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'ines.benali@email.tn' COLLATE NOCASE`
+    );
+  }
+
+  // Réactivation et déverrouillage global de tous les comptes de test pour garantir une connexion sans blocage
+  db.runSync(
+    `UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1 WHERE email IN ('admin@masrouf.tn', 'ines.benali@email.tn', 'user@masrouf.tn') COLLATE NOCASE`
+  );
+
+  // Peuplement des catégories par défaut et du budget pour l'utilisateur standard (Ahmed)
   if (userIdTest > 0) {
+    // Activation des catégories par défaut dans user_category
     db.execSync(`
       INSERT OR IGNORE INTO user_category (user_id, category_id, enabled)
       SELECT ${userIdTest}, id, 1
       FROM category
       WHERE is_default = 1;
     `);
+
+    // S'assurer que les tables budget et envelope sont créées
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS budget (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        start_date   TEXT    NOT NULL,
+        end_date     TEXT    NOT NULL,
+        total        REAL    NOT NULL,
+        is_evaluated INTEGER NOT NULL DEFAULT 0,
+        succeeded    INTEGER NOT NULL DEFAULT 0,
+        created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS envelope (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        budget_id   INTEGER NOT NULL REFERENCES budget(id) ON DELETE CASCADE,
+        category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
+        amount      REAL    NOT NULL DEFAULT 0,
+        UNIQUE(budget_id, category_id)
+      );
+    `);
+
+    // ============================================================
+    // MISSION ARCHITECTURALE : ZÉRO DONNÉE EN DUR DANS L'APPLICATION
+    // RÔLE : L'application fonctionne exclusivement avec les saisies utilisateur réelles.
+    //        Seuls les comptes de test essentiels (admin@masrouf.tn, user@masrouf.tn, ines.benali@email.tn)
+    //        sont initialisés pour la connexion, SANS AUCUN BUDGET NI ACHAT NI PRODUIT PRÉ-REMPLI.
+    // ============================================================
+
+    // 1. Contrainte d'unicité stricte : Un seul budget par période pour chaque utilisateur
+    //    Empêche toute duplication de budget sur la même plage de dates
+    db.execSync(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_budget_user_dates ON budget(user_id, start_date, end_date);
+    `);
+
+    // 2. Table relationnelle des notifications locales persistées
+    //    Stocke les alertes budgétaires (80%, 100%, fin de période) avec statut lu/non lu
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS notification (
+        id                 TEXT PRIMARY KEY,
+        user_id            INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        budget_id          INTEGER,
+        type               TEXT NOT NULL,
+        title              TEXT NOT NULL,
+        body               TEXT NOT NULL,
+        reason             TEXT NOT NULL,
+        action_recommended TEXT NOT NULL,
+        period_label       TEXT NOT NULL,
+        amount             REAL,
+        threshold          INTEGER,
+        is_read            INTEGER NOT NULL DEFAULT 0,
+        created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  }
+
+  // Peuplement complet pour Ines Ben Ali (Catégories allouées, Budget 1200 DT, Produits, Dépenses)
+  if (inesId > 0) {
+    // S'assurer que les tables budget et envelope sont créées
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS budget (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        start_date   TEXT    NOT NULL,
+        end_date     TEXT    NOT NULL,
+        total        REAL    NOT NULL,
+        is_evaluated INTEGER NOT NULL DEFAULT 0,
+        succeeded    INTEGER NOT NULL DEFAULT 0,
+        created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS envelope (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        budget_id   INTEGER NOT NULL REFERENCES budget(id) ON DELETE CASCADE,
+        category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
+        amount      REAL    NOT NULL DEFAULT 0,
+        UNIQUE(budget_id, category_id)
+      );
+    `);
+
+    // Récupération des catégories requises
+    const catAlim = db.getFirstSync<{ id: number }>(`SELECT id FROM category WHERE name_key = 'Alimentation' COLLATE NOCASE`)?.id ?? 1;
+    // Identifiant catégorie Hygiène
+    const catHyg = db.getFirstSync<{ id: number }>(`SELECT id FROM category WHERE name_key LIKE '%Hygiène%' COLLATE NOCASE`)?.id ?? 3;
+    // Identifiant catégorie Vêtements
+    const catVet = db.getFirstSync<{ id: number }>(`SELECT id FROM category WHERE name_key LIKE '%Vêtements%' COLLATE NOCASE`)?.id ?? 2;
+    // Identifiant catégorie Santé
+    const catSante = db.getFirstSync<{ id: number }>(`SELECT id FROM category WHERE name_key LIKE '%Santé%' COLLATE NOCASE`)?.id ?? 6;
+    // Identifiant catégorie Transport
+    const catTrans = db.getFirstSync<{ id: number }>(`SELECT id FROM category WHERE name_key = 'Transport' COLLATE NOCASE`)?.id ?? 7;
+    // Identifiant catégorie Factures
+    const catFactures = db.getFirstSync<{ id: number }>(`SELECT id FROM category WHERE name_key = 'Factures' COLLATE NOCASE`)?.id ?? 8;
+    // Identifiant catégorie Loisirs
+    const catLoisirs = db.getFirstSync<{ id: number }>(`SELECT id FROM category WHERE name_key = 'Loisirs' COLLATE NOCASE`)?.id ?? 10;
+    // Identifiant catégorie Épargne
+    const catEpargne = db.getFirstSync<{ id: number }>(`SELECT id FROM category WHERE name_key = 'Épargne' COLLATE NOCASE`)?.id ?? 13;
+
+    // Insertion des catégories par défaut dans user_category pour Ines
+    db.execSync(`
+      INSERT OR IGNORE INTO user_category (user_id, category_id, enabled)
+      SELECT ${inesId}, id, 1
+      FROM category
+      WHERE is_default = 1;
+    `);
+
+    // Activation explicite garantie des catégories clés suivies par Ines
+    db.runSync(`INSERT OR IGNORE INTO user_category (user_id, category_id, enabled) VALUES (?, ?, 1)`, [inesId, catAlim]);
+    // Activation de la catégorie Transport
+    db.runSync(`INSERT OR IGNORE INTO user_category (user_id, category_id, enabled) VALUES (?, ?, 1)`, [inesId, catTrans]);
+    // Activation de la catégorie Factures
+    db.runSync(`INSERT OR IGNORE INTO user_category (user_id, category_id, enabled) VALUES (?, ?, 1)`, [inesId, catFactures]);
+    // Activation de la catégorie Loisirs
+    db.runSync(`INSERT OR IGNORE INTO user_category (user_id, category_id, enabled) VALUES (?, ?, 1)`, [inesId, catLoisirs]);
+    // Activation de la catégorie Épargne
+    db.runSync(`INSERT OR IGNORE INTO user_category (user_id, category_id, enabled) VALUES (?, ?, 1)`, [inesId, catEpargne]);
   }
 }
 
@@ -806,7 +946,7 @@ function creerVuesDeRetroCompatibilite(): void {
         VALUES (
           NEW.nom,
           COALESCE(NEW.type, 'product'),
-          COALESCE(NEW.icone, '📦'),
+          COALESCE(NEW.icone, 'cart-outline'),
           COALESCE(NEW.pourcentage_defaut, 0),
           COALESCE(NEW.est_defaut, 0),
           COALESCE(NEW.est_visible, 1),

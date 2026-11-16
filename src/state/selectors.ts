@@ -189,10 +189,41 @@ export const allocated = (b: { allocations: Record<string, number> }) => Object.
 // ------------------------------------------------------------
 
 /**
- * Retourne la liste ordonnée des achats enregistrés pour un produit donné.
+ * MISSION DE LA FONCTION : productPurchases
+ *   Retourne la liste ordonnée et consolidée de tous les achats enregistrés pour un produit donné.
+ * RÔLE DANS L'APPLICATION :
+ *   Rassemble tous les tickets de caisse rattachés au produit ou à toute entrée partageant
+ *   le même nom de produit (insensible à la casse et aux espaces).
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Alimente la courbe d'évolution du prix, le calcul de la variation (différence en DT et %),
+ *   l'historique complet des achats et les totaux cumulés sur la fiche de détails et l'historique.
  */
 export function productPurchases(db: DB, productId: string): Purchase[] {
-  return db.purchases.filter((p) => p.productId === productId).sort((a, b) => (a.date === b.date ? (a.id < b.id ? -1 : 1) : a.date < b.date ? -1 : 1));
+  // Recherche du produit correspondant à l'identifiant demandé
+  const prod = db.products.find((p) => p.id === productId);
+  // Si le produit n'est pas trouvé dans la base
+  if (!prod) {
+    // Filtrage simple de secours sur l'identifiant exact
+    return db.purchases
+      .filter((p) => p.productId === productId)
+      .sort((a, b) => (a.date === b.date ? (a.id < b.id ? -1 : 1) : a.date < b.date ? -1 : 1));
+  }
+
+  // Normalisation du nom de l'article pour comparaison insensible à la casse
+  const normName = prod.name.trim().toLowerCase();
+  // Recherche de tous les identifiants de produits partageant le même nom normalisé pour cet utilisateur
+  const matchingProductIds = new Set(
+    db.products
+      .filter((p) => (p.userId === prod.userId || !p.userId) && p.name.trim().toLowerCase() === normName)
+      .map((p) => p.id)
+  );
+  // Ajout garanti de l'identifiant passé en paramètre
+  matchingProductIds.add(productId);
+
+  // Extraction et tri chronologique de tous les achats correspondant à ce produit consolidé
+  return db.purchases
+    .filter((p) => matchingProductIds.has(p.productId))
+    .sort((a, b) => (a.date === b.date ? (a.id < b.id ? -1 : 1) : a.date < b.date ? -1 : 1));
 }
 
 /**

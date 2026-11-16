@@ -527,7 +527,7 @@ export function countActiveAdmins(): number {
        a.prix_unitaire, a.quantite, a.prix_total,
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
-       COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+       COALESCE(cp.icone, cd.icone, 'cart-outline') as produit_icone,
        (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
        COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
      FROM achats a
@@ -561,7 +561,7 @@ export function countActiveAdmins(): number {
        a.prix_unitaire, a.quantite, a.prix_total,
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
-       COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+       COALESCE(cp.icone, cd.icone, 'cart-outline') as produit_icone,
        (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
        COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
      FROM achats a
@@ -639,7 +639,7 @@ export function countActiveAdmins(): number {
          p.categorie_id, p.created_by,
          COALESCE(p.photo_uri, '') as photo_uri,
          COALESCE(c.nom, 'Autres') as categorie_nom,
-         COALESCE(c.icone, '📦')   as categorie_icone
+         COALESCE(c.icone, 'cart-outline')   as categorie_icone
        FROM produits p
        LEFT JOIN categories c ON p.categorie_id = c.id
        WHERE p.created_by = ?
@@ -654,7 +654,7 @@ export function countActiveAdmins(): number {
        p.categorie_id, p.created_by,
        COALESCE(p.photo_uri, '') as photo_uri,
        COALESCE(c.nom, 'Autres') as categorie_nom,
-       COALESCE(c.icone, '📦')   as categorie_icone
+       COALESCE(c.icone, 'cart-outline')   as categorie_icone
      FROM produits p
      LEFT JOIN categories c ON p.categorie_id = c.id
      ORDER BY p.nom ASC`
@@ -679,7 +679,7 @@ export function countActiveAdmins(): number {
          p.categorie_id, p.created_by,
          COALESCE(p.photo_uri, '') as photo_uri,
          COALESCE(c.nom, 'Autres') as categorie_nom,
-         COALESCE(c.icone, '📦')   as categorie_icone
+         COALESCE(c.icone, 'cart-outline')   as categorie_icone
        FROM produits p
        LEFT JOIN categories c ON p.categorie_id = c.id
        WHERE p.id = ?`,
@@ -707,7 +707,7 @@ export function countActiveAdmins(): number {
          a.prix_unitaire, a.quantite, a.prix_total,
          a.date_achat, a.mois, a.notes,
          COALESCE(p.nom, 'Produit')     as produit_nom,
-         COALESCE(c.icone, '📦')        as produit_icone,
+         COALESCE(c.icone, 'cart-outline')        as produit_icone,
          (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
          COALESCE(m.nom, 'Non précisé') as magasin_nom
        FROM achats a
@@ -727,7 +727,7 @@ export function countActiveAdmins(): number {
        a.prix_unitaire, a.quantite, a.prix_total,
        a.date_achat, a.mois, a.notes,
        COALESCE(p.nom, 'Produit')     as produit_nom,
-       COALESCE(c.icone, '📦')        as produit_icone,
+       COALESCE(c.icone, 'cart-outline')        as produit_icone,
        (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
        COALESCE(m.nom, 'Non précisé') as magasin_nom
      FROM achats a
@@ -816,7 +816,7 @@ export function countActiveAdmins(): number {
          a.prix_unitaire, a.quantite, a.prix_total,
          a.date_achat, a.mois, a.notes,
          COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
-         COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+         COALESCE(cp.icone, cd.icone, 'cart-outline') as produit_icone,
          (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
          COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
        FROM achats a
@@ -901,7 +901,7 @@ export function countActiveAdmins(): number {
            a.prix_unitaire, a.quantite, a.prix_total,
            a.date_achat, a.mois, a.notes,
            COALESCE(p.nom, a.titre, 'Dépense') as produit_nom,
-           COALESCE(cp.icone, cd.icone, '📦') as produit_icone,
+           COALESCE(cp.icone, cd.icone, 'cart-outline') as produit_icone,
            (SELECT photo_path FROM product WHERE id = a.produit_id) as produit_photo,
            COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin_nom
          FROM achats a
@@ -1696,7 +1696,7 @@ export function countActiveAdmins(): number {
             const res = db.runSync(
                 `INSERT INTO category (name_key, type, icon, default_percent, is_default, is_active, is_system, theme)
      VALUES (?, ?, ?, ?, 0, 1, 0, ?)`,
-              [nom.trim(), type, icone.trim() || '📦', pct, theme.trim() || 'Divers']
+              [nom.trim(), type, icone.trim() || 'cart-outline', pct, theme.trim() || 'Divers']
             );
             return res.lastInsertRowId;
           }
@@ -1715,7 +1715,7 @@ export function countActiveAdmins(): number {
     `UPDATE category
      SET name_key = ?, type = ?, icon = ?, default_percent = ?, is_active = ?
               WHERE id = ? `,
-    [nom.trim(), type, icone.trim(), pct, isVisible ? 1 : 0, id]
+    [nom.trim(), type, icone.trim() || 'cart-outline', pct, isVisible ? 1 : 0, id]
   );
 }
 
@@ -1734,7 +1734,7 @@ export function addUserCustomCategory(
   const res = db.runSync(
     `INSERT INTO category(name_key, type, icon, default_percent, is_default, is_active, is_system, theme)
      VALUES(?, ?, ?, 0, 0, 1, 0, ?)`,
-    [nomClean, type, icone.trim() || '🏷️', theme.trim() || 'Personnalisé']
+    [nomClean, type, icone.trim() || 'pricetag-outline', theme.trim() || 'Personnalisé']
   );
   const newCatId = res.lastInsertRowId;
   // Active immédiatement la catégorie pour cet utilisateur
@@ -1766,7 +1766,7 @@ export function getDepensesParCategorie(
   return db.getAllSync<DepenseParCategorie>(
     `SELECT
        COALESCE(c.nom, 'Autres') as categorie_nom,
-              COALESCE(c.icone, '📦') as categorie_icone,
+              COALESCE(c.icone, 'cart-outline') as categorie_icone,
               SUM(a.prix_total) as total
      FROM achats a
      LEFT JOIN produits p   ON a.produit_id = p.id
@@ -1903,7 +1903,7 @@ export function getAnalysesParCategoriePeriode(
     `SELECT
        COALESCE(c.id, 0) as cat_id,
        COALESCE(c.name_key, 'Non catégorisé') as cat_nom,
-       COALESCE(c.icon, '📦') as cat_icone,
+       COALESCE(c.icon, 'cart-outline') as cat_icone,
        COALESCE(c.type, 'product') as cat_type,
        SUM(CAST(ROUND(a.prix_total * 1000) AS INTEGER)) as somme_millimes
      FROM achats a
@@ -2031,7 +2031,7 @@ export function getTopDepensesIndividuellesPeriode(
        COALESCE(m.nom, a.magasin_nom, 'Non précisé') as magasin,
        a.date_achat,
        a.prix_total as montant_dt,
-       COALESCE(cp.icone, cd.icone, '📦') as icone
+       COALESCE(cp.icone, cd.icone, 'cart-outline') as icone
      FROM achats a
      LEFT JOIN produits p ON a.produit_id = p.id
      LEFT JOIN categories cp ON p.categorie_id = cp.id

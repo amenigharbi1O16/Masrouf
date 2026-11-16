@@ -32,6 +32,8 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';
+// Icônes vectorielles Ionicons pour remplacer les caractères emojis et coches textuelles
+import { Ionicons } from '@expo/vector-icons';
 // Conteneur d'écran avec retour conditionnel et gestion du défilement
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
@@ -166,8 +168,8 @@ export default function ChangePasswordScreen() {
         secure
       />
 
-      {/* Indicateurs dynamiques des 3 critères de conformité (vert '✓' si respecté, gris '○' sinon) */}
-      <View style={{ gap: 4, marginVertical: 8 }}>
+      {/* Indicateurs dynamiques des 3 critères de conformité avec icônes vectorielles Ionicons sans aucun emoji */}
+      <View style={{ gap: 6, marginVertical: 8 }}>
         {(
           [
             [t('au_moins_8_caracteres'), c.length],
@@ -175,18 +177,34 @@ export default function ChangePasswordScreen() {
             [t('mots_de_passe_identiques'), c.match && confirm.length > 0],
           ] as const
         ).map(([label, ok]) => (
-          <Text
+          // Ligne d'indicateur avec icône vectorielle à gauche (ou à droite en arabe)
+          <View
             key={label}
             style={{
-              fontSize: 13,
-              lineHeight: 19,
-              fontWeight: '500',
-              color: ok ? colors.green : colors.muted,
-              textAlign: isRTL ? 'right' : 'left',
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              alignItems: 'center',
+              gap: 8,
             }}
           >
-            {ok ? '✓' : '○'} {label}
-          </Text>
+            {/* Icône de validation vectorielle (coche verte si rempli, cercle vide si non rempli) */}
+            <Ionicons
+              name={ok ? 'checkmark-circle' : 'ellipse-outline'}
+              size={16}
+              color={ok ? colors.forest : colors.muted}
+            />
+            {/* Libellé textuel de la règle */}
+            <Text
+              style={{
+                fontSize: 13,
+                lineHeight: 19,
+                fontWeight: '500',
+                color: ok ? colors.forest : colors.muted,
+                textAlign: isRTL ? 'right' : 'left',
+              }}
+            >
+              {label}
+            </Text>
+          </View>
         ))}
       </View>
 

@@ -54,6 +54,8 @@ import {
 import { useStore } from '@/state/store';
 import { fmtRange, formatDT, unitPrice } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
+// Résolveur d'icône représentative par catégorie pour les graphiques et listes d'analyses
+import { getCategoryIcon } from '@/utils/categoryIcons';
 
 const CAT_COLORS = [
   colors.forest,
@@ -67,7 +69,7 @@ const CAT_COLORS = [
 
 export default function AnalyticsScreen() {
   const router = useRouter();
-  const { db, me } = useStore();
+  const { db, me, selectedBudget } = useStore();
   const { t, isRTL, traduireCategorie } = useTranslation();
 
   const [expandedDetails, setExpandedDetails] = useState(false);
@@ -75,8 +77,8 @@ export default function AnalyticsScreen() {
 
   if (!me) return null;
 
-  // 1. Budget en cours et fenêtre symétrique précédente de même durée
-  const budget = currentBudget(db, me.id) ?? userBudgets(db, me.id).slice(-1)[0] ?? null;
+  // 1. Période de référence centrale sélectionnée dans l'application et sa fenêtre précédente équivalente
+  const budget = selectedBudget;
   const win = budget ? previousWindow(budget) : null;
 
   // 2. Transactions réelles pour chaque période
@@ -125,7 +127,8 @@ export default function AnalyticsScreen() {
       catMap.set(c.id, {
         id: c.id,
         name: c.name,
-        icon: c.kind === 'product' ? 'bag-outline' : 'wallet-outline',
+        // Icône personnalisée et descriptive selon la catégorie (restaurant, voiture, etc.) au lieu du portefeuille uniforme
+        icon: getCategoryIcon(c.name, c.kind),
         curSpend: 0,
         prevSpend: 0,
         allocated: budget.allocations[c.id] ?? 0,
@@ -358,12 +361,12 @@ export default function AnalyticsScreen() {
         />
       </Pressable>
 
-      {/* 2. Carte de résumé */}
+      {/* 2. Carte de résumé et Comparaison Explicite des Périodes */}
       <View style={styles.summaryCard}>
         <Text
           style={[styles.summaryEyebrow, { textAlign: isRTL ? 'right' : 'left' }]}
         >
-          {t('depense_totale').toUpperCase()}
+          {t('depense_totale').toUpperCase()} · {rangeLabel}
         </Text>
         <Text
           style={[styles.summaryAmount, { textAlign: isRTL ? 'right' : 'left' }]}
@@ -371,60 +374,56 @@ export default function AnalyticsScreen() {
           {formatDT(curTotal)}
         </Text>
 
-        {prevTotal === 0 ? (
-          <View
-            style={[styles.noPrevBox, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-          >
-            <Ionicons name="information-circle-outline" size={18} color={colors.mint} />
-            <Text
-              style={[styles.noPrevText, { textAlign: isRTL ? 'right' : 'left' }]}
-            >
-              {t('pas_de_depense_periode_prec')}
+        {/* Bloc explicatif détaillant exactement ce qui est comparé */}
+        <View style={{ marginTop: 10, padding: 10, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, gap: 6 }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.white, textAlign: isRTL ? 'right' : 'left' }}>
+            Comparaison temporelle :
+          </Text>
+          <Text style={{ fontSize: 12, color: colors.track, textAlign: isRTL ? 'right' : 'left' }}>
+            • Période active ({budget.start} au {budget.end}) : {formatDT(curTotal)}
+          </Text>
+          {win && (
+            <Text style={{ fontSize: 12, color: colors.track, textAlign: isRTL ? 'right' : 'left' }}>
+              • Période précédente ({win.start} au {win.end}) : {formatDT(prevTotal)}
             </Text>
-          </View>
-        ) : (
-          <View style={{ gap: 6, marginTop: 4 }}>
-            <View
-              style={[
-                styles.comparisonRow,
-                { flexDirection: isRTL ? 'row-reverse' : 'row' },
-              ]}
-            >
+          )}
+
+          {prevTotal === 0 ? (
+            <View style={[styles.noPrevBox, { flexDirection: isRTL ? 'row-reverse' : 'row', marginTop: 4 }]}>
+              <Ionicons name="information-circle-outline" size={16} color={colors.mint} />
+              <Text style={[styles.noPrevText, { textAlign: isRTL ? 'right' : 'left' }]}>
+                {t('pas_de_depense_periode_prec')}
+              </Text>
+            </View>
+          ) : (
+            <View style={{ marginTop: 6, gap: 4 }}>
               <View
                 style={[
                   styles.statusBadge,
                   {
-                    backgroundColor: aEconomise ? 'rgba(217, 240, 228, 0.25)' : 'rgba(220, 119, 112, 0.25)',
+                    backgroundColor: diff < 0 ? 'rgba(217, 240, 228, 0.25)' : diff > 0 ? 'rgba(220, 119, 112, 0.25)' : 'rgba(255, 255, 255, 0.2)',
                     flexDirection: isRTL ? 'row-reverse' : 'row',
+                    alignSelf: isRTL ? 'flex-end' : 'flex-start',
                   },
                 ]}
               >
                 <Ionicons
-                  name={aEconomise ? 'trending-down' : 'trending-up'}
+                  name={diff < 0 ? 'trending-down' : diff > 0 ? 'trending-up' : 'remove-outline'}
                   size={16}
-                  color={aEconomise ? colors.mint : colors.coral}
+                  color={diff < 0 ? colors.mint : diff > 0 ? colors.coral : colors.white}
                 />
                 <Text
                   style={[
                     styles.statusText,
-                    { color: aEconomise ? colors.mint : colors.coral },
+                    { color: diff < 0 ? colors.mint : diff > 0 ? colors.coral : colors.white },
                   ]}
                 >
-                  {aEconomise ? '−' : '+'}
-                  {Math.abs(pctDiff ?? 0).toFixed(1)}% ({formatDT(Math.abs(diff))})
+                  {diff < 0 ? 'Baisse (Économie)' : diff > 0 ? 'Hausse des dépenses' : 'Stabilité des dépenses'} : {diff < 0 ? '−' : diff > 0 ? '+' : ''}{Math.abs(pctDiff ?? 0).toFixed(1)}% ({formatDT(Math.abs(diff))})
                 </Text>
               </View>
             </View>
-            <Text
-              style={[styles.prevDetailText, { textAlign: isRTL ? 'right' : 'left' }]}
-            >
-              {t('periode_precedente_total', {
-                dates: prevRangeLabel,
-                total: formatDT(prevTotal),
-              })}
-            </Text>
-          </View>
-        )}
+          )}
+        </View>
       </View>
 
       {/* 3. Répartition par catégorie */}
@@ -664,8 +663,13 @@ export default function AnalyticsScreen() {
               ]}
             >
               <View style={styles.topExpenseIconBox}>
+                {/* Icône descriptive de l'opération selon sa catégorie réelle */}
                 <Ionicons
-                  name={tx.kind === 'purchase' ? 'bag-outline' : 'wallet-outline'}
+                  name={
+                    tx.kind === 'purchase'
+                      ? 'bag-outline'
+                      : getCategoryIcon(categoryName(db, tx.categoryId), 'expense')
+                  }
                   size={20}
                   color={colors.green}
                 />

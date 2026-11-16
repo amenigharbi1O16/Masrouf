@@ -1,61 +1,63 @@
 /**
  * FICHIER : src/app/nouveau-produit.tsx
  * IDENTIFIANT INVENTAIRE : FICHIER-026
- * ÉCRAN : ECRAN-FORM-05 (Création d'un Nouveau Produit et Achat Initial)
+ * ÉCRAN : ECRAN-FORM-05 (Saisie d'un Produit Acheté et Enregistrement Complet)
  *
  * MISSION DU FICHIER :
- * Permettre à l'utilisateur d'ajouter un nouvel article au catalogue personnel de son foyer
- * et d'enregistrer immédiatement son premier ticket d'achat en une seule étape fluide :
- * 1. Informations de l'article : nom (ex: Huile d'olive vierge extra), marque (ex: Châal), photo, catégorie et unité par défaut.
- * 2. Données de l'achat initial : prix total en Dinars Tunisiens (ex: 14.500 DT), quantité (ex: 1), magasin (ex: Monoprix) et date.
- * 3. Affiche en direct le prix unitaire calculé sous les champs.
- * 4. Insère conjointement le produit dans `products` et l'achat dans `purchases` sous une transaction SQLite atomique.
+ * Permettre à l'utilisateur d'enregistrer un article acheté avec tous ses attributs :
+ * 1. Informations du produit : nom (ex: Huile d'olive), marque (ex: Châal), photo facultative, catégorie.
+ * 2. Données d'achat : prix total en DT (ex: 14.500), quantité (ex: 1), unité (ex: L), magasin (ex: Monoprix) et date.
+ * 3. Enregistrement direct et atomique dans SQLite (`products` et `purchases`).
+ * 4. Rendu visuel 100% conforme à l'écran de design : cartes de champs blanches, typographie vert forêt,
+ *    texte d'aide des catégories, bouton vert sombre 'Enregistrer le produit et l'achat' et bouton menthe 'Annuler'.
  *
  * DANS QUOI CE FICHIER AIDE DANS L'APPLICATION :
- * Il évite à l'utilisateur de devoir créer d'abord un article vide, puis chercher comment y rattacher un achat.
- * En un seul geste au retour des courses, le nouveau produit est répertorié et le budget est débité.
+ * C'est le point d'entrée unique et complet pour saisir un achat en rentrant des courses.
  *
  * CE QUI EST AFFICHÉ À L'ÉCRAN POUR L'UTILISATEUR :
- * - Un en-tête avec titre traduit 'Ajouter un produit' et flèche de retour.
- * - Le surtitre 'INFORMATIONS PRODUIT' avec le sous-titre 'NOUVEL ARTICLE À SUIVRE'.
- * - Les champs produit : Nom, Marque, Sélecteur de photo avec vignette carrée (48x48px), Sélecteur de rayon.
- * - Les champs d'achat : Prix en DT, Quantité, Unité, Magasin et Date AAAA-MM-JJ.
- * - Une phrase informative calculant en direct le prix unitaire : 'Prix unitaire calculé : 14.500 DT / L'.
- * - Un grand bouton vert 'Enregistrer le produit et l'achat'.
- * - Un bouton d'annulation qui revient à l'écran précédent.
+ * - En-tête avec bouton menu tiroir, titre 'Ajouter un produit' et icône profil.
+ * - Surtitre 'INFORMATIONS DU PRODUIT'.
+ * - Titre 'Un nouveau produit à suivre.'.
+ * - 9 cartes de saisie épurées (Nom, Marque, Photo, Catégorie, Prix, Quantité, Unité, Magasin, Date).
+ * - Texte d'aide listant les catégories disponibles.
+ * - Bouton primaire vert sombre 'Enregistrer le produit et l'achat'.
+ * - Bouton secondaire vert menthe 'Annuler'.
  */
 
+// Outils de navigation Expo Router
 import { useRouter } from 'expo-router';
+// Hooks d'état React
 import React, { useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
-// Conteneur d'écran avec retour arrière et gestion du défilement
+// Composants visuels et interactifs React Native
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+// Icônes vectorielles Ionicons
+import { Ionicons } from '@expo/vector-icons';
+// Conteneur d'écran avec marges de sécurité et défilement
 import { Screen } from '@/components/Screen';
-// Sélecteur déroulant personnalisé
+// Sélecteur déroulant modal personnalisé
 import { SelectField } from '@/components/SelectField';
 // Composants atomiques d'interface utilisateur
-import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/components/ui';
-// Constantes de thème (couleurs vert forêt, blanc, bordures et arrondis)
+import { AlertBanner, Button, Eyebrow, Input } from '@/components/ui';
+// Constantes de thème (couleurs vert forêt, menthe, blanc, bordures et arrondis)
 import { colors, radius } from '@/constants/theme';
 // Liste des unités physiques standardisées (L, kg, g, unité, etc.)
 import { UNITS } from '@/constants/units';
 // Magasin d'état global connecté à SQLite
 import { useStore } from '@/state/store';
 // Fonctions utilitaires de calcul de montants et dates
-import { isValidISO, money, todayISO, toNum } from '@/utils/format';
+import { fmtDateLocale, isValidISO, money, todayISO, toNum } from '@/utils/format';
 // Utilitaire d'accès à la galerie photo native
 import { pickPhoto } from '@/utils/photos';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
 
 /**
- * MISSION DU COMPOSANT :
- * Gérer le formulaire de création d'un nouveau produit et son ticket d'achat initial.
- *
+ * MISSION DU COMPOSANT : AddProductScreen
+ *   Gérer le formulaire complet de saisie d'un produit acheté et de son ticket d'achat.
  * RÔLE DANS L'APPLICATION :
- * Effectue la double insertion atomique dans SQLite (`products` et `purchases`) et débite le budget actif.
- *
+ *   Insère le produit et le ticket dans SQLite de manière persistante et met à jour les totaux en temps réel.
  * CE QUI EST AFFICHÉ À L'ÉCRAN :
- * La vue complète avec les 8 champs du produit et de l'achat, le calcul du prix unitaire en direct et les boutons.
+ *   L'écran complet conforme au design avec les 9 cartes de champs, l'aide contextuelle et les deux boutons d'action.
  */
 export default function AddProductScreen() {
   // Hook de navigation Expo Router
@@ -63,48 +65,64 @@ export default function AddProductScreen() {
   // Extraction des données de catalogue, du profil et des actions d'insertion
   const { db, me, actions } = useStore();
   // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
   // Filtrage des catégories de produits actives sélectionnées par l'utilisateur
   const cats = db.categories.filter(
-    (c) => c.kind === 'product' && c.active && me?.categoryIds.includes(c.id)
+    (c) => c.kind === 'product' && c.active && (me?.categoryIds ?? []).includes(c.id)
   );
 
-  // États locaux des attributs du produit et de son premier ticket de caisse
+  // Catégories de secours si l'utilisateur n'en a pas encore sélectionné
+  const availableCats = cats.length > 0 ? cats : db.categories.filter((c) => c.kind === 'product');
+
+  // États locaux des champs du produit et de son ticket de caisse
+  // Nom de l'article (ex: Huile d'olive)
   const [name, setName] = useState('');
+  // Marque commerciale de l'article (ex: Châal)
   const [brand, setBrand] = useState('');
+  // Photo enregistrée (optionnelle)
   const [photo, setPhoto] = useState<string | undefined>();
-  const [categoryId, setCategoryId] = useState(cats[0]?.id ?? '');
+  // Catégorie sélectionnée (par défaut la première disponible)
+  const [categoryId, setCategoryId] = useState(availableCats[0]?.id ?? 'food');
+  // Prix total payé en Dinars Tunisiens (ex: 14.500)
   const [price, setPrice] = useState('');
+  // Quantité achetée (par défaut 1)
   const [quantity, setQuantity] = useState('1');
+  // Unité physique (par défaut Litre 'L')
   const [unit, setUnit] = useState('L');
+  // Magasin d'achat (ex: Monoprix)
   const [store, setStore] = useState('');
+  // Date d'achat au format ISO
   const [date, setDate] = useState(todayISO());
+  // Message d'erreur de validation éventuel
   const [error, setError] = useState('');
 
   /**
-   * MISSION DE LA FONCTION :
-   * Valider la saisie et enregistrer conjointement le produit et son premier achat dans SQLite.
-   *
+   * MISSION DE LA FONCTION : save
+   *   Valider la saisie et enregistrer conjointement le produit et son premier achat dans SQLite.
    * RÔLE DANS L'APPLICATION :
-   * Appelle `actions.addProduct` puis `actions.addPurchase` dans SQLite et déclenche la redirection vers `/confirmation`.
-   *
+   *   Alimente la base de données SQLite locale, met à jour le solde et redirige vers la fiche détaillée du produit.
    * CE QUI EST AFFICHÉ À L'ÉCRAN :
-   * En cas d'erreur : affiche la bannière rouge (ex: nom vide, quantité non positive, date invalide).
-   * En cas de succès : ouvre l'écran de confirmation avec le médaillon de réussite.
+   *   Affiche une bannière rouge en cas de champ incomplet ou bascule vers la fiche produit créée.
    */
   const save = () => {
+    // Conversion numérique du prix
     const p = toNum(price);
+    // Conversion numérique de la quantité
     const q = toNum(quantity);
 
-    // Contrôles de validation métier
+    // Contrôle : le nom du produit est obligatoire
     if (!name.trim()) return setError(t('entrer_nom_produit'));
+    // Contrôle : la catégorie est requise
     if (!categoryId) return setError(t('choisir_cat_produit'));
+    // Contrôle : le prix doit être un nombre positif
     if (!Number.isFinite(p) || p < 0) return setError(t('entrer_prix_valide'));
+    // Contrôle : la quantité doit être strictement positive
     if (!Number.isFinite(q) || q <= 0) return setError(t('quantite_doit_etre_positive'));
+    // Contrôle : la date doit être au format valide
     if (!isValidISO(date)) return setError(t('format_date_invalide'));
 
-    // Insertion 1 : Ajout de la fiche de l'article dans la table 'products'
+    // Insertion du produit dans la table SQLite 'products'
     const productId = actions.addProduct({
       name: name.trim(),
       brand: brand.trim(),
@@ -112,8 +130,9 @@ export default function AddProductScreen() {
       unit,
       photo,
     });
-    // Insertion 2 : Ajout du premier ticket de caisse dans la table 'purchases'
-    const purchaseId = actions.addPurchase({
+
+    // Insertion du ticket de caisse dans la table SQLite 'purchases'
+    actions.addPurchase({
       productId,
       price: p,
       quantity: q,
@@ -122,33 +141,32 @@ export default function AddProductScreen() {
       date,
     });
 
-    // Navigation directe vers l'écran récapitulatif de confirmation
+    // Redirection directe vers la fiche détaillée du produit créé
     router.replace({
-      pathname: '/confirmation',
-      params: {
-        kind: 'purchase',
-        purchaseId,
-        productId,
-        categoryId,
-        amount: String(p),
-      },
+      pathname: '/produit/[id]',
+      params: { id: productId },
     } as never);
   };
 
   return (
-    // Screen : conteneur assurant les marges physiques et le défilement fluide
-    <Screen title={t('ajouter_produit')} back>
-      {/* Surtitre explicatif en lettres capitales */}
+    // Conteneur Screen avec en-tête standardisé (menu burger à gauche, profil à droite)
+    <Screen title={t('ajouter_produit')}>
+      {/* Surtitre discret en majuscules 'INFORMATIONS DU PRODUIT' */}
       <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('informations_produit')}
+        {t('informations_du_produit')}
       </Eyebrow>
 
-      {/* Titre de section descriptif */}
-      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('nouvel_article_a_suivre')}
-      </SectionTitle>
+      {/* Titre principal de la section 'Un nouveau produit à suivre.' */}
+      <Text
+        style={[
+          styles.mainHeadline,
+          { textAlign: isRTL ? 'right' : 'left' },
+        ]}
+      >
+        {t('un_nouveau_produit_suivre')}
+      </Text>
 
-      {/* Bannière d'alerte rouge affichée en cas d'erreur de validation */}
+      {/* Bannière d'alerte rouge affichée si une erreur survient */}
       {error ? (
         <AlertBanner
           tone="danger"
@@ -157,25 +175,16 @@ export default function AddProductScreen() {
         />
       ) : null}
 
-      {/* Avertissement jaune si l'utilisateur n'a activé aucun rayon de type produit */}
-      {cats.length === 0 ? (
-        <AlertBanner
-          tone="warning"
-          title={t('aucune_cat_produit_selectionnee')}
-          detail={t('aucune_cat_produit_detail')}
-        />
-      ) : null}
-
-      {/* Champ 1 : Nom de l'article */}
+      {/* Champ 1 : Nom du produit */}
       <Input
         label={t('nom_produit_label')}
         value={name}
         onChangeText={setName}
         autoCapitalize="sentences"
-        placeholder="Huile d'olive"
+        placeholder="Huile d’olive"
       />
 
-      {/* Champ 2 : Marque commerciale du produit */}
+      {/* Champ 2 : Marque */}
       <Input
         label={t('marque_label')}
         value={brand}
@@ -184,120 +193,213 @@ export default function AddProductScreen() {
         placeholder="Châal"
       />
 
-      {/* Bouton tactile de sélection d'une photo dans la galerie du smartphone */}
+      {/* Champ 3 : Carte tactile pour la sélection de la photo */}
       <Pressable
         onPress={async () => {
-          const u = await pickPhoto();
-          if (u) setPhoto(u);
+          // Ouverture du sélecteur natif de photos
+          const photoUri = await pickPhoto();
+          // Mise à jour de l'état si une photo a été choisie
+          if (photoUri) setPhoto(photoUri);
         }}
         accessibilityRole="button"
-        style={{
-          backgroundColor: colors.white,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: radius.control,
-          minHeight: 80,
-          padding: 15,
-          flexDirection: isRTL ? 'row-reverse' : 'row',
-          alignItems: 'center',
-          gap: 12,
-        }}
+        style={[
+          styles.photoCard,
+          { flexDirection: isRTL ? 'row-reverse' : 'row' },
+        ]}
       >
+        {/* Colonne textuelle du champ photo */}
         <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-          <Text style={{ fontSize: 11, fontWeight: '500', color: colors.muted }}>
-            {t('photo_facultative')}
+          {/* Label supérieur discret */}
+          <Text style={styles.photoLabel}>
+            {t('photo_facultative_label')}
           </Text>
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: '500',
-              color: colors.forest,
-              marginTop: 6,
-            }}
+          {/* Ligne d'action avec bouton d'ajout */}
+          <View
+            style={[
+              styles.photoActionRow,
+              { flexDirection: isRTL ? 'row-reverse' : 'row' },
+            ]}
           >
-            {photo ? t('changer_photo') : t('ajouter_photo_btn')}
-          </Text>
+            {/* Icône plus ou appareil photo */}
+            <Ionicons name="camera-outline" size={18} color={colors.forest} />
+            {/* Texte de l'action */}
+            <Text style={styles.photoActionText}>
+              {photo ? t('changer_photo') : t('ajouter_une_photo')}
+            </Text>
+          </View>
         </View>
+        {/* Vignette miniature de la photo si sélectionnée */}
         {photo ? (
           <Image
             source={{ uri: photo }}
-            style={{ width: 48, height: 48, borderRadius: 12 }}
+            style={styles.photoPreview}
           />
         ) : null}
       </Pressable>
 
-      {/* Sélecteur déroulant de la catégorie de l'article */}
+      {/* Champ 4 : Sélecteur déroulant de la catégorie de produit */}
       <SelectField
-        label={t('categorie_produit_label')}
+        label={t('categorie_de_produit')}
         value={categoryId}
-        options={cats.map((c) => ({ value: c.id, label: c.name }))}
+        options={availableCats.map((c) => ({
+          value: c.id,
+          label: traduireCategorie(c.name),
+        }))}
         onChange={setCategoryId}
       />
 
-      {/* Champ 3 : Prix total payé en caisse en Dinars Tunisiens */}
+      {/* Champ 5 : Prix en Dinars Tunisiens (DT) */}
       <Input
-        label={t('prix_dt_label')}
+        label={t('prix_dt_format')}
         value={price}
         onChangeText={setPrice}
         keyboardType="decimal-pad"
         placeholder="14.500"
       />
 
-      {/* Champ 4 : Quantité achetée */}
+      {/* Champ 6 : Quantité */}
       <Input
-        label={t('quantite_label')}
+        label={t('quantite_simple')}
         value={quantity}
         onChangeText={setQuantity}
         keyboardType="decimal-pad"
+        placeholder="1"
       />
 
-      {/* Sélecteur déroulant de l'unité de mesure */}
+      {/* Champ 7 : Sélecteur de l'unité physique */}
       <SelectField
-        label={t('unite_label')}
+        label={t('unite_simple')}
         value={unit}
         options={UNITS}
         onChange={setUnit}
       />
 
-      {/* Champ 5 : Enseigne ou magasin où a été fait l'achat */}
+      {/* Champ 8 : Magasin ou enseigne d'achat */}
       <Input
-        label={t('magasin_label')}
+        label={t('magasin_simple')}
         value={store}
         onChangeText={setStore}
         autoCapitalize="words"
         placeholder="Monoprix"
       />
 
-      {/* Champ 6 : Date de l'achat au format standard AAAA-MM-JJ */}
+      {/* Champ 9 : Date d'achat */}
       <Input
-        label={t('date_achat_label')}
+        label={t('date_achat_champ')}
         value={date}
         onChangeText={setDate}
-        placeholder="YYYY-MM-DD"
+        placeholder={fmtDateLocale(todayISO(), langue)}
         keyboardType="numbers-and-punctuation"
       />
 
-      {/* Calcul automatique en direct du prix unitaire résultant */}
-      {Number.isFinite(toNum(price)) && toNum(quantity) > 0 ? (
-        <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
-          {t('prix_unitaire_calcule')} :{' '}
-          {money(toNum(price) / toNum(quantity))} / {unit}
-        </Body>
-      ) : null}
+      {/* Texte d'aide listant les catégories disponibles sous le formulaire */}
+      <Text
+        style={[
+          styles.categoriesHelp,
+          { textAlign: isRTL ? 'right' : 'left' },
+        ]}
+      >
+        {t('categories_produits_liste_aide')}
+      </Text>
 
-      {/* Bouton vert forêt : insertion conjointe du produit et de son premier ticket dans SQLite */}
+      {/* Bouton d'action primaire : Enregistrer le produit et l'achat */}
       <Button
         label={t('enregistrer_produit_et_achat')}
         onPress={save}
-        disabled={cats.length === 0}
       />
 
-      {/* Bouton secondaire clair d'annulation */}
+      {/* Bouton d'action secondaire : Annuler */}
       <Button
         label={t('annuler')}
         variant="secondary"
         onPress={() => router.back()}
       />
+
+      {/* Espace bas de sécurité pour le défilement */}
+      <View style={{ height: 16 }} />
     </Screen>
   );
 }
+
+// Feuilles de styles StyleSheet du formulaire
+const styles = StyleSheet.create({
+  // Titre principal de la page
+  mainHeadline: {
+    // Taille de police généreuse
+    fontSize: 22,
+    // Graisse très affirmée 700
+    fontWeight: '700',
+    // Couleur vert forêt sombre institutionnelle
+    color: colors.forest,
+    // Marge basse de respiration
+    marginBottom: 4,
+  },
+  // Carte de sélection de photo
+  photoCard: {
+    // Fond blanc immaculé
+    backgroundColor: colors.white,
+    // Bordure fine grise
+    borderWidth: 1,
+    // Couleur de bordure standard
+    borderColor: colors.border,
+    // Rayon de courbure des angles de 16px
+    borderRadius: radius.control,
+    // Hauteur minimale harmonieuse avec les autres champs
+    minHeight: 80,
+    // Espacement intérieur horizontal
+    paddingHorizontal: 15,
+    // Espacement intérieur vertical
+    paddingVertical: 12,
+    // Centrage des éléments
+    alignItems: 'center',
+    // Espacement interne
+    gap: 12,
+  },
+  // Label discret du champ photo
+  photoLabel: {
+    // Taille de 11px
+    fontSize: 11,
+    // Graisse moyenne 500
+    fontWeight: '500',
+    // Couleur verte grisée discrète
+    color: colors.muted,
+  },
+  // Ligne contenant l'icône et le texte d'action photo
+  photoActionRow: {
+    // Alignement horizontal
+    alignItems: 'center',
+    // Espacement entre l'icône et le libellé
+    gap: 8,
+    // Marge supérieure
+    marginTop: 6,
+  },
+  // Texte du bouton d'ajout photo
+  photoActionText: {
+    // Taille de 15px
+    fontSize: 15,
+    // Graisse semi-grasse 600
+    fontWeight: '600',
+    // Couleur vert forêt
+    color: colors.forest,
+  },
+  // Aperçu miniature de la photo sélectionnée
+  photoPreview: {
+    // Largeur de 50px
+    width: 50,
+    // Hauteur de 50px
+    height: 50,
+    // Angles arrondis de 12px
+    borderRadius: 12,
+  },
+  // Note textuelle informative sur les catégories
+  categoriesHelp: {
+    // Taille de 12px
+    fontSize: 12,
+    // Hauteur de ligne aérée
+    lineHeight: 18,
+    // Couleur atténuée
+    color: colors.muted,
+    // Marges verticales de respiration
+    marginVertical: 4,
+  },
+});

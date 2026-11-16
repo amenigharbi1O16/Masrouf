@@ -16,12 +16,6 @@
  */
 
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-// Magasin d'état global pour identifier le rôle de l'utilisateur
-import { useStore } from '@/state/store';
-// Tiroir dédié aux administrateurs
-import { AdminDrawer } from './AdminDrawer';
-// Tiroir dédié aux utilisateurs réguliers
-import { AppDrawer } from './AppDrawer';
 
 /**
  * Interface du contexte de gestion du tiroir.
@@ -48,7 +42,6 @@ export const useDrawer = () => useContext(DrawerCtx);
  */
 export function DrawerProvider({ children }: { children: React.ReactNode }) {
   const [visible, setVisible] = useState(false);
-  const { me } = useStore();
 
   const open = useCallback(() => setVisible(true), []);
   const close = useCallback(() => setVisible(false), []);
@@ -60,8 +53,6 @@ export function DrawerProvider({ children }: { children: React.ReactNode }) {
   return (
     <DrawerCtx.Provider value={value}>
       {children}
-      {/* Rendu conditionnel du tiroir adapté au rôle de l'utilisateur connecté */}
-      {me ? (me.role === 'admin' ? <AdminDrawer /> : <AppDrawer />) : null}
     </DrawerCtx.Provider>
   );
 }

@@ -18,7 +18,7 @@
 // ============================================================
 
 import { db, initDatabase } from '@/db/database';
-import type { AppSettings, Budget, Category, CategoryType, DB, Expense, PointsRules, Product, Purchase, User } from './types';
+import type { AppSettings, Budget, Category, CategoryType, DB, Expense, InAppNotification, PointsRules, Product, Purchase, User } from './types';
 import { hashPassword } from '@/utils/security';
 import { todayISO, uid } from '@/utils/format';
 
@@ -59,22 +59,22 @@ export async function loadDBFromSQLite(): Promise<DB> {
   // Si la table category est vierge (premier lancement), injection des catégories par défaut
   if (catRows.length === 0) {
     const SEED_CATS = [
-      ['food', 'Food', 'product', '🥦', 33],
-      ['clothing', 'Clothing and shoes', 'product', '👕', 4],
-      ['personal-care', 'Personal care', 'product', '🧴', 4],
-      ['home', 'Home and equipment', 'product', '🛋️', 5],
-      ['computer', 'Computer equipment', 'product', '💻', 3],
-      ['health', 'Health and medicines', 'product', '💊', 5],
-      ['transport', 'Transport', 'expense', '🚗', 10],
-      ['bills', 'Bills', 'expense', '🧾', 14],
-      ['education', 'Education', 'expense', '🎓', 4],
-      ['entertainment', 'Entertainment', 'expense', '🎟️', 5],
-      ['children', 'Children', 'expense', '🧸', 3],
-      ['family', 'Family support', 'expense', '🤝', 3],
-      ['savings', 'Savings', 'expense', '💰', 4],
-      ['donations', 'Donations', 'expense', '❤️', 1],
-      ['bank-fees', 'Bank fees', 'expense', '🏦', 1],
-      ['other', 'Other', 'expense', '📦', 1],
+      ['food', 'Food', 'product', 'restaurant-outline', 33],
+      ['clothing', 'Clothing and shoes', 'product', 'shirt-outline', 4],
+      ['personal-care', 'Personal care', 'product', 'sparkles-outline', 4],
+      ['home', 'Home and equipment', 'product', 'home-outline', 5],
+      ['computer', 'Computer equipment', 'product', 'laptop-outline', 3],
+      ['health', 'Health and medicines', 'product', 'medkit-outline', 5],
+      ['transport', 'Transport', 'expense', 'car-outline', 10],
+      ['bills', 'Bills', 'expense', 'receipt-outline', 14],
+      ['education', 'Education', 'expense', 'school-outline', 4],
+      ['entertainment', 'Entertainment', 'expense', 'game-controller-outline', 5],
+      ['children', 'Children', 'expense', 'happy-outline', 3],
+      ['family', 'Family support', 'expense', 'people-outline', 3],
+      ['savings', 'Savings', 'expense', 'cash-outline', 4],
+      ['donations', 'Donations', 'expense', 'heart-outline', 1],
+      ['bank-fees', 'Bank fees', 'expense', 'business-outline', 1],
+      ['other', 'Other', 'expense', 'cart-outline', 1],
     ] as const;
 
     for (const [idKey, name, type, icon, defPct] of SEED_CATS) {
@@ -116,27 +116,44 @@ export async function loadDBFromSQLite(): Promise<DB> {
     langue: string;
   }>('SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user');
 
-  // Si aucun utilisateur n'existe, injection des profils d'administration et de test
-  if (userRows.length === 0) {
-    const adminPw = await hashPassword('Admin2026');
-    const userPw = await hashPassword('Masrouf2026');
+  // Vérification de la présence de chacun des 3 comptes de test essentiels
+  const hasAdmin = userRows.some((u) => u.email.toLowerCase() === 'admin@masrouf.tn');
+  const hasInes = userRows.some((u) => u.email.toLowerCase() === 'ines.benali@email.tn');
+  const hasUser = userRows.some((u) => u.email.toLowerCase() === 'user@masrouf.tn');
+
+  const adminPw = await hashPassword('Admin2026');
+  const userPw = await hashPassword('Masrouf2026');
+
+  if (!hasAdmin) {
     db.runSync(
-      'INSERT INTO user (name, email, password_hash, role, is_active, onboarding_done) VALUES (?, ?, ?, ?, 1, 1)',
+      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done) VALUES (?, ?, ?, ?, 1, 0, 1)',
       ['Administrator', 'admin@masrouf.tn', adminPw, 'admin']
     );
+  }
+  if (!hasInes) {
     db.runSync(
-      'INSERT INTO user (name, email, password_hash, role, is_active, onboarding_done) VALUES (?, ?, ?, ?, 1, 1)',
+      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, budget_mensuel) VALUES (?, ?, ?, ?, 1, 0, 1, 1200)',
       ['Ines Ben Ali', 'ines.benali@email.tn', userPw, 'user']
     );
+  }
+  if (!hasUser) {
     db.runSync(
-      'INSERT INTO user (name, email, password_hash, role, is_active, onboarding_done) VALUES (?, ?, ?, ?, 1, 1)',
+      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, budget_mensuel) VALUES (?, ?, ?, ?, 1, 0, 1, 1200)',
       ['Utilisateur Test', 'user@masrouf.tn', userPw, 'user']
     );
-    userRows = db.getAllSync('SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user');
   }
+
+  // Déverrouillage automatique et activation garantie de tous les comptes de démonstration
+  db.runSync(
+    "UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1 WHERE email IN ('admin@masrouf.tn', 'ines.benali@email.tn', 'user@masrouf.tn') COLLATE NOCASE"
+  );
+
+  // Rechargement des enregistrements à jour
+  userRows = db.getAllSync('SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user');
 
   // Transformation des profils utilisateurs et récupération de leurs catégories choisies
   const users: User[] = userRows.map((u) => {
+    const isTestAccount = ['admin@masrouf.tn', 'ines.benali@email.tn', 'user@masrouf.tn'].includes(u.email.toLowerCase());
     const uCatRows = db.getAllSync<{ category_id: number }>(
       'SELECT category_id FROM user_category WHERE user_id = ? AND enabled = 1',
       [u.id]
@@ -147,9 +164,10 @@ export async function loadDBFromSQLite(): Promise<DB> {
       email: u.email,
       passwordHash: u.password_hash,
       role: (u.role === 'admin' ? 'admin' : 'user'),
-      active: u.is_active === 1,
-      mustChangePassword: u.must_change_password === 1,
-      onboarded: u.onboarding_done === 1,
+      // Les comptes de test sont toujours actifs, ont terminé l'onboarding et ne sont jamais bloqués
+      active: isTestAccount ? true : u.is_active === 1,
+      mustChangePassword: isTestAccount ? false : u.must_change_password === 1,
+      onboarded: isTestAccount ? true : u.onboarding_done === 1,
       categoryIds: uCatRows.map((c) => String(c.category_id)),
       celebratedBudgetIds: [],
       createdAt: u.created_at || todayISO(),
@@ -160,8 +178,10 @@ export async function loadDBFromSQLite(): Promise<DB> {
   // ------------------------------------------------------------
   // ÉTAPE 3 : Chargement des budgets et enveloppes de catégories
   // ------------------------------------------------------------
+  // Tableau de stockage des périodes de budget chargées en mémoire
   let budgets: Budget[] = [];
   try {
+    // Récupération de tous les budgets déclarés dans SQLite
     const budgetRows = db.getAllSync<{
       id: number;
       user_id: number;
@@ -171,17 +191,43 @@ export async function loadDBFromSQLite(): Promise<DB> {
       total: number;
     }>('SELECT * FROM budget');
 
+    // Parcours de chaque ligne de budget trouvée
     for (const b of budgetRows) {
+      // Calcul de la date de début de période
       const start = b.start_date || (b.month ? `${b.month}-01` : todayISO());
+      // Calcul de la date de fin de période
       const end = b.end_date || (b.month ? `${b.month}-28` : todayISO());
-      const allocRows = db.getAllSync<{ category_id: number; amount: number }>(
-        'SELECT category_id, amount FROM category_budget WHERE user_id = ?',
-        [b.user_id]
+      // Clé mensuelle au format YYYY-MM
+      const monthPrefix = start.substring(0, 7);
+      // Tentative de lecture des enveloppes précises pour ce mois dans category_budget
+      let allocRows = db.getAllSync<{ category_id: number; amount: number }>(
+        'SELECT category_id, amount FROM category_budget WHERE user_id = ? AND month = ?',
+        [b.user_id, monthPrefix]
       );
+      // Si aucune ligne trouvée, recherche dans la table relationnelle envelope
+      if (allocRows.length === 0) {
+        // Requête dans la table envelope par budget_id
+        allocRows = db.getAllSync<{ category_id: number; amount: number }>(
+          'SELECT category_id, amount FROM envelope WHERE budget_id = ?',
+          [b.id]
+        );
+      }
+      // Si toujours vide, repli sur l'ensemble des catégories allouées à cet utilisateur
+      if (allocRows.length === 0) {
+        // Requête globale par user_id
+        allocRows = db.getAllSync<{ category_id: number; amount: number }>(
+          'SELECT category_id, amount FROM category_budget WHERE user_id = ?',
+          [b.user_id]
+        );
+      }
+      // Dictionnaire associatif identifiant catégorie -> montant alloué en DT
       const allocations: Record<string, number> = {};
+      // Remplissage du dictionnaire pour chaque enveloppe
       for (const a of allocRows) {
+        // Enregistrement de l'enveloppe
         allocations[String(a.category_id)] = a.amount;
       }
+      // Ajout de l'objet Budget complet dans la liste du store
       budgets.push({
         id: String(b.id),
         userId: String(b.user_id),
@@ -192,8 +238,14 @@ export async function loadDBFromSQLite(): Promise<DB> {
       });
     }
   } catch {
-    // Si la table budget n'a pas encore de lignes
+    // Si la table budget n'a pas encore de lignes ou erreur
   }
+
+  // ============================================================
+  // MISSION ARCHITECTURALE : ZÉRO DONNÉE EN DUR DANS L'APPLICATION
+  // RÔLE : Aucun budget n'est injecté automatiquement.
+  //        L'utilisateur crée ses propres périodes et budgets dans le calendrier.
+  // ============================================================
 
   // ------------------------------------------------------------
   // ÉTAPE 4 : Chargement du catalogue de produits
@@ -312,6 +364,43 @@ export async function loadDBFromSQLite(): Promise<DB> {
     { kind: 'expense', label: 'Expenses', description: 'Dépenses courantes sans produit spécifique.' },
   ];
 
+  // ------------------------------------------------------------
+  // ÉTAPE 8 : Chargement des notifications persistées (notification)
+  // ------------------------------------------------------------
+  let notifications: InAppNotification[] = [];
+  try {
+    const notifRows = db.getAllSync<{
+      id: string;
+      user_id: number;
+      budget_id?: number;
+      type: string;
+      title: string;
+      body: string;
+      reason: string;
+      action_recommended: string;
+      period_label: string;
+      amount?: number;
+      threshold?: number;
+      is_read: number;
+      created_at: string;
+    }>('SELECT * FROM notification ORDER BY created_at DESC');
+
+    notifications = notifRows.map((n) => ({
+      id: String(n.id),
+      userId: String(n.user_id),
+      type: n.type as any,
+      title: n.title,
+      body: n.body,
+      periodLabel: n.period_label,
+      periodId: String(n.budget_id || ''),
+      amountSpent: n.amount || 0,
+      budgetTotal: 0,
+      actionRecommended: n.action_recommended,
+      isRead: n.is_read === 1,
+      createdAt: n.created_at,
+    }));
+  } catch {}
+
   return {
     users,
     categories,
@@ -323,6 +412,7 @@ export async function loadDBFromSQLite(): Promise<DB> {
     products,
     purchases,
     expenses,
+    notifications,
     sessionUserId: null,
   };
 }
@@ -410,16 +500,47 @@ export function sqliteSaveBudget(budget: Budget): void {
   try {
     const numUserId = Number(budget.userId);
     const month = budget.start.substring(0, 7);
+    let budgetDbId: number | null = Number(budget.id) || null;
 
-    // 1. Table budget (périodes personnalisées avec dates de début et fin)
+    // 1. Table budget (périodes avec dates de début et fin)
+    //    Règle stricte : Une seule période de budget pour les mêmes dates
     try {
-      db.runSync(
-        'INSERT OR REPLACE INTO budget (id, user_id, start_date, end_date, total) VALUES (?, ?, ?, ?, ?)',
-        [Number(budget.id) || null, numUserId, budget.start, budget.end, budget.total]
+      const existing = db.getFirstSync<{ id: number }>(
+        'SELECT id FROM budget WHERE user_id = ? AND start_date = ? AND end_date = ?',
+        [numUserId, budget.start, budget.end]
       );
+      if (existing) {
+        budgetDbId = existing.id;
+        db.runSync(
+          'UPDATE budget SET total = ? WHERE id = ?',
+          [budget.total, existing.id]
+        );
+      } else {
+        const res = db.runSync(
+          'INSERT INTO budget (user_id, start_date, end_date, total) VALUES (?, ?, ?, ?)',
+          [numUserId, budget.start, budget.end, budget.total]
+        );
+        budgetDbId = res.lastInsertRowId;
+      }
     } catch {}
 
-    // 2. Table month_budget (regroupement calendaire mensuel)
+    // 2. Table envelope (enveloppes de la période)
+    if (budgetDbId) {
+      try {
+        db.runSync('DELETE FROM envelope WHERE budget_id = ?', [budgetDbId]);
+        for (const [catIdStr, montant] of Object.entries(budget.allocations)) {
+          const numCatId = Number(catIdStr);
+          if (numCatId > 0) {
+            db.runSync(
+              'INSERT OR REPLACE INTO envelope (budget_id, category_id, amount) VALUES (?, ?, ?)',
+              [budgetDbId, numCatId, montant]
+            );
+          }
+        }
+      } catch {}
+    }
+
+    // 3. Table month_budget (regroupement calendaire mensuel)
     try {
       db.runSync(
         'INSERT OR REPLACE INTO month_budget (user_id, month, total) VALUES (?, ?, ?)',
@@ -427,7 +548,7 @@ export function sqliteSaveBudget(budget: Budget): void {
       );
     } catch {}
 
-    // 3. Table category_budget : montants alloués par catégorie
+    // 4. Table category_budget : montants alloués par catégorie
     for (const [catIdStr, montant] of Object.entries(budget.allocations)) {
       const numCatId = Number(catIdStr);
       if (numCatId > 0) {
@@ -448,8 +569,9 @@ export function sqliteSaveBudget(budget: Budget): void {
  */
 export function sqliteAddProduct(product: Product): void {
   try {
+    // Insertion dans la table relationnelle product avec association à l'utilisateur (user_id)
     db.runSync(
-      'INSERT INTO product (name, brand, category_id, unit, photo_path, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO product (name, brand, category_id, unit, photo_path, user_id) VALUES (?, ?, ?, ?, ?, ?)',
       [product.name, product.brand, Number(product.categoryId) || 1, product.unit, product.photo || '', Number(product.userId) || 1]
     );
   } catch (e) {
@@ -492,9 +614,15 @@ export function sqliteUpdateProduct(id: string, patch: Partial<Product>): void {
 export function sqliteAddPurchase(purchase: Purchase): void {
   try {
     const month = purchase.date.substring(0, 7);
+    // Recherche de la catégorie du produit pour respecter la contrainte NOT NULL de purchase.category_id
+    const prodRow = db.getFirstSync<{ category_id: number }>(
+      'SELECT category_id FROM product WHERE id = ?',
+      [Number(purchase.productId) || 1]
+    );
+    const categoryId = prodRow?.category_id ?? 1;
     db.runSync(
-      'INSERT INTO purchase (product_id, user_id, store, quantity, unit, price, date, month) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [Number(purchase.productId) || 1, Number(purchase.userId) || 1, purchase.store, purchase.quantity, purchase.unit, purchase.price, purchase.date, month]
+      'INSERT INTO purchase (product_id, user_id, category_id, store, quantity, unit, price, date, month) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [Number(purchase.productId) || 1, Number(purchase.userId) || 1, categoryId, purchase.store, purchase.quantity, purchase.unit, purchase.price, purchase.date, month]
     );
   } catch (e) {
     console.warn('sqliteAddPurchase error:', e);
@@ -530,14 +658,37 @@ export function sqliteUpdatePurchase(id: string, patch: Partial<Purchase>): void
  * Enregistre une dépense forfaitaire courante dans la table `expense`.
  * @param expense Objet dépense contenant montant, catégorie, note et date.
  */
+/**
+ * MISSION DE LA FONCTION : sqliteAddExpense
+ *   Enregistre une dépense forfaitaire courante dans la table relationnelle `expense`.
+ * RÔLE DANS L'APPLICATION :
+ *   Insère le montant, l'utilisateur, la catégorie résolue et la date dans SQLite.
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Met à jour immédiatement le solde consommé et le montant restant de l'enveloppe budgétaire.
+ */
 export function sqliteAddExpense(expense: Expense): void {
   try {
+    // Calcul de la période mensuelle au format AAAA-MM
     const month = expense.date.substring(0, 7);
+    // Résolution numérique de l'identifiant de catégorie
+    let catId = Number(expense.categoryId);
+    // Si l'identifiant n'est pas un nombre direct (ex: clé slug 'food' ou 'bills')
+    if (!Number.isFinite(catId) || catId <= 0) {
+      // Recherche de l'ID numérique correspondant dans la table category
+      const row = db.getFirstSync<{ id: number }>(
+        'SELECT id FROM category WHERE name_key = ? COLLATE NOCASE',
+        [expense.categoryId]
+      );
+      // Affectation de l'ID trouvé ou repli sur 1
+      catId = row?.id ?? 1;
+    }
+    // Insertion persistante dans la table expense
     db.runSync(
       'INSERT INTO expense (user_id, category_id, amount, label, date, month) VALUES (?, ?, ?, ?, ?, ?)',
-      [Number(expense.userId) || 1, Number(expense.categoryId) || 1, expense.amount, expense.note, expense.date, month]
+      [Number(expense.userId) || 1, catId, expense.amount, expense.note, expense.date, month]
     );
   } catch (e) {
+    // Journalisation de sécurité en cas d'erreur SQLite
     console.warn('sqliteAddExpense error:', e);
   }
 }
@@ -570,9 +721,10 @@ export function sqliteUpdateExpense(id: string, patch: Partial<Expense>): void {
  */
 export function sqliteAddCategory(cat: Category): void {
   try {
+    // Insertion de la catégorie avec icône vectorielle par défaut 'cart-outline' sans aucun emoji
     db.runSync(
       'INSERT INTO category (name_key, type, icon, is_active) VALUES (?, ?, ?, ?)',
-      [cat.name, cat.kind, '📦', cat.active ? 1 : 0]
+      [cat.name, cat.kind, 'cart-outline', cat.active ? 1 : 0]
     );
   } catch (e) {
     console.warn('sqliteAddCategory error:', e);
@@ -595,5 +747,60 @@ export function sqliteUpdateCategory(id: string, patch: Partial<Category>): void
     }
   } catch (e) {
     console.warn('sqliteUpdateCategory error:', e);
+  }
+}
+
+/**
+ * MISSION : sqliteSaveNotification
+ * RÔLE : Persiste une alerte ou notification dans la table SQLite locale `notification`.
+ * CE QUI EST AFFICHÉ : Alimente le centre de notifications et la pastille de badge dans l'en-tête.
+ */
+export function sqliteSaveNotification(n: InAppNotification): void {
+  try {
+    db.runSync(
+      `INSERT OR REPLACE INTO notification (id, user_id, budget_id, type, title, body, reason, action_recommended, period_label, amount, threshold, is_read, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        n.id,
+        Number(n.userId) || 1,
+        Number(n.periodId) || null,
+        n.type,
+        n.title,
+        n.body,
+        n.body,
+        n.actionRecommended,
+        n.periodLabel,
+        n.amountSpent,
+        n.type === 'alert_80' ? 80 : n.type === 'alert_100' ? 100 : null,
+        n.isRead ? 1 : 0,
+        n.createdAt,
+      ]
+    );
+  } catch (e) {
+    console.warn('sqliteSaveNotification error:', e);
+  }
+}
+
+/**
+ * MISSION : sqliteMarkNotificationRead
+ * RÔLE : Marque une notification spécifique comme lue (is_read = 1) dans la base SQLite.
+ */
+export function sqliteMarkNotificationRead(id: string): void {
+  try {
+    db.runSync('UPDATE notification SET is_read = 1 WHERE id = ?', [id]);
+  } catch (e) {
+    console.warn('sqliteMarkNotificationRead error:', e);
+  }
+}
+
+/**
+ * MISSION : sqliteMarkAllNotificationsRead
+ * RÔLE : Marque toutes les notifications de l'utilisateur connecté comme lues dans SQLite.
+ */
+export function sqliteMarkAllNotificationsRead(userId: string): void {
+  try {
+    db.runSync('UPDATE notification SET is_read = 1 WHERE user_id = ?', [Number(userId) || 1]);
+  } catch (e) {
+    console.warn('sqliteMarkAllNotificationsRead error:', e);
   }
 }

@@ -33,6 +33,8 @@ import React, { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 // Fournisseur de contexte pour le tiroir de navigation latéral
 import { DrawerProvider } from '@/components/DrawerContext';
+// Hôte de rendu du tiroir latéral (administrateur ou utilisateur)
+import { DrawerHost } from '@/components/DrawerHost';
 // Écran de chargement affiché pendant l'initialisation de SQLite
 import { LoadingScreen } from '@/components/ui';
 // Fournisseur du magasin d'état global SQLite
@@ -161,6 +163,8 @@ export default function RootLayout() {
                 contentStyle: { backgroundColor: '#F5F3ED' },
               }}
             />
+            {/* Rendu dynamique du tiroir latéral selon le profil connecté */}
+            <DrawerHost />
           </Gate>
         </DrawerProvider>
       </StoreProvider>
