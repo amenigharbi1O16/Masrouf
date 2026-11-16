@@ -30,28 +30,40 @@
  * - Un bouton secondaire clair 'Déjà un compte ? Se connecter' renvoyant vers `/login`.
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Text, View } from 'react-native';
 // Sélecteur de langue universel interactif (FR, AR, EN)
 import { LanguageSelector } from '@/components/LanguageSelector';
 // Conteneur d'écran avec retour arrière vers le login
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
-import { AlertBanner, Body, Button, Eyebrow, Hint, Input, SectionTitle } from '@/components/ui';
+import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/components/ui';
+// Constantes de thème (couleurs vert forêt, vert menthe, gris)
+import { colors } from '@/constants/theme';
 // Hook d'authentification connecté au store SQLite
 import { useAuth } from '@/utils/auth';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
+// Fonctions de validation de sécurité strictes (Gmail et mot de passe fort)
+import {
+  getMissingPasswordRequirements,
+  isValidGmail,
+  passwordChecks,
+} from '@/utils/security';
 
 /**
  * MISSION DU COMPOSANT :
- * Gérer le formulaire d'inscription d'un nouvel utilisateur.
+ * Gérer le formulaire d'inscription d'un nouvel utilisateur avec politique stricte Gmail
+ * et exigences de mot de passe fort (8+ caractères, majuscule, chiffre, caractère spécial).
  *
  * RÔLE DANS L'APPLICATION :
- * Contrôle la conformité des données saisies et déclenche l'enregistrement en base SQLite.
+ * Contrôle en temps réel la conformité des données saisies et déclenche l'enregistrement en base SQLite.
  *
  * CE QUI EST AFFICHÉ À L'ÉCRAN :
- * La vue d'inscription complète avec le sélecteur de langue en haut, les champs de saisie et les boutons.
+ * La vue d'inscription complète avec le sélecteur de langue en haut, les champs de saisie clarifiés,
+ * la liste de contrôle dynamique des exigences et les boutons d'action.
  */
 export default function RegistrationScreen() {
   // Hook de navigation Expo Router
@@ -71,36 +83,59 @@ export default function RegistrationScreen() {
   // État local indiquant si le hachage et l'insertion SQL sont en cours
   const [busy, setBusy] = useState(false);
 
+  // Évaluation en temps réel des règles de sécurité du mot de passe
+  const c = useMemo(() => passwordChecks(password, confirm), [password, confirm]);
+  // Validation immédiate de l'adresse Gmail
+  const emailIsGmail = useMemo(() => isValidGmail(email), [email]);
+
   /**
    * MISSION DE LA FONCTION :
-   * Valider les mots de passe et enregistrer le nouvel utilisateur dans SQLite.
-   *
-   * RÔLE DANS L'APPLICATION :
-   * Vérifie la concordance des deux saisies de mot de passe, puis appelle `register(name, email, password)`
-   * qui hache le mot de passe et insère la ligne dans la table `users`.
-   *
-   * CE QUI EST AFFICHÉ À L'ÉCRAN :
-   * Si les mots de passe ne concordent pas : affiche une alerte rouge immédiate.
-   * Si succès : déclenche automatiquement la redirection vers `/onboarding` sans écran blanc.
+   * Valider rigoureusement les identifiants et enregistrer le nouvel utilisateur dans SQLite.
    */
   const submit = async () => {
-    // Règle 1 : Vérification de stricte égalité entre mot de passe et confirmation
+    // Règle 1 : Présence obligatoire du nom complet
+    if (!name.trim()) {
+      setError(t('erreur_nom_requis'));
+      return;
+    }
+
+    // Règle 2 : L'adresse email doit être une adresse Gmail valide (nom@gmail.com)
+    if (!emailIsGmail) {
+      setError(t('erreur_email_gmail_requis'));
+      return;
+    }
+
+    // Règle 3 : Le mot de passe doit respecter l'intégralité des 4 critères de solidité
+    if (!c.allValid) {
+      const missing = getMissingPasswordRequirements(password, t);
+      setError(`${t('erreur_mot_de_passe_exigences')} : ${missing.join(', ')}`);
+      return;
+    }
+
+    // Règle 4 : Vérification de stricte égalité entre mot de passe et confirmation
     if (password !== confirm) {
       setError(t('regle_identiques'));
       return;
     }
 
-    // Début de l'animation de chargement sur le bouton
+    // Effacement de l'éventuelle erreur précédente et animation de chargement
+    setError('');
     setBusy(true);
-    // Appel du service d'inscription cryptographique
+
+    // Appel du service d'inscription cryptographique SQLite
     const res = await register(name, email, password);
     setBusy(false);
 
     // En cas d'échec retourné par SQLite (ex: adresse email déjà enregistrée)
     if (!res.ok) {
       setError(res.error ?? t('erreur'));
+    } else {
+      // Redirection immédiate vers l'écran de connexion avec message de succès et pré-remplissage de l'email
+      router.replace({
+        pathname: '/login',
+        params: { registered: '1', email: email.trim().toLowerCase() },
+      } as never);
     }
-    // En cas de succès : le gardien de navigation Gate redirige automatiquement vers /onboarding
   };
 
   return (
@@ -129,7 +164,7 @@ export default function RegistrationScreen() {
         <AlertBanner tone="danger" title={t('erreur')} detail={error} />
       ) : null}
 
-      {/* Champ 1 : Nom et prénom de l'utilisateur */}
+      {/* Champ 1 : Nom et prénom de l'utilisateur avec placeholder clair */}
       <Input
         label={t('nom_complet')}
         value={name}
@@ -138,10 +173,10 @@ export default function RegistrationScreen() {
           setError('');
         }}
         autoCapitalize="words"
-        placeholder="Ines Ben Ali"
+        placeholder={t('placeholder_nom')}
       />
 
-      {/* Champ 2 : Adresse email de connexion */}
+      {/* Champ 2 : Adresse email de connexion avec format Gmail strict */}
       <Input
         label={t('email')}
         value={email}
@@ -150,10 +185,15 @@ export default function RegistrationScreen() {
           setError('');
         }}
         keyboardType="email-address"
-        placeholder="vous@email.tn"
+        placeholder="name@gmail.com"
+        hint={
+          email.length > 0 && !emailIsGmail
+            ? t('erreur_email_gmail_requis')
+            : undefined
+        }
       />
 
-      {/* Champ 3 : Mot de passe secret */}
+      {/* Champ 3 : Mot de passe secret avec explication claire du format requis */}
       <Input
         label={t('mot_de_passe')}
         value={password}
@@ -162,7 +202,7 @@ export default function RegistrationScreen() {
           setError('');
         }}
         secure
-        placeholder="••••••••"
+        placeholder={t('placeholder_mdp')}
       />
 
       {/* Champ 4 : Confirmation du mot de passe secret */}
@@ -174,13 +214,58 @@ export default function RegistrationScreen() {
           setError('');
         }}
         secure
-        placeholder="••••••••"
+        placeholder={t('placeholder_confirmer_mdp')}
       />
 
-      {/* Indication d'aide sur la longueur minimale du mot de passe */}
-      <Hint style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('regle_8_chars')}
-      </Hint>
+      {/* Liste de contrôle en temps réel des exigences de sécurité (icônes vectorielles sans emojis) */}
+      <View style={{ gap: 6, marginVertical: 6 }}>
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: '600',
+            color: colors.forest,
+            textAlign: isRTL ? 'right' : 'left',
+            marginBottom: 2,
+          }}
+        >
+          {t('format_mdp_explication')}
+        </Text>
+        {(
+          [
+            [t('regle_8_chars'), c.length],
+            [t('regle_majuscule'), c.uppercase],
+            [t('regle_chiffre'), c.number],
+            [t('regle_special'), c.special],
+            [t('regle_identiques'), c.match && confirm.length > 0],
+          ] as const
+        ).map(([label, ok]) => (
+          <View
+            key={label}
+            style={{
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Ionicons
+              name={ok ? 'checkmark-circle' : 'ellipse-outline'}
+              size={16}
+              color={ok ? colors.forest : colors.muted}
+            />
+            <Text
+              style={{
+                fontSize: 13,
+                lineHeight: 18,
+                fontWeight: '500',
+                color: ok ? colors.forest : colors.muted,
+                textAlign: isRTL ? 'right' : 'left',
+              }}
+            >
+              {label}
+            </Text>
+          </View>
+        ))}
+      </View>
 
       {/* Bouton vert forêt : soumission du formulaire et création du compte */}
       <Button label={t('creer_compte')} onPress={submit} loading={busy} />

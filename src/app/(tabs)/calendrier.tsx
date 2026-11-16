@@ -60,7 +60,7 @@ import { useTranslation } from '@/utils/i18n';
 export default function CalendarScreen() {
   const router = useRouter();
   const { db, me, selectedBudgetId, actions } = useStore();
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, langue } = useTranslation();
 
   const now = new Date();
   // État local : année courante sélectionnée (par défaut l'année actuelle)
@@ -311,7 +311,7 @@ export default function CalendarScreen() {
                           textAlign: isRTL ? 'right' : 'left',
                         }}
                       >
-                        {fmtRange(b.start, b.end)}
+                        {fmtRange(b.start, b.end, langue)}
                       </Text>
                       <Text
                         style={{

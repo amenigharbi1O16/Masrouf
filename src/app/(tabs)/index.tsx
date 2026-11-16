@@ -7,7 +7,7 @@ import { AlertBanner, Button, EmptyState, Eyebrow, LoadingScreen, SectionTitle }
 import { colors } from '@/constants/theme';
 import { categoryName, currentBudget, pointsFor, summarize, userTxns } from '@/state/selectors';
 import { useStore } from '@/state/store';
-import { fmtDate, fmtDateLocale, fmtRange, greeting, money, monthName, parseISO, short } from '@/utils/format';
+import { fmtDate, fmtDateLocale, fmtRange, money, monthNameLocale, parseISO, short } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
 import { getCategoryIcon } from '@/utils/categoryIcons';
 
@@ -97,7 +97,7 @@ export default function HomeScreen() {
   return (
     <Screen
       // Titre en haut de page avec salutation selon l'heure et prénom de l'utilisateur
-      title={`${greeting()}, ${me.name.split(' ')[0]}`}
+      title={`${t('bonjour')}, ${me.name.split(' ')[0]}`}
       // Bouton flottant d'action principale (+ Ajouter un achat) ouvrant le formulaire complet
       fab={{ label: `＋ ${t('ajouter_un_achat')}`, onPress: () => router.push('/nouveau-produit') }}
     >
@@ -112,7 +112,7 @@ export default function HomeScreen() {
             }}
           >
             <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
-              {monthName(d.getUTCMonth()).toUpperCase()} {d.getUTCFullYear()}  ·  {fmtRange(budget.start, budget.end)}
+              {monthNameLocale(d.getUTCMonth(), langue).toUpperCase()} {d.getUTCFullYear()}  ·  {fmtRange(budget.start, budget.end, langue)}
             </Eyebrow>
             <Pressable
               onPress={() => router.push('/(tabs)/calendrier')}
@@ -120,7 +120,7 @@ export default function HomeScreen() {
               accessibilityRole="button"
             >
               <Text style={{ fontSize: 12, fontWeight: '600', color: colors.green }}>
-                {t('calendrier')} ›
+                {t('calendrier')} {isRTL ? '‹' : '›'}
               </Text>
             </Pressable>
           </View>
@@ -132,7 +132,7 @@ export default function HomeScreen() {
             total={sum.total}
             pct={sum.pct}
             over={sum.status === 'exceeded' ? sum.over : undefined}
-            range={fmtRange(budget.start, budget.end)}
+            range={fmtRange(budget.start, budget.end, langue)}
             onPress={() =>
               router.push({ pathname: '/budget-mois', params: { mode: 'edit', id: budget.id } } as never)
             }

@@ -58,6 +58,38 @@ const MONTHS_AR = [
   'ديسمبر',
 ];
 
+// Noms complets des mois en français
+const MONTHS_FULL_FR = [
+  'Janvier',
+  'Février',
+  'Mars',
+  'Avril',
+  'Mai',
+  'Juin',
+  'Juillet',
+  'Août',
+  'Septembre',
+  'Octobre',
+  'Novembre',
+  'Décembre',
+];
+
+// Noms complets des mois en arabe
+const MONTHS_FULL_AR = [
+  'جانفي',
+  'فيفري',
+  'مارس',
+  'أفريل',
+  'ماي',
+  'جوان',
+  'جويلية',
+  'أوت',
+  'سبتمبر',
+  'أكتوبر',
+  'نوفمبر',
+  'ديسمبر',
+];
+
 /**
  * MISSION DE LA FONCTION : monthName
  *   Retourne le nom complet d'un mois en anglais selon son indice 0-11.
@@ -66,6 +98,17 @@ const MONTHS_AR = [
  */
 // Définition de la fonction retournant le nom complet du mois
 export const monthName = (i: number) => MONTHS[i];
+
+/**
+ * MISSION DE LA FONCTION : monthNameLocale
+ *   Retourne le nom complet d'un mois selon la langue active (FR, AR, EN).
+ */
+export function monthNameLocale(i: number, lang: 'fr' | 'ar' | 'en' = 'fr'): string {
+  const safeIdx = Math.max(0, Math.min(11, Math.floor(Number(i)) || 0));
+  if (lang === 'ar') return MONTHS_FULL_AR[safeIdx] ?? 'نوفمبر';
+  if (lang === 'fr') return MONTHS_FULL_FR[safeIdx] ?? 'Novembre';
+  return MONTHS[safeIdx] ?? 'November';
+}
 
 /**
  * MISSION DE LA FONCTION : monthShort
@@ -227,11 +270,11 @@ export function fmtDate(iso: string): string {
 /**
  * Formate une plage de dates pour les en-têtes de budget (ex: "01–30 NOV 2026").
  */
-export function fmtRange(start: string, end: string): string {
+export function fmtRange(start: string, end: string, lang: 'fr' | 'ar' | 'en' = 'fr'): string {
   const a = parseISO(start);
   const b = parseISO(end);
   const sameMonth = a.getUTCMonth() === b.getUTCMonth() && a.getUTCFullYear() === b.getUTCFullYear();
-  const mon = (d: Date) => monthShort(d.getUTCMonth()).toUpperCase();
+  const mon = (d: Date) => monthShortLocale(d.getUTCMonth(), lang).toUpperCase();
   if (sameMonth) return `${pad(a.getUTCDate())}–${pad(b.getUTCDate())} ${mon(b)} ${b.getUTCFullYear()}`;
   return `${pad(a.getUTCDate())} ${mon(a)} – ${pad(b.getUTCDate())} ${mon(b)} ${b.getUTCFullYear()}`;
 }

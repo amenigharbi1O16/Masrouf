@@ -145,14 +145,14 @@ export interface AppSettings {
 export interface InAppNotification {
   id: string;
   userId: string;
-  type: 'alert_80' | 'alert_100' | 'period_end' | 'budget_change';
+  type: 'alert_80' | 'alert_100' | 'period_end' | 'budget_change' | 'user_registered' | 'system';
   title: string;
   body: string;
-  periodLabel: string;
-  periodId: string;
-  amountSpent: number;
-  budgetTotal: number;
-  actionRecommended: string;
+  periodLabel?: string;
+  periodId?: string;
+  amountSpent?: number;
+  budgetTotal?: number;
+  actionRecommended?: string;
   isRead: boolean;
   createdAt: string; // Format ISO : YYYY-MM-DDTHH:mm:ss.sssZ
 }

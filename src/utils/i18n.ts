@@ -307,16 +307,16 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       // Étape 3 : Persistance locale asynchrone (SecureStore sur mobile, localStorage sur web)
       try {
         await setLanguePreLogin(nouvelleLangue);
-      } catch {}
+      } catch { }
 
       // Étape 4 : Si un utilisateur est connecté, synchronisation immédiate SQLite et store
       if (me) {
         try {
           updateLangue(Number(me.id) || 1, nouvelleLangue);
-        } catch {}
+        } catch { }
         try {
           actions.setLanguage(nouvelleLangue);
-        } catch {}
+        } catch { }
       }
     },
     [me, actions]

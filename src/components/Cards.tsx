@@ -91,6 +91,7 @@ export function CategoryCard({
   // Callback de clic tactile optionnel
   onPress?: () => void;
 }) {
+  const { isRTL } = useTranslation();
   // Calcul du ratio de consommation pour déterminer la largeur de la jauge
   const ratio = allocation > 0 ? Math.min(1, spent / allocation) : spent > 0 ? 1 : 0;
   // Détecte si le montant dépensé dépasse le plafond prévu
@@ -102,13 +103,13 @@ export function CategoryCard({
     // Carte tactile stylisée avec fond blanc et coins arrondis
     <Pressable onPress={onPress} disabled={!onPress} style={[card, { padding: 16, gap: 10 }]}>
       {/* Ligne supérieure avec icône, titre et montant */}
-      <View style={styles.rowBetween}>
+      <View style={[styles.rowBetween, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         {/* Nom et icône représentative de la catégorie */}
-        <View style={styles.iconTitle}>
+        <View style={[styles.iconTitle, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
           {/* Icône Ionicons vectorielle personnalisée selon la catégorie (ex: restaurant, voiture, reçu) */}
           <Ionicons name={iconName} size={22} color={colors.green} />
           {/* Titre de la catégorie en vert forêt */}
-          <Text style={styles.cardTitle}>{name}</Text>
+          <Text style={[styles.cardTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{name}</Text>
         </View>
         {/* Montant dépensé vs montant alloué (coloré en rouge corail si dépassé) */}
         <Text style={[styles.cardSub, over && { color: colors.coral }]}>{short(spent)} / {short(allocation)} DT</Text>

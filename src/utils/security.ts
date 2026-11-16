@@ -52,40 +52,115 @@ export async function hashPassword(password: string): Promise<string> {
  * @param password Mot de passe à vérifier.
  * @param confirm Mot de passe de confirmation (optionnel).
  */
-export function passwordChecks(password: string, confirm?: string) {
+export interface PasswordChecks {
+  length: boolean;
+  uppercase: boolean;
+  number: boolean;
+  special: boolean;
+  match: boolean;
+  allValid: boolean;
+}
+
+/**
+ * MISSION DE LA FONCTION : passwordChecks
+ *   Évalue les 4 critères obligatoires de sécurité d'un mot de passe :
+ *   1. Longueur minimale de 8 caractères
+ *   2. Au moins une lettre majuscule (A-Z)
+ *   3. Au moins un chiffre (0-9)
+ *   4. Au moins un caractère spécial (!@#$%...)
+ *   Et la concordance exacte avec le champ de confirmation.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Fournit l'état en temps réel aux formulaires d'inscription et de réinitialisation.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Indicateurs interactifs de conformité avec coches vertes instantanées avant soumission.
+ *
+ * @param password Mot de passe à vérifier.
+ * @param confirm Mot de passe de confirmation (optionnel).
+ */
+export function passwordChecks(password: string, confirm?: string): PasswordChecks {
+  const p = password || '';
+  const length = p.length >= 8;
+  const uppercase = /[A-Z]/.test(p);
+  const number = /[0-9]/.test(p);
+  const special = /[^A-Za-z0-9]/.test(p);
+  const match = confirm === undefined ? true : p.length > 0 && p === confirm;
+  const allValid = length && uppercase && number && special;
   return {
-    length: password.length >= 8,
-    number: /\d/.test(password),
-    match: confirm === undefined ? true : password.length > 0 && password === confirm,
+    length,
+    uppercase,
+    number,
+    special,
+    match,
+    allValid,
   };
 }
 
 /**
- * MISSION DE LA FONCTION : isStrongPassword
- *   Retourne `true` uniquement si le mot de passe atteint la longueur requise et comporte un chiffre.
- *
- * RÔLE DANS L'APPLICATION :
- *   Active ou désactive le bouton principal "Créer mon compte" ou "Changer mon mot de passe".
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Déverrouille le bouton vert de soumission du formulaire.
+ * MISSION DE LA FONCTION : getMissingPasswordRequirements
+ *   Identifie explicitement la liste des critères de mot de passe non encore satisfaits
+ *   afin d'afficher un retour explicite et guidé à l'utilisateur.
  */
-export const isStrongPassword = (p: string) => {
+export function getMissingPasswordRequirements(
+  password: string,
+  t: (k: string) => string
+): string[] {
+  const c = passwordChecks(password);
+  const missing: string[] = [];
+  if (!c.length) missing.push(t('regle_8_chars'));
+  if (!c.uppercase) missing.push(t('regle_majuscule'));
+  if (!c.number) missing.push(t('regle_chiffre'));
+  if (!c.special) missing.push(t('regle_special'));
+  return missing;
+}
+
+/**
+ * MISSION DE LA FONCTION : isStrongPassword
+ *   Retourne `true` uniquement si le mot de passe satisfait aux 4 exigences de sécurité :
+ *   au moins 8 caractères, une majuscule, un chiffre et un caractère spécial.
+ */
+export const isStrongPassword = (p: string): boolean => {
   const c = passwordChecks(p);
-  return c.length && c.number;
+  return c.allValid;
 };
 
 /**
- * MISSION DE LA FONCTION : isEmail
- *   Valide le format standardisé d'une adresse email au moyen d'une expression régulière.
- *
- * RÔLE DANS L'APPLICATION :
- *   Prévient les erreurs de frappe avant l'envoi de la requête de connexion à SQLite.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Affiche ou masque le message d'erreur rouge "Format d'email invalide".
+ * Expression régulière stricte pour valider les adresses Gmail uniquement :
+ * Format standard : nom@gmail.com (insensible à la casse)
  */
-export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+export const GMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i;
+
+/**
+ * MISSION DE LA FONCTION : isValidGmail
+ *   Vérifie qu'une adresse email suit strictement le format Gmail requis (nom@gmail.com).
+ *   Utilisée de façon uniforme sur l'ensemble de l'application Masrouf.
+ */
+export function isValidGmail(email: string): boolean {
+  if (!email || typeof email !== 'string') return false;
+  return GMAIL_REGEX.test(email.trim());
+}
+
+/**
+ * MISSION DE LA FONCTION : isValidLoginEmail
+ *   Valide une adresse pour la connexion : autorise les adresses Gmail valides
+ *   ainsi que les comptes préexistants du système (admin@masrouf.tn, user@masrouf.tn, ines.benali@email.tn)
+ *   afin de préserver l'accès aux comptes existants sans briser l'authentification.
+ */
+export function isValidLoginEmail(email: string): boolean {
+  if (!email || typeof email !== 'string') return false;
+  const norm = email.trim().toLowerCase();
+  if (isValidGmail(norm)) return true;
+  if (['admin@masrouf.tn', 'user@masrouf.tn', 'ines.benali@email.tn'].includes(norm)) return true;
+  // Format d'email standard pour d'éventuels comptes créés avant la règle Gmail
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(norm);
+}
+
+/**
+ * MISSION DE LA FONCTION : isEmail
+ *   Vérifie le format d'email : applique strictement la validation Gmail partout dans l'application.
+ */
+export const isEmail = (s: string): boolean => isValidGmail(s);
 
 /**
  * MISSION DE LA FONCTION : randomTemporaryPassword

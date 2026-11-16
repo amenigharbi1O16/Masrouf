@@ -28,7 +28,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';
 // Sélecteur de langue interactif supérieur
@@ -52,6 +52,8 @@ import { useAuth } from '@/utils/auth';
 import { homeRouteFor } from '@/utils/session';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
+// Validation de format d'email pour la connexion
+import { isValidLoginEmail } from '@/utils/security';
 
 /**
  * MISSION DU COMPOSANT :
@@ -66,13 +68,15 @@ import { useTranslation } from '@/utils/i18n';
 export default function LoginScreen() {
   // Hook de navigation Expo Router
   const router = useRouter();
+  // Paramètres passés lors d'une redirection (ex: après inscription réussie)
+  const params = useLocalSearchParams<{ registered?: string; email?: string }>();
   // Méthode de connexion fournie par le contexte d'authentification
   const { login } = useAuth();
   // Fonctions de traduction et sens de lecture
   const { t, isRTL } = useTranslation();
 
-  // États locaux des champs de saisie
-  const [email, setEmail] = useState('');
+  // États locaux des champs de saisie (pré-rempli si retour d'inscription)
+  const [email, setEmail] = useState(params.email ?? '');
   const [password, setPassword] = useState('');
   // État local du message d'erreur
   const [error, setError] = useState('');
@@ -97,6 +101,12 @@ export default function LoginScreen() {
       // Affichage du message d'erreur si l'un des champs est manquant
       setError(`${t('erreur')} : ${t('connexion_sous_titre')}`);
       // Arrêt prématuré de la soumission
+      return;
+    }
+
+    // Validation du format d'email (doit être un Gmail valide ou un compte existant du système)
+    if (!isValidLoginEmail(email)) {
+      setError(t('erreur_email_gmail_requis'));
       return;
     }
 
@@ -173,12 +183,21 @@ export default function LoginScreen() {
         {t('connexion_sous_titre')}
       </Body>
 
+      {/* Bannière de confirmation verte après inscription réussie */}
+      {params.registered === '1' && !error ? (
+        <AlertBanner
+          tone="success"
+          title={t('compte_cree_succes_titre')}
+          detail={t('compte_cree_succes')}
+        />
+      ) : null}
+
       {/* Bannière d'alerte rouge affichée en cas d'erreur d'identifiants */}
       {error ? (
         <AlertBanner tone="danger" title={t('erreur')} detail={error} />
       ) : null}
 
-      {/* Champ de saisie pour l'adresse email */}
+      {/* Champ de saisie pour l'adresse email avec format d'exemple clair */}
       <Input
         label={t('email')}
         value={email}
@@ -187,10 +206,10 @@ export default function LoginScreen() {
           setError('');
         }}
         keyboardType="email-address"
-        placeholder="vous@email.tn"
+        placeholder="name@gmail.com"
       />
 
-      {/* Champ de saisie pour le mot de passe secret */}
+      {/* Champ de saisie pour le mot de passe secret expliquant clairement le format attendu */}
       <Input
         label={t('mot_de_passe')}
         value={password}
@@ -199,7 +218,7 @@ export default function LoginScreen() {
           setError('');
         }}
         secure
-        placeholder="••••••••"
+        placeholder={t('placeholder_mdp')}
       />
 
       {/* Bouton vert forêt : déclenche la tentative de connexion */}

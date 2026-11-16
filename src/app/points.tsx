@@ -70,7 +70,7 @@ export default function PointsScreen() {
   // Extraction des données de la base et du profil utilisateur connecté
   const { db, me } = useStore();
   // Fonctions de traduction, sens de lecture et traduction des niveaux de gamification
-  const { t, isRTL, traduireNiveau } = useTranslation();
+  const { t, isRTL, langue, traduireNiveau } = useTranslation();
 
   // Sécurité : si la session est expirée
   if (!me) return null;
@@ -188,7 +188,7 @@ export default function PointsScreen() {
           <TransactionRow
             key={x.budget.id}
             icon={x.success ? 'trophy-outline' : 'close-circle-outline'}
-            title={fmtRange(x.budget.start, x.budget.end)}
+            title={fmtRange(x.budget.start, x.budget.end, langue)}
             detail={
               x.success
                 ? x.bonus

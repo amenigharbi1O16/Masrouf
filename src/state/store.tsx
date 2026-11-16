@@ -28,7 +28,16 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { hashPassword, isEmail, isStrongPassword, randomTemporaryPassword } from '@/utils/security';
+import {
+  hashPassword,
+  isEmail,
+  isStrongPassword,
+  isValidGmail,
+  isValidLoginEmail,
+  passwordChecks,
+  randomTemporaryPassword,
+} from '@/utils/security';
+import { getLanguePreLogin } from '@/utils/i18n';
 import { todayISO, uid } from '@/utils/format';
 import { buildSeed } from './seed';
 import {
@@ -219,6 +228,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const emailNorm = email.trim().toLowerCase();
         // Nettoyage des espaces éventuels autour du mot de passe
         const pwdTrim = password.trim();
+
+        // Validation du format d'email : autorise Gmail et les comptes existants
+        if (!isValidLoginEmail(emailNorm)) {
+          return { ok: false, error: 'Please enter a valid Gmail address (name@gmail.com).' };
+        }
+
         // Recherche de l'utilisateur correspondant dans la liste des comptes
         const u = d.users.find((x) => x.email.toLowerCase() === emailNorm);
         // Si aucun compte ne correspond à cette adresse courriel
@@ -267,14 +282,38 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true, user: activeUser };
       },
 
-      // 2. Inscription d'un nouvel utilisateur
+      // 2. Inscription d'un nouvel utilisateur avec politique stricte Gmail et mot de passe fort
       async register(name, email, password) {
         const d = dbRef.current!;
         if (!d.settings.allowRegistration) return { ok: false, error: 'Registration is currently closed.' };
         if (!name.trim()) return { ok: false, error: 'Please enter your full name.' };
-        if (!isEmail(email)) return { ok: false, error: 'Please enter a valid email address.' };
-        if (!isStrongPassword(password)) return { ok: false, error: 'Use at least 8 characters with a number.' };
-        if (d.users.some((u) => u.email.toLowerCase() === email.trim().toLowerCase())) return { ok: false, error: 'An account already exists with this email.' };
+        
+        // Règle 1 : Seules les adresses Gmail valides sont acceptées
+        if (!isValidGmail(email)) {
+          return { ok: false, error: 'Only valid Gmail addresses (name@gmail.com) are allowed.' };
+        }
+
+        // Règle 2 : Politique stricte de mot de passe (8+ car, majuscule, chiffre, caractère spécial)
+        const chk = passwordChecks(password);
+        if (!chk.allValid) {
+          const missing: string[] = [];
+          if (!chk.length) missing.push('at least 8 characters');
+          if (!chk.uppercase) missing.push('at least one uppercase letter');
+          if (!chk.number) missing.push('at least one number');
+          if (!chk.special) missing.push('at least one special character');
+          return { ok: false, error: `Password policy missing: ${missing.join(', ')}.` };
+        }
+
+        // Règle 3 : Unicité de l'adresse email
+        if (d.users.some((u) => u.email.toLowerCase() === email.trim().toLowerCase())) {
+          return { ok: false, error: 'An account already exists with this email.' };
+        }
+
+        // Préservation de la langue active choisie avant l'inscription
+        let userLang: string = 'fr';
+        try {
+          userLang = (await getLanguePreLogin()) || 'fr';
+        } catch {}
 
         const user: User = {
           id: uid(),
@@ -288,12 +327,58 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           categoryIds: [],
           celebratedBudgetIds: [],
           createdAt: todayISO(),
+          langue: userLang,
         };
 
         // Persistance physique immédiate dans SQLite
-        sqliteAddUser(user);
-        update((s) => ({ ...s, users: [...s.users, user], sessionUserId: user.id }));
-        return { ok: true };
+        const insertedId = sqliteAddUser(user);
+        const savedUser: User = { ...user, id: insertedId };
+
+        // Création des notifications pour les administrateurs (inscription d'un nouvel utilisateur)
+        const adminUsers = d.users.filter((u) => u.role === 'admin');
+        const adminNotifs: InAppNotification[] = adminUsers.map((adm) => ({
+          id: uid(),
+          userId: adm.id,
+          type: 'user_registered',
+          title: 'Nouvel utilisateur inscrit',
+          body: `Un nouveau compte "${savedUser.name}" (${savedUser.email}) a été créé et peut maintenant se connecter.`,
+          periodLabel: '',
+          periodId: '',
+          amountSpent: 0,
+          budgetTotal: 0,
+          actionRecommended: 'Consulter la liste des utilisateurs pour gérer les accès et rôles.',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        }));
+        adminNotifs.forEach((n) => sqliteSaveNotification(n));
+
+        // Création de la notification de bienvenue pour le nouvel utilisateur
+        const welcomeNotif: InAppNotification = {
+          id: uid(),
+          userId: savedUser.id,
+          type: 'system',
+          title: 'Bienvenue sur Masrouf',
+          body: 'Votre compte est créé avec succès. Vous pouvez maintenant définir vos budgets et suivre vos dépenses quotidiennes.',
+          periodLabel: '',
+          periodId: '',
+          amountSpent: 0,
+          budgetTotal: 0,
+          actionRecommended: 'Configurez votre premier budget mensuel pour commencer.',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        };
+        sqliteSaveNotification(welcomeNotif);
+
+        const newNotifs = [...adminNotifs, welcomeNotif];
+
+        // Mise à jour de l'état : on n'affecte PAS sessionUserId afin de rediriger vers /login
+        update((s) => ({
+          ...s,
+          users: [...s.users, savedUser],
+          sessionUserId: null,
+          notifications: [...(s.notifications || []), ...newNotifs],
+        }));
+        return { ok: true, user: savedUser };
       },
 
       // 3. Déconnexion
@@ -314,7 +399,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           (u.email === 'user@masrouf.tn' && (current === 'Masrouf2026' || current === 'user123'));
 
         if (!isCurrentMatch) return { ok: false, error: 'The current password is incorrect.' };
-        if (!isStrongPassword(next)) return { ok: false, error: 'Use at least 8 characters with a number.' };
+
+        // Politique stricte de mot de passe pour le nouveau mot de passe
+        const chk = passwordChecks(next);
+        if (!chk.allValid) {
+          const missing: string[] = [];
+          if (!chk.length) missing.push('at least 8 characters');
+          if (!chk.uppercase) missing.push('at least one uppercase letter');
+          if (!chk.number) missing.push('at least one number');
+          if (!chk.special) missing.push('at least one special character');
+          return { ok: false, error: `Password policy missing: ${missing.join(', ')}.` };
+        }
 
         const nextHash = await hashPassword(next);
         patchUser(u.id, { passwordHash: nextHash, mustChangePassword: false });

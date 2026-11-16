@@ -168,13 +168,15 @@ export default function ChangePasswordScreen() {
         secure
       />
 
-      {/* Indicateurs dynamiques des 3 critères de conformité avec icônes vectorielles Ionicons sans aucun emoji */}
+      {/* Indicateurs dynamiques des 5 critères de conformité avec icônes vectorielles Ionicons sans aucun emoji */}
       <View style={{ gap: 6, marginVertical: 8 }}>
         {(
           [
-            [t('au_moins_8_caracteres'), c.length],
-            [t('contient_un_chiffre'), c.number],
-            [t('mots_de_passe_identiques'), c.match && confirm.length > 0],
+            [t('regle_8_chars'), c.length],
+            [t('regle_majuscule'), c.uppercase],
+            [t('regle_chiffre'), c.number],
+            [t('regle_special'), c.special],
+            [t('regle_identiques'), c.match && confirm.length > 0],
           ] as const
         ).map(([label, ok]) => (
           // Ligne d'indicateur avec icône vectorielle à gauche (ou à droite en arabe)
@@ -208,12 +210,12 @@ export default function ChangePasswordScreen() {
         ))}
       </View>
 
-      {/* Bouton vert forêt : actif uniquement si les 3 règles de sécurité sont au vert */}
+      {/* Bouton vert forêt : actif uniquement si toutes les règles de sécurité sont au vert */}
       <Button
         label={t('enregistrer_nouveau_mdp')}
         onPress={submit}
         loading={busy}
-        disabled={!current || !c.length || !c.number || !c.match}
+        disabled={!current || !c.allValid || !c.match}
       />
 
       {/* Bouton secondaire clair : permet de se déconnecter si on ne souhaite pas changer son mot de passe maintenant */}

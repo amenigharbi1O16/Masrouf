@@ -43,6 +43,11 @@ export function AdminDrawer() {
       href: '/(admin)/utilisateurs',
     },
     {
+      label: t('notifications'),
+      icon: 'notifications-outline',
+      href: '/notifications',
+    },
+    {
       label: t('categories_admin'),
       icon: 'pricetags-outline',
       href: '/(admin)/categories',

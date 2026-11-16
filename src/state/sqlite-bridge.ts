@@ -425,14 +425,16 @@ export async function loadDBFromSQLite(): Promise<DB> {
  * Insère un nouvel utilisateur dans la table SQLite `user`.
  * @param user Objet utilisateur complet contenant le hash de mot de passe.
  */
-export function sqliteAddUser(user: User): void {
+export function sqliteAddUser(user: User): string {
   try {
-    db.runSync(
-      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [user.name, user.email, user.passwordHash, user.role, user.active ? 1 : 0, user.mustChangePassword ? 1 : 0, user.onboarded ? 1 : 0, user.createdAt]
+    const res = db.runSync(
+      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [user.name, user.email, user.passwordHash, user.role, user.active ? 1 : 0, user.mustChangePassword ? 1 : 0, user.onboarded ? 1 : 0, user.createdAt, user.langue || 'fr']
     );
+    return String(res.lastInsertRowId);
   } catch (e) {
     console.warn('sqliteAddUser error:', e);
+    return user.id;
   }
 }
 
@@ -763,14 +765,14 @@ export function sqliteSaveNotification(n: InAppNotification): void {
       [
         n.id,
         Number(n.userId) || 1,
-        Number(n.periodId) || null,
+        n.periodId ? Number(n.periodId) || null : null,
         n.type,
         n.title,
         n.body,
         n.body,
-        n.actionRecommended,
-        n.periodLabel,
-        n.amountSpent,
+        n.actionRecommended || '',
+        n.periodLabel || '',
+        n.amountSpent || 0,
         n.type === 'alert_80' ? 80 : n.type === 'alert_100' ? 100 : null,
         n.isRead ? 1 : 0,
         n.createdAt,

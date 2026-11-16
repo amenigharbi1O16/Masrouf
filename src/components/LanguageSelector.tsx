@@ -42,7 +42,7 @@ export function LanguageSelector({ style, variant = 'pills' }: LanguageSelectorP
             <React.Fragment key={opt.code}>
               {/* Séparateur slash entre les options */}
               {i > 0 && <Text style={styles.drawerSlash}> / </Text>}
-              
+
               {/* Bouton cliquable pour une langue */}
               <Pressable
                 onPress={() => changerLangue(opt.code)}

@@ -38,7 +38,7 @@ import { useTranslation } from '@/utils/i18n';
 export default function AnalyticsScreen() {
   const router = useRouter();
   const { db, me, selectedBudget } = useStore();
-  const { t, isRTL, traduireCategorie } = useTranslation();
+  const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
   if (!me) return null;
 
@@ -265,7 +265,7 @@ export default function AnalyticsScreen() {
     );
   }
 
-  const rangeLabel = fmtRange(budget.start, budget.end);
+  const rangeLabel = fmtRange(budget.start, budget.end, langue);
 
   return (
     <Screen title={t('analyses')}>

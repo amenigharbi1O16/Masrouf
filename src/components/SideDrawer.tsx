@@ -136,21 +136,21 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
             styles.drawer,
             isRTL
               ? {
-                  right: 0,
-                  left: undefined,
-                  borderTopLeftRadius: 24,
-                  borderBottomLeftRadius: 24,
-                  borderTopRightRadius: 0,
-                  borderBottomRightRadius: 0,
-                }
+                right: 0,
+                left: undefined,
+                borderTopLeftRadius: 24,
+                borderBottomLeftRadius: 24,
+                borderTopRightRadius: 0,
+                borderBottomRightRadius: 0,
+              }
               : {
-                  left: 0,
-                  right: undefined,
-                  borderTopRightRadius: 24,
-                  borderBottomRightRadius: 24,
-                  borderTopLeftRadius: 0,
-                  borderBottomLeftRadius: 0,
-                },
+                left: 0,
+                right: undefined,
+                borderTopRightRadius: 24,
+                borderBottomRightRadius: 24,
+                borderTopLeftRadius: 0,
+                borderBottomLeftRadius: 0,
+              },
             {
               width: drawerW,
               paddingTop: insets.top + 24,

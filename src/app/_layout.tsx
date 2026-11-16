@@ -93,7 +93,7 @@ function Gate({ children }: { children: React.ReactNode }) {
 
     // CAS 4 : Rôle Administrateur connecté
     if (me.role === 'admin') {
-      if (first !== '(admin)' && first !== 'changer-mot-de-passe') {
+      if (first !== '(admin)' && first !== 'changer-mot-de-passe' && first !== 'notifications') {
         router.replace('/(admin)/dashboard');
       }
       return;

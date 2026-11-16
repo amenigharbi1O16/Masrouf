@@ -57,7 +57,7 @@ export default function ProductsScreen() {
   // Accès aux données de la base SQLite, à l'utilisateur connecté et à la période active
   const { db, me, selectedBudget } = useStore();
   // Fonctions de traduction et sens d'écriture RTL
-  const { t, isRTL, traduireCategorie } = useTranslation();
+  const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
   // État local de la chaîne de recherche textuelle
   const [q, setQ] = useState('');
@@ -164,11 +164,11 @@ export default function ProductsScreen() {
           }}
         >
           <Text style={{ fontSize: 12, color: colors.forest, fontWeight: '600' }}>
-            Période active : {fmtRange(selectedBudget.start, selectedBudget.end)}
+            {t('periode_active')} : {fmtRange(selectedBudget.start, selectedBudget.end, langue)}
           </Text>
           <Pressable onPress={() => router.push('/(tabs)/calendrier')} hitSlop={6} accessibilityRole="button">
             <Text style={{ fontSize: 12, color: colors.green, fontWeight: '600' }}>
-              Changer ›
+              {t('changer_periode')} {isRTL ? '‹' : '›'}
             </Text>
           </Pressable>
         </View>

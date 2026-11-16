@@ -51,10 +51,10 @@ import type { InAppNotification } from '@/state/types';
 export default function NotificationsScreen() {
   // Outil de navigation
   const router = useRouter();
-  // Accès aux notifications et aux actions de mutation du store
-  const { notifications, unreadNotificationsCount, actions } = useStore();
+  // Accès aux notifications, profil connecté et aux actions de mutation du store
+  const { notifications, unreadNotificationsCount, actions, me } = useStore();
   // Outils de traduction et détection du sens d'écriture
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, langue } = useTranslation();
 
   // Liste triée des notifications : les plus récentes en premier
   const list = useMemo(() => {
@@ -66,6 +66,10 @@ export default function NotificationsScreen() {
    */
   const getVisual = (type: InAppNotification['type']) => {
     switch (type) {
+      case 'user_registered':
+        return { icon: 'person-add' as const, color: colors.forest, bg: '#E8F5E9' };
+      case 'system':
+        return { icon: 'information-circle' as const, color: colors.forest, bg: '#EBF4F0' };
       case 'alert_100':
         return { icon: 'alert-circle' as const, color: colors.coral, bg: '#FDF0ED' };
       case 'alert_80':
@@ -84,14 +88,22 @@ export default function NotificationsScreen() {
       title={t('notifications')}
       // Bouton flèche retour vers la page précédente
       back
-      // Action de retour explicite
-      onBack={() => router.back()}
+      // Action de retour adaptée selon le rôle de l'utilisateur
+      onBack={() => {
+        if (me?.role === 'admin') {
+          router.replace('/(admin)/dashboard');
+        } else if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
+        }
+      }}
     >
       {/* 1. Bannière explicative sur l'architecture locale native sans backend */}
-      <View style={styles.banner}>
+      <View style={[styles.banner, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <Ionicons name="information-circle-outline" size={20} color={colors.forest} />
         <Text style={[styles.bannerText, { textAlign: isRTL ? 'right' : 'left' }]}>
-          Les notifications sont transmises directement sur votre smartphone via le système local natif (expo-notifications). Vos données restent 100% privées sur votre appareil, sans transit par un serveur externe.
+          {t('notif_banner_info')}
         </Text>
       </View>
 
@@ -106,8 +118,8 @@ export default function NotificationsScreen() {
           {/* Nombre de notifications non lues */}
           <Text style={styles.countText}>
             {unreadNotificationsCount > 0
-              ? `${unreadNotificationsCount} non lue${unreadNotificationsCount > 1 ? 's' : ''}`
-              : 'Toutes les alertes sont lues'}
+              ? t('non_lues_count', { count: unreadNotificationsCount })
+              : t('toutes_alertes_lues')}
           </Text>
 
           {/* Bouton pour tout marquer comme lu si nécessaire */}
@@ -117,7 +129,7 @@ export default function NotificationsScreen() {
               hitSlop={8}
               accessibilityRole="button"
             >
-              <Text style={styles.markAllText}>Tout marquer comme lu</Text>
+              <Text style={styles.markAllText}>{t('tout_marquer_lu')}</Text>
             </Pressable>
           )}
         </View>
@@ -127,8 +139,8 @@ export default function NotificationsScreen() {
       {list.length === 0 ? (
         <EmptyState
           icon="notifications-outline"
-          title="Aucune notification"
-          detail="Vous recevrez ici et sur votre smartphone les alertes budgétaires lorsque vous approchez de vos plafonds."
+          title={t('aucune_notification')}
+          detail={t('aucune_notification_detail')}
         />
       ) : (
         list.map((item) => {
@@ -161,15 +173,17 @@ export default function NotificationsScreen() {
                   <Text style={[styles.titleText, { textAlign: isRTL ? 'right' : 'left' }]}>
                     {item.title}
                   </Text>
-                  <Text style={[styles.periodText, { textAlign: isRTL ? 'right' : 'left' }]}>
-                    Période concernée : {item.periodLabel}
-                  </Text>
+                  {item.periodLabel ? (
+                    <Text style={[styles.periodText, { textAlign: isRTL ? 'right' : 'left' }]}>
+                      {t('periode_concernee')} : {item.periodLabel}
+                    </Text>
+                  ) : null}
                 </View>
 
                 {/* Pastille visuelle pour les alertes non lues */}
                 {!item.isRead && (
                   <View style={styles.newBadge}>
-                    <Text style={styles.newBadgeText}>Nouveau</Text>
+                    <Text style={styles.newBadgeText}>{t('nouveau')}</Text>
                   </View>
                 )}
               </View>
@@ -183,7 +197,7 @@ export default function NotificationsScreen() {
               {item.actionRecommended ? (
                 <View style={styles.actionBox}>
                   <Text style={[styles.actionLabel, { textAlign: isRTL ? 'right' : 'left' }]}>
-                    Action recommandée :
+                    {t('action_recommandee')} :
                   </Text>
                   <Text style={[styles.actionDesc, { textAlign: isRTL ? 'right' : 'left' }]}>
                     {item.actionRecommended}
@@ -193,12 +207,15 @@ export default function NotificationsScreen() {
 
               {/* Horodatage discret en bas de carte */}
               <Text style={[styles.dateText, { textAlign: isRTL ? 'left' : 'right' }]}>
-                {new Date(item.createdAt).toLocaleDateString('fr-TN', {
-                  day: 'numeric',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+                {new Date(item.createdAt).toLocaleDateString(
+                  langue === 'ar' ? 'ar-TN' : langue === 'en' ? 'en-US' : 'fr-TN',
+                  {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }
+                )}
               </Text>
             </Pressable>
           );
