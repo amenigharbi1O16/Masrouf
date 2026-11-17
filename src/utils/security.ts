@@ -143,17 +143,13 @@ export function isValidGmail(email: string): boolean {
 
 /**
  * MISSION DE LA FONCTION : isValidLoginEmail
- *   Valide une adresse pour la connexion : autorise les adresses Gmail valides
- *   ainsi que les comptes préexistants du système (admin@masrouf.tn, user@masrouf.tn, ines.benali@email.tn)
- *   afin de préserver l'accès aux comptes existants sans briser l'authentification.
+ *   Valide une adresse pour la connexion : n'autorise strictement que les adresses Gmail valides
+ *   (incluant admin@gmail.com, user@gmail.com, ines.benali@gmail.com et tout compte name@gmail.com).
+ *   Tous les anciens emails avec .tn ou d'autres domaines sont strictement refusés.
  */
 export function isValidLoginEmail(email: string): boolean {
   if (!email || typeof email !== 'string') return false;
-  const norm = email.trim().toLowerCase();
-  if (isValidGmail(norm)) return true;
-  if (['admin@masrouf.tn', 'user@masrouf.tn', 'ines.benali@email.tn'].includes(norm)) return true;
-  // Format d'email standard pour d'éventuels comptes créés avant la règle Gmail
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(norm);
+  return isValidGmail(email);
 }
 
 /**
