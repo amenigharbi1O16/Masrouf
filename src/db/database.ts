@@ -52,197 +52,237 @@ export const DEFAULT_USER_HASH =
  *   Pas d'élément visuel direct : prépare les tables pour que l'écran d'accueil
  *   puisse afficher immédiatement les chiffres réels sans écran blanc ni crash SQL.
  */
+/**
+ * MISSION DE LA FONCTION : initDatabase
+ *   Initialise le moteur SQLite au démarrage de l'application avec versionnage de schéma (PRAGMA user_version).
+ *   Si la base est nouvelle ou si le schéma évolue, applique les migrations de tables et de colonnes
+ *   proprement sans risque d'erreur "no such column".
+ *   Les données de départ (administrateur officiel, catégories initiales, barème des points)
+ *   ne sont insérées qu'une seule et unique fois.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Garantit que la base de données relationnelle est dans sa version de schéma la plus récente (version 2)
+ *   et intègre toutes les colonnes requises avant le montage de l'interface utilisateur.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Assure que le tableau de bord, les profils et les formulaires lisent directement
+ *   les données sans crash SQL, sans écran rouge ni message d'erreur de colonne manquante.
+ */
 export function initDatabase(): void {
-  // Active le mode WAL pour la vitesse d'écriture et les clés étrangères
+  // Active le mode journal WAL pour optimiser la concurrence et active les contraintes d'intégrité
   db.execSync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
-
-    -- 1. TABLE USER : Utilisateurs (rôles 'admin' et 'user')
-    CREATE TABLE IF NOT EXISTS user (
-      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-      name                 TEXT    NOT NULL,
-      email                TEXT    NOT NULL UNIQUE COLLATE NOCASE,
-      password_hash        TEXT    NOT NULL,
-      salt                 TEXT    NOT NULL DEFAULT '',
-      role                 TEXT    NOT NULL DEFAULT 'user', -- 'admin' ou 'user'
-      is_active            INTEGER NOT NULL DEFAULT 1,      -- 1 = actif, 0 = suspendu
-      must_change_password INTEGER NOT NULL DEFAULT 0,      -- 1 = changement forcé
-      onboarding_done      INTEGER NOT NULL DEFAULT 0,      -- 1 = onboarding complété
-      hash_version         INTEGER NOT NULL DEFAULT 1,      -- 1 = sha256 simple, 2 = pbkdf2
-      budget_mensuel       REAL    NOT NULL DEFAULT 0,
-      langue               TEXT    NOT NULL DEFAULT 'fr',
-      created_at           TEXT    NOT NULL DEFAULT (datetime('now'))
-    );
-
-    -- 2. TABLE CATEGORY : Catégories avec distinction 'product' vs 'expense'
-    CREATE TABLE IF NOT EXISTS category (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      name_key        TEXT    NOT NULL UNIQUE COLLATE NOCASE,
-      type            TEXT    NOT NULL CHECK(type IN ('product', 'expense')),
-      icon            TEXT    NOT NULL DEFAULT 'cart-outline',
-      default_percent REAL    NOT NULL DEFAULT 0,
-      is_default      INTEGER NOT NULL DEFAULT 0, -- 1 = affichée d'emblée
-      is_active       INTEGER NOT NULL DEFAULT 1, -- 1 = active/visible, 0 = masquée
-      is_system       INTEGER NOT NULL DEFAULT 0, -- 1 = 'Autres' protégée
-      theme           TEXT    NOT NULL DEFAULT 'Divers'
-    );
-
-    -- 3. TABLE USER_CATEGORY : Enveloppes sélectionnées par l'utilisateur
-    CREATE TABLE IF NOT EXISTS user_category (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
-      enabled     INTEGER NOT NULL DEFAULT 1,
-      created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(user_id, category_id)
-    );
-
-    -- 4. TABLE MONTH_BUDGET : Budget mensuel global
-    CREATE TABLE IF NOT EXISTS month_budget (
-      id           INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id      INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      month        TEXT    NOT NULL, -- format 'YYYY-MM'
-      total        REAL    NOT NULL DEFAULT 0,
-      is_evaluated INTEGER NOT NULL DEFAULT 0,
-      created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(user_id, month)
-    );
-
-    -- 5. TABLE CATEGORY_BUDGET : Montant alloué par enveloppe
-    CREATE TABLE IF NOT EXISTS category_budget (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      month       TEXT    NOT NULL, -- format 'YYYY-MM'
-      category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
-      amount      REAL    NOT NULL DEFAULT 0,
-      percent     REAL    NOT NULL DEFAULT 0,
-      created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(user_id, month, category_id)
-    );
-
-    -- 6. TABLE PRODUCT : Articles achetables (catégories de type 'product')
-    CREATE TABLE IF NOT EXISTS product (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      name        TEXT    NOT NULL,
-      brand       TEXT    NOT NULL DEFAULT '',
-      category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
-      photo_path  TEXT    NOT NULL DEFAULT '',
-      unit        TEXT    NOT NULL DEFAULT 'pièce',
-      created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-    );
-
-    -- 7. TABLE PURCHASE : Achats d'articles avec évaluation du prix
-    CREATE TABLE IF NOT EXISTS purchase (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      product_id  INTEGER NOT NULL REFERENCES product(id) ON DELETE CASCADE,
-      category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
-      price       REAL    NOT NULL,
-      quantity    REAL    NOT NULL DEFAULT 1,
-      unit        TEXT    NOT NULL DEFAULT 'pièce',
-      store       TEXT    NOT NULL DEFAULT 'Non précisé',
-      date        TEXT    NOT NULL DEFAULT (date('now')),
-      month       TEXT    NOT NULL, -- format 'YYYY-MM'
-      notes       TEXT    NOT NULL DEFAULT '',
-      created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-    );
-
-    -- 8. TABLE EXPENSE : Dépenses directes hors produits (services, frais, dons)
-    CREATE TABLE IF NOT EXISTS expense (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
-      amount      REAL    NOT NULL,
-      label       TEXT    NOT NULL,
-      date        TEXT    NOT NULL DEFAULT (date('now')),
-      month       TEXT    NOT NULL, -- format 'YYYY-MM'
-      notes       TEXT    NOT NULL DEFAULT '',
-      created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-    );
-
-    -- 9. TABLE KEYWORD_MAP : Dictionnaire d'apprentissage pour la saisie libre
-    CREATE TABLE IF NOT EXISTS keyword_map (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER REFERENCES user(id) ON DELETE CASCADE, -- NULL = mot-clé système
-      keyword     TEXT    NOT NULL COLLATE NOCASE,
-      category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
-      created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-    );
-
-    -- 10. TABLE ALERT_LOG : Historique anti-répétition des alertes 80% et 100%
-    CREATE TABLE IF NOT EXISTS alert_log (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      month       TEXT    NOT NULL, -- format 'YYYY-MM'
-      category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
-      level       INTEGER NOT NULL CHECK(level IN (80, 100)),
-      created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(user_id, month, category_id, level)
-    );
-
-    -- 11. TABLE POINTS_LOG : Historique des points attribués en fin de mois
-    CREATE TABLE IF NOT EXISTS points_log (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-      month      TEXT    NOT NULL, -- format 'YYYY-MM'
-      reason     TEXT    NOT NULL,
-      points     INTEGER NOT NULL,
-      created_at TEXT    NOT NULL DEFAULT (datetime('now'))
-    );
-
-    -- 12. TABLE SETTINGS : Barème des points administrable
-    CREATE TABLE IF NOT EXISTS settings (
-      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-      points_per_period   INTEGER NOT NULL DEFAULT 100,
-      points_per_category INTEGER NOT NULL DEFAULT 10,
-      points_monthly_bonus INTEGER NOT NULL DEFAULT 50,
-      points_streak_bonus INTEGER NOT NULL DEFAULT 20,
-      streak_length       INTEGER NOT NULL DEFAULT 3,
-      threshold_beginner  INTEGER NOT NULL DEFAULT 0,
-      threshold_saver     INTEGER NOT NULL DEFAULT 100,
-      threshold_expert    INTEGER NOT NULL DEFAULT 300,
-      green_until         INTEGER NOT NULL DEFAULT 79,
-      orange_from         INTEGER NOT NULL DEFAULT 80,
-      red_from            INTEGER NOT NULL DEFAULT 100
-    );
   `);
 
-  // Colonnes ajoutées de façon sécurisée (idempotente) si la base existait déjà
-  try { db.execSync(`ALTER TABLE settings ADD COLUMN points_per_period INTEGER NOT NULL DEFAULT 100;`); } catch { }
-  try { db.execSync(`ALTER TABLE settings ADD COLUMN green_until INTEGER NOT NULL DEFAULT 79;`); } catch { }
-  try { db.execSync(`ALTER TABLE settings ADD COLUMN orange_from INTEGER NOT NULL DEFAULT 80;`); } catch { }
-  try { db.execSync(`ALTER TABLE settings ADD COLUMN red_from INTEGER NOT NULL DEFAULT 100;`); } catch { }
-  try { db.execSync(`ALTER TABLE settings ADD COLUMN streak_length INTEGER NOT NULL DEFAULT 3;`); } catch { }
-  try { db.execSync(`ALTER TABLE user ADD COLUMN budget_mensuel REAL NOT NULL DEFAULT 0;`); } catch { }
-  try { db.execSync(`ALTER TABLE user ADD COLUMN langue TEXT NOT NULL DEFAULT 'fr';`); } catch { }
-  try { db.execSync(`ALTER TABLE user ADD COLUMN salt TEXT NOT NULL DEFAULT '';`); } catch { }
-  try { db.execSync(`ALTER TABLE user ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0;`); } catch { }
-  try { db.execSync(`ALTER TABLE user ADD COLUMN hash_version INTEGER NOT NULL DEFAULT 1;`); } catch { }
-  try { db.execSync(`ALTER TABLE points_log ADD COLUMN user_id INTEGER;`); } catch { }
-  try { db.execSync(`ALTER TABLE points_log ADD COLUMN budget_id INTEGER;`); } catch { }
-  try { db.execSync(`ALTER TABLE alert_log ADD COLUMN user_id INTEGER;`); } catch { }
-  try { db.execSync(`ALTER TABLE alert_log ADD COLUMN budget_id INTEGER;`); } catch { }
+  // Lecture de la version actuelle du schéma enregistrée dans l'en-tête SQLite
+  const vRow = db.getFirstSync<{ user_version: number }>(`PRAGMA user_version;`);
+  // Numéro de version actuel (0 pour une nouvelle base ou non-versionnée)
+  const currentVersion = vRow?.user_version ?? 0;
 
-  // Sauvegarde physique de précaution de la base masrouf.db
-  sauvegarderBaseDeDonnees();
+  // Si le schéma est à la version 0 (création initiale de la structure de base)
+  if (currentVersion < 1) {
+    db.execSync(`
+      -- 1. TABLE USER : Utilisateurs (rôles 'admin' et 'user')
+      CREATE TABLE IF NOT EXISTS user (
+        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+        name                 TEXT    NOT NULL,
+        email                TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+        password_hash        TEXT    NOT NULL,
+        salt                 TEXT    NOT NULL DEFAULT '',
+        role                 TEXT    NOT NULL DEFAULT 'user', -- 'admin' ou 'user'
+        is_active            INTEGER NOT NULL DEFAULT 1,      -- 1 = actif, 0 = suspendu
+        must_change_password INTEGER NOT NULL DEFAULT 0,      -- 1 = changement forcé
+        onboarding_done      INTEGER NOT NULL DEFAULT 0,      -- 1 = onboarding complété
+        hash_version         INTEGER NOT NULL DEFAULT 1,      -- 1 = sha256 simple, 2 = pbkdf2
+        budget_mensuel       REAL    NOT NULL DEFAULT 0,
+        langue               TEXT    NOT NULL DEFAULT 'fr',
+        created_at           TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
 
-  // --------------------------------------------------------
-  // MIGRATION AUTOMATIQUE DEPUIS L'ANCIENNE BASE (S'IL Y EN A UNE)
-  // --------------------------------------------------------
-  migrerAnciennesDonneesSiPresentes();
+      -- 2. TABLE CATEGORY : Catégories avec distinction 'product' vs 'expense'
+      CREATE TABLE IF NOT EXISTS category (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        name_key        TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+        type            TEXT    NOT NULL CHECK(type IN ('product', 'expense')),
+        icon            TEXT    NOT NULL DEFAULT 'cart-outline',
+        default_percent REAL    NOT NULL DEFAULT 0,
+        is_default      INTEGER NOT NULL DEFAULT 0, -- 1 = affichée d'emblée
+        is_active       INTEGER NOT NULL DEFAULT 1, -- 1 = active/visible, 0 = masquée
+        is_system       INTEGER NOT NULL DEFAULT 0, -- 1 = 'Autres' protégée
+        theme           TEXT    NOT NULL DEFAULT 'Divers'
+      );
 
-  // --------------------------------------------------------
-  // INITIALISATION DU CONTENU DE RÉFÉRENCE
-  // --------------------------------------------------------
+      -- 3. TABLE USER_CATEGORY : Enveloppes sélectionnées par l'utilisateur
+      CREATE TABLE IF NOT EXISTS user_category (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(user_id, category_id)
+      );
+
+      -- 4. TABLE MONTH_BUDGET : Budget mensuel global
+      CREATE TABLE IF NOT EXISTS month_budget (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        month        TEXT    NOT NULL, -- format 'YYYY-MM'
+        total        REAL    NOT NULL DEFAULT 0,
+        is_evaluated INTEGER NOT NULL DEFAULT 0,
+        created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(user_id, month)
+      );
+
+      -- 5. TABLE CATEGORY_BUDGET : Montant alloué par enveloppe
+      CREATE TABLE IF NOT EXISTS category_budget (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        month       TEXT    NOT NULL, -- format 'YYYY-MM'
+        category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
+        amount      REAL    NOT NULL DEFAULT 0,
+        percent     REAL    NOT NULL DEFAULT 0,
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(user_id, month, category_id)
+      );
+
+      -- 6. TABLE PRODUCT : Articles achetables (catégories de type 'product')
+      CREATE TABLE IF NOT EXISTS product (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        name        TEXT    NOT NULL,
+        brand       TEXT    NOT NULL DEFAULT '',
+        category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
+        photo_path  TEXT    NOT NULL DEFAULT '',
+        unit        TEXT    NOT NULL DEFAULT 'pièce',
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- 7. TABLE PURCHASE : Achats d'articles avec évaluation du prix
+      CREATE TABLE IF NOT EXISTS purchase (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        product_id  INTEGER NOT NULL REFERENCES product(id) ON DELETE CASCADE,
+        category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
+        price       REAL    NOT NULL,
+        quantity    REAL    NOT NULL DEFAULT 1,
+        unit        TEXT    NOT NULL DEFAULT 'pièce',
+        store       TEXT    NOT NULL DEFAULT 'Non précisé',
+        date        TEXT    NOT NULL DEFAULT (date('now')),
+        month       TEXT    NOT NULL, -- format 'YYYY-MM'
+        notes       TEXT    NOT NULL DEFAULT '',
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- 8. TABLE EXPENSE : Dépenses directes hors produits (services, frais, dons)
+      CREATE TABLE IF NOT EXISTS expense (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
+        amount      REAL    NOT NULL,
+        label       TEXT    NOT NULL,
+        date        TEXT    NOT NULL DEFAULT (date('now')),
+        month       TEXT    NOT NULL, -- format 'YYYY-MM'
+        notes       TEXT    NOT NULL DEFAULT '',
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- 9. TABLE KEYWORD_MAP : Dictionnaire d'apprentissage pour la saisie libre
+      CREATE TABLE IF NOT EXISTS keyword_map (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER REFERENCES user(id) ON DELETE CASCADE, -- NULL = mot-clé système
+        keyword     TEXT    NOT NULL COLLATE NOCASE,
+        category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- 10. TABLE ALERT_LOG : Historique anti-répétition des alertes 80% et 100%
+      CREATE TABLE IF NOT EXISTS alert_log (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        month       TEXT    NOT NULL, -- format 'YYYY-MM'
+        category_id INTEGER NOT NULL REFERENCES category(id) ON DELETE CASCADE,
+        level       INTEGER NOT NULL CHECK(level IN (80, 100)),
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(user_id, month, category_id, level)
+      );
+
+      -- 11. TABLE POINTS_LOG : Historique des points attribués en fin de mois
+      CREATE TABLE IF NOT EXISTS points_log (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+        month      TEXT    NOT NULL, -- format 'YYYY-MM'
+        reason     TEXT    NOT NULL,
+        points     INTEGER NOT NULL,
+        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- 12. TABLE SETTINGS : Barème des points administrable
+      CREATE TABLE IF NOT EXISTS settings (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        points_per_period   INTEGER NOT NULL DEFAULT 100,
+        points_per_category INTEGER NOT NULL DEFAULT 10,
+        points_monthly_bonus INTEGER NOT NULL DEFAULT 50,
+        points_streak_bonus INTEGER NOT NULL DEFAULT 20,
+        streak_length       INTEGER NOT NULL DEFAULT 3,
+        threshold_beginner  INTEGER NOT NULL DEFAULT 0,
+        threshold_saver     INTEGER NOT NULL DEFAULT 100,
+        threshold_expert    INTEGER NOT NULL DEFAULT 300,
+        green_until         INTEGER NOT NULL DEFAULT 79,
+        orange_from         INTEGER NOT NULL DEFAULT 80,
+        red_from            INTEGER NOT NULL DEFAULT 100
+      );
+    `);
+
+    // Sauvegarde physique de précaution de la base masrouf.db
+    sauvegarderBaseDeDonnees();
+
+    // Migration automatique depuis l'ancienne base (s'il y en a une)
+    migrerAnciennesDonneesSiPresentes();
+
+    // Initialisation unique du contenu de référence
+    initialiserCategories();
+    initialiserMotsClesSysteme();
+    initialiserSettings();
+    initialiserComptesDepart();
+    creerVuesDeRetroCompatibilite();
+
+    // Marque le schéma en version 1
+    db.execSync(`PRAGMA user_version = 1;`);
+  }
+
+  // Si le schéma est inférieur à la version cible 2 (application des colonnes et migrations)
+  if (currentVersion < 2) {
+    // Colonnes ajoutées de façon sécurisée et idempotente pour s'assurer qu'aucune table n'échoue avec "no such column"
+    try { db.execSync(`ALTER TABLE settings ADD COLUMN points_per_period INTEGER NOT NULL DEFAULT 100;`); } catch { }
+    try { db.execSync(`ALTER TABLE settings ADD COLUMN green_until INTEGER NOT NULL DEFAULT 79;`); } catch { }
+    try { db.execSync(`ALTER TABLE settings ADD COLUMN orange_from INTEGER NOT NULL DEFAULT 80;`); } catch { }
+    try { db.execSync(`ALTER TABLE settings ADD COLUMN red_from INTEGER NOT NULL DEFAULT 100;`); } catch { }
+    try { db.execSync(`ALTER TABLE settings ADD COLUMN streak_length INTEGER NOT NULL DEFAULT 3;`); } catch { }
+    try { db.execSync(`ALTER TABLE user ADD COLUMN budget_mensuel REAL NOT NULL DEFAULT 0;`); } catch { }
+    try { db.execSync(`ALTER TABLE user ADD COLUMN langue TEXT NOT NULL DEFAULT 'fr';`); } catch { }
+    try { db.execSync(`ALTER TABLE user ADD COLUMN salt TEXT NOT NULL DEFAULT '';`); } catch { }
+    try { db.execSync(`ALTER TABLE user ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0;`); } catch { }
+    try { db.execSync(`ALTER TABLE user ADD COLUMN hash_version INTEGER NOT NULL DEFAULT 1;`); } catch { }
+    try { db.execSync(`ALTER TABLE points_log ADD COLUMN user_id INTEGER;`); } catch { }
+    try { db.execSync(`ALTER TABLE points_log ADD COLUMN budget_id INTEGER;`); } catch { }
+    try { db.execSync(`ALTER TABLE alert_log ADD COLUMN user_id INTEGER;`); } catch { }
+    try { db.execSync(`ALTER TABLE alert_log ADD COLUMN budget_id INTEGER;`); } catch { }
+
+    // Application du gestionnaire de migrations évoluées (périodes personnalisées, recalcul des totaux)
+    migrateDatabase(db);
+
+    // Enregistrement définitif de la version 2 dans l'en-tête SQLite
+    db.execSync(`PRAGMA user_version = 2;`);
+  } else {
+    // Si la version est déjà >= 2, garantit que les migrations restent synchronisées
+    migrateDatabase(db);
+  }
+
+  // Contrôles de cohérence finaux : garantit que l'admin et les catégories sont toujours présents (insérés une seule fois)
   initialiserCategories();
-  initialiserMotsClesSysteme();
   initialiserSettings();
   initialiserComptesDepart();
-  creerVuesDeRetroCompatibilite();
-  // Après les vues anciennes : on les remplace par le modèle à périodes libres.
-  migrateDatabase(db);
 }
 
 /**
@@ -633,10 +673,11 @@ function initialiserSettings(): void {
 
 /**
  * MISSION DE LA FONCTION : initialiserComptesDepart
- *   Crée les deux comptes de démonstration indispensables :
- *   1. Administrateur (`admin@masrouf.tn` / mot de passe : `admin123`).
- *   2. Utilisateur standard (`user@masrouf.tn` / mot de passe : `user123`), avec
+ *   Crée les comptes de démonstration indispensables au format strict Gmail (name@gmail.com) :
+ *   1. Administrateur (`admin@gmail.com` / mot de passe : `Admin2026` ou `admin123`).
+ *   2. Utilisateur standard (`user@gmail.com` / mot de passe : `Masrouf2026` ou `user123`), avec
  *      budget mensuel de 1200 DT et ses enveloppes de catégories par défaut activées.
+ *   3. Utilisatrice démo (`ines.benali@gmail.com` / mot de passe : `Masrouf2026`).
  *
  * RÔLE DANS L'APPLICATION :
  *   Permet à l'enseignant ou examinateur de se connecter immédiatement sans devoir
@@ -647,66 +688,71 @@ function initialiserSettings(): void {
  *   de la saisie des identifiants sur l'écran `login.tsx`.
  */
 function initialiserComptesDepart(): void {
+  // Suppression stricte et définitive de tous les comptes avec .tn de la base SQLite
+  try {
+    db.runSync(`DELETE FROM user WHERE email LIKE '%.tn' COLLATE NOCASE`);
+  } catch { }
+
   // 1. Administrateur de test officiel (must_change_password = 0 pour accès direct, onboarding_done = 1, is_active = 1)
   const adminExiste = db.getFirstSync<{ id: number }>(
-    `SELECT id FROM user WHERE email = 'admin@masrouf.tn' COLLATE NOCASE`
+    `SELECT id FROM user WHERE email = 'admin@gmail.com' COLLATE NOCASE`
   );
   if (!adminExiste) {
     db.runSync(
       `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version)
        VALUES (?, ?, ?, ?, 'admin', 1, 0, 1, 1)`,
-      ['Administrateur', 'admin@masrouf.tn', DEFAULT_ADMIN_HASH, DEFAULT_SALT]
+      ['Administrateur', 'admin@gmail.com', DEFAULT_ADMIN_HASH, DEFAULT_SALT]
     );
   } else {
     // S'assure que l'administrateur existant a accès direct sans être bloqué par le changement forcé
     db.runSync(
-      `UPDATE user SET must_change_password = 0, is_active = 1, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'admin@masrouf.tn' COLLATE NOCASE`
+      `UPDATE user SET must_change_password = 0, is_active = 1, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'admin@gmail.com' COLLATE NOCASE`
     );
   }
 
   // 2. Utilisateur standard de test (Ahmed Ben Ali)
   let userIdTest = 0;
   const userExiste = db.getFirstSync<{ id: number }>(
-    `SELECT id FROM user WHERE email = 'user@masrouf.tn' COLLATE NOCASE`
+    `SELECT id FROM user WHERE email = 'user@gmail.com' COLLATE NOCASE`
   );
   if (!userExiste) {
     const res = db.runSync(
       `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel)
        VALUES (?, ?, ?, ?, 'user', 1, 0, 1, 1, 1200)`,
-      ['Ahmed Ben Ali', 'user@masrouf.tn', DEFAULT_USER_HASH, DEFAULT_SALT]
+      ['Ahmed Ben Ali', 'user@gmail.com', DEFAULT_USER_HASH, DEFAULT_SALT]
     );
     userIdTest = res.lastInsertRowId;
   } else {
     userIdTest = userExiste.id;
     // S'assure que l'utilisateur test existant conserve ses données avec onboarding_done = 1
     db.runSync(
-      `UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'user@masrouf.tn' COLLATE NOCASE`
+      `UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'user@gmail.com' COLLATE NOCASE`
     );
   }
 
   // 3. Utilisatrice principale de démonstration (Ines Ben Ali)
   let inesId = 0;
   const inesExiste = db.getFirstSync<{ id: number }>(
-    `SELECT id FROM user WHERE email = 'ines.benali@email.tn' COLLATE NOCASE`
+    `SELECT id FROM user WHERE email = 'ines.benali@gmail.com' COLLATE NOCASE`
   );
   if (!inesExiste) {
     const res = db.runSync(
       `INSERT INTO user (name, email, password_hash, salt, role, is_active, must_change_password, onboarding_done, hash_version, budget_mensuel)
        VALUES (?, ?, ?, ?, 'user', 1, 0, 1, 1, 1200)`,
-      ['Ines Ben Ali', 'ines.benali@email.tn', DEFAULT_USER_HASH, DEFAULT_SALT]
+      ['Ines Ben Ali', 'ines.benali@gmail.com', DEFAULT_USER_HASH, DEFAULT_SALT]
     );
     inesId = res.lastInsertRowId;
   } else {
     inesId = inesExiste.id;
     // Réactivation stricte et déverrouillage de sécurité pour Ines Ben Ali
     db.runSync(
-      `UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'ines.benali@email.tn' COLLATE NOCASE`
+      `UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1, hash_version = COALESCE(NULLIF(hash_version, 0), 1) WHERE email = 'ines.benali@gmail.com' COLLATE NOCASE`
     );
   }
 
   // Réactivation et déverrouillage global de tous les comptes de test pour garantir une connexion sans blocage
   db.runSync(
-    `UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1 WHERE email IN ('admin@masrouf.tn', 'ines.benali@email.tn', 'user@masrouf.tn') COLLATE NOCASE`
+    `UPDATE user SET is_active = 1, must_change_password = 0, onboarding_done = 1 WHERE email IN ('admin@gmail.com', 'ines.benali@gmail.com', 'user@gmail.com') COLLATE NOCASE`
   );
 
   // Peuplement des catégories par défaut et du budget pour l'utilisateur standard (Ahmed)
@@ -743,7 +789,7 @@ function initialiserComptesDepart(): void {
     // ============================================================
     // MISSION ARCHITECTURALE : ZÉRO DONNÉE EN DUR DANS L'APPLICATION
     // RÔLE : L'application fonctionne exclusivement avec les saisies utilisateur réelles.
-    //        Seuls les comptes de test essentiels (admin@masrouf.tn, user@masrouf.tn, ines.benali@email.tn)
+    //        Seuls les comptes de test essentiels (admin@gmail.com, user@gmail.com, ines.benali@gmail.com)
     //        sont initialisés pour la connexion, SANS AUCUN BUDGET NI ACHAT NI PRODUIT PRÉ-REMPLI.
     // ============================================================
 
