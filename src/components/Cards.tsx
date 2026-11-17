@@ -38,7 +38,11 @@ export function BudgetCard({ available, spent, total, pct, range, over, onPress 
       </Text>
 
       {/* Montant mis en avant en très grande taille de police */}
-      <Text style={[styles.budgetAmount, { textAlign: isRTL ? 'right' : 'left' }]}>
+      <Text
+        style={[styles.budgetAmount, { textAlign: isRTL ? 'right' : 'left' }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
         {money(over ? over : available)}
       </Text>
 
@@ -161,7 +165,7 @@ export function TransactionRow({ title, detail, amount, isConfirmed, icon = 'bag
       </View>
       
       {/* Intitulé et métadonnées de la transaction */}
-      <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
+      <View style={{ flex: 1, minWidth: 0, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
         {/* Titre principal */}
         <Text style={[styles.cardTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>
           {title}
@@ -236,7 +240,7 @@ export function ExpenseCard({
         <Ionicons name={iconName} size={22} color={colors.forest} />
       </View>
       {/* Colonne textuelle */}
-      <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
+      <View style={{ flex: 1, minWidth: 0, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
         <Text style={[styles.cardTitle, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{title}</Text>
         <Text style={[styles.cardSub, { textAlign: isRTL ? 'right' : 'left' }]} numberOfLines={1}>{detail}</Text>
       </View>
@@ -290,7 +294,7 @@ export function ProductCard({ product, categoryName, latestUnitPrice, unit, onPr
       <ProductThumb name={product.name} uri={product.photo} size={48} />
 
       {/* Bloc descriptif du produit */}
-      <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
+      <View style={{ flex: 1, minWidth: 0, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
         {/* Nom de l'article en gras vert forêt */}
         <Text
           style={[styles.cardTitle, { textAlign: isRTL ? 'right' : 'left' }]}

@@ -17,6 +17,7 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 // Constantes de thème
 import { colors } from '@/constants/theme';
+import { useTranslation } from '@/utils/i18n';
 
 /**
  * Interface d'une option de pastille.
@@ -39,11 +40,13 @@ interface ChipsProps {
  * Barre de pastilles filtrantes défilables.
  */
 export function Chips({ options, value, onChange }: ChipsProps) {
+  const { isRTL } = useTranslation();
+
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8 }}
+      contentContainerStyle={{ gap: 8, flexDirection: isRTL ? 'row-reverse' : 'row' }}
     >
       {options.map((o) => {
         const on = o.value === value;
