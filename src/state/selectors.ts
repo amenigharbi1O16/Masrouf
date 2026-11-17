@@ -58,9 +58,15 @@ export function productOf(db: DB, id?: string): Product | undefined {
 }
 
 /**
- * Retourne le nom d'une catégorie par son identifiant, ou 'Unknown' si non trouvée.
+ * MISSION DE LA FONCTION : categoryName
+ *   Retourne le nom d'une catégorie par son identifiant, avec protection contre les valeurs nulles ou indéfinies.
+ * RÔLE DANS L'APPLICATION :
+ *   Fournit le libellé de catégorie affiché sur les cartes de dépenses et les lignes de résumé.
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Le nom de la catégorie (ex: 'Transport', 'Alimentation') ou 'Unknown' si non trouvée.
  */
-export const categoryName = (db: DB, id: string) => db.categories.find((c) => c.id === id)?.name ?? 'Unknown';
+export const categoryName = (db: DB, id?: string) =>
+  db?.categories?.find((c) => c && c.id === id)?.name ?? 'Unknown';
 
 /**
  * Retourne l'identifiant de la catégorie rattachée au produit acheté.
@@ -84,37 +90,71 @@ export interface Txn {
 }
 
 /**
- * Construit et trie chronologiquement (de la plus récente à la plus ancienne)
- * toutes les transactions (achats et dépenses directes) d'un utilisateur donné.
+ * MISSION DE LA FONCTION : userTxns
+ *   Construit, normalise et trie chronologiquement (de la plus récente à la plus ancienne)
+ *   toutes les transactions (achats d'articles et dépenses directes) d'un utilisateur donné.
+ * RÔLE DANS L'APPLICATION :
+ *   Fournit la liste unifiée et sécurisée des opérations pour le tableau de bord d'accueil.
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   Alimente la liste des "Transactions récentes" avec le titre, le magasin/détail, la date et le montant.
+ *
  * @param db Instantané de la base.
  * @param userId Identifiant de l'utilisateur.
  */
 export function userTxns(db: DB, userId: string): Txn[] {
+  // Garde de sécurité : retourne une liste vide si la base ou l'identifiant utilisateur est absent
+  if (!db || !userId) return [];
+  // Tableau de sortie accueillant toutes les transactions
   const out: Txn[] = [];
-  for (const p of db.purchases.filter((x) => x.userId === userId)) {
+  // Récupération sécurisée du tableau des achats (protection contre undefined)
+  const purchases = Array.isArray(db.purchases) ? db.purchases : [];
+  // Parcours sécurisé de chaque achat enregistré
+  for (const p of purchases) {
+    // Ignore les éléments invalides ou appartenant à un autre utilisateur
+    if (!p || p.userId !== userId) continue;
+    // Résolution sécurisée du produit associé
     const prod = productOf(db, p.productId);
+    // Insertion de la transaction d'achat avec identifiant préfixé et valeurs par défaut
     out.push({
       kind: 'purchase',
-      id: p.id,
-      date: p.date,
-      amount: p.price,
+      id: String(p.id ?? ''),
+      date: p.date || todayISO(),
+      amount: Number(p.price) || 0,
       categoryId: prod?.categoryId ?? '',
-      title: `${prod?.name ?? 'Product'} · ${p.quantity} ${p.unit}`,
-      detail: p.store,
+      title: `${prod?.name ?? 'Product'} · ${p.quantity ?? 1} ${p.unit ?? 'pc'}`,
+      detail: p.store || '',
     });
   }
-  for (const e of db.expenses.filter((x) => x.userId === userId)) {
+  // Récupération sécurisée du tableau des dépenses directes (protection contre undefined)
+  const expenses = Array.isArray(db.expenses) ? db.expenses : [];
+  // Parcours sécurisé de chaque dépense enregistrée
+  for (const e of expenses) {
+    // Ignore les éléments invalides ou appartenant à un autre utilisateur
+    if (!e || e.userId !== userId) continue;
+    // Insertion de la transaction de dépense avec identifiant préfixé et valeurs par défaut
     out.push({
       kind: 'expense',
-      id: e.id,
-      date: e.date,
-      amount: e.amount,
-      categoryId: e.categoryId,
+      id: String(e.id ?? ''),
+      date: e.date || todayISO(),
+      amount: Number(e.amount) || 0,
+      categoryId: String(e.categoryId ?? ''),
       title: categoryName(db, e.categoryId),
-      detail: e.note,
+      detail: e.note || '',
     });
   }
-  return out.sort((a, b) => (a.date === b.date ? (a.id < b.id ? 1 : -1) : a.date < b.date ? 1 : -1));
+  // Tri chronologique décroissant (plus récente en premier) avec bris d'égalité déterministe
+  return out.sort((a, b) => {
+    // Date de l'opération A
+    const da = a.date || '';
+    // Date de l'opération B
+    const dbDate = b.date || '';
+    // Si les dates sont identiques, tri sur l'identifiant
+    if (da === dbDate) {
+      return a.id < b.id ? 1 : -1;
+    }
+    // Sinon tri sur la date la plus récente
+    return da < dbDate ? 1 : -1;
+  });
 }
 
 /**
