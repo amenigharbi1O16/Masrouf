@@ -22,10 +22,7 @@ function isValidGmail(email) {
 
 function isValidLoginEmail(email) {
   if (!email || typeof email !== 'string') return false;
-  const norm = email.trim().toLowerCase();
-  if (isValidGmail(norm)) return true;
-  if (['admin@masrouf.tn', 'user@masrouf.tn', 'ines.benali@email.tn'].includes(norm)) return true;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(norm);
+  return isValidGmail(email);
 }
 
 // 1.1 Adresses Gmail valides
@@ -39,21 +36,24 @@ assert.strictEqual(isValidGmail('   valid.user@gmail.com   '), true, 'Tolère le
 // 1.2 Formats non-Gmail ou invalides (doivent être strictement rejetés à l'inscription)
 assert.strictEqual(isValidGmail('user@yahoo.com'), false, 'Yahoo doit être rejeté');
 assert.strictEqual(isValidGmail('user@outlook.com'), false, 'Outlook doit être rejeté');
-assert.strictEqual(isValidGmail('user@masrouf.tn'), false, 'masrouf.tn doit être rejeté pour une nouvelle inscription');
+assert.strictEqual(isValidGmail('user@masrouf.tn'), false, 'masrouf.tn doit être rejeté');
 assert.strictEqual(isValidGmail('@gmail.com'), false, 'Nom vide rejeté');
 assert.strictEqual(isValidGmail('user@gmail.com.fr'), false, 'Extension .fr rejetée');
 assert.strictEqual(isValidGmail('user@sub.gmail.com'), false, 'Sous-domaine rejeté');
 assert.strictEqual(isValidGmail('user gmail.com'), false, 'Sans arobase rejeté');
 assert.strictEqual(isValidGmail(''), false, 'Chaîne vide rejetée');
 
-// 1.3 Préservation des comptes existants à la connexion
-assert.strictEqual(isValidLoginEmail('admin@masrouf.tn'), true, 'Admin existant autorisé à se connecter');
-assert.strictEqual(isValidLoginEmail('user@masrouf.tn'), true, 'User existant autorisé à se connecter');
-assert.strictEqual(isValidLoginEmail('ines.benali@email.tn'), true, 'Compte Ines existant autorisé');
+// 1.3 Accès exclusif aux adresses Gmail (name@gmail.com) à la connexion : tous les .tn sont strictement refusés
+assert.strictEqual(isValidLoginEmail('admin@gmail.com'), true, 'Admin Gmail autorisé');
+assert.strictEqual(isValidLoginEmail('user@gmail.com'), true, 'User Gmail autorisé');
+assert.strictEqual(isValidLoginEmail('ines.benali@gmail.com'), true, 'Ines Gmail autorisée');
+assert.strictEqual(isValidLoginEmail('admin@masrouf.tn'), false, 'Admin .tn désormais strictement rejeté');
+assert.strictEqual(isValidLoginEmail('user@masrouf.tn'), false, 'User .tn désormais strictement rejeté');
+assert.strictEqual(isValidLoginEmail('ines.benali@email.tn'), false, 'Ines .tn désormais strictement rejetée');
 assert.strictEqual(isValidLoginEmail('nouveau.membre@gmail.com'), true, 'Nouveau compte Gmail autorisé');
 assert.strictEqual(isValidLoginEmail('texte_sans_arobase'), false, 'Saisie invalide rejetée');
 
-console.log('✓ Test 1 validé : Politique stricte Gmail (name@gmail.com) et préservation des comptes existants.');
+console.log('✓ Test 1 validé : Politique stricte Gmail exclusive (name@gmail.com), exclusion absolue de tous les emails .tn.');
 
 // ------------------------------------------------------------
 // TEST 2 : POLITIQUE DE MOT DE PASSE FORT (8+ CAR, MAJUSCULE, CHIFFRE, SPÉCIAL)
@@ -142,7 +142,7 @@ const mockUsers = [
   {
     id: 'u-admin',
     name: 'Administrateur',
-    email: 'admin@masrouf.tn',
+    email: 'admin@gmail.com',
     passwordHash: 'masrouf:Admin2026_hash',
     role: 'admin',
     active: true,
@@ -154,7 +154,7 @@ const mockUsers = [
   {
     id: 'u-ines',
     name: 'Ines Ben Ali',
-    email: 'ines.benali@email.tn',
+    email: 'ines.benali@gmail.com',
     passwordHash: 'masrouf:Masrouf2026_hash',
     role: 'user',
     active: true,
