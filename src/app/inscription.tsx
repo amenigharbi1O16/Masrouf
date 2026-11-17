@@ -30,10 +30,9 @@
  * - Un bouton secondaire clair 'Déjà un compte ? Se connecter' renvoyant vers `/login`.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 // Sélecteur de langue universel interactif (FR, AR, EN)
 import { LanguageSelector } from '@/components/LanguageSelector';
 // Conteneur d'écran avec retour arrière vers le login
@@ -216,56 +215,6 @@ export default function RegistrationScreen() {
         secure
         placeholder={t('placeholder_confirmer_mdp')}
       />
-
-      {/* Liste de contrôle en temps réel des exigences de sécurité (icônes vectorielles sans emojis) */}
-      <View style={{ gap: 6, marginVertical: 6 }}>
-        <Text
-          style={{
-            fontSize: 12,
-            fontWeight: '600',
-            color: colors.forest,
-            textAlign: isRTL ? 'right' : 'left',
-            marginBottom: 2,
-          }}
-        >
-          {t('format_mdp_explication')}
-        </Text>
-        {(
-          [
-            [t('regle_8_chars'), c.length],
-            [t('regle_majuscule'), c.uppercase],
-            [t('regle_chiffre'), c.number],
-            [t('regle_special'), c.special],
-            [t('regle_identiques'), c.match && confirm.length > 0],
-          ] as const
-        ).map(([label, ok]) => (
-          <View
-            key={label}
-            style={{
-              flexDirection: isRTL ? 'row-reverse' : 'row',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <Ionicons
-              name={ok ? 'checkmark-circle' : 'ellipse-outline'}
-              size={16}
-              color={ok ? colors.forest : colors.muted}
-            />
-            <Text
-              style={{
-                fontSize: 13,
-                lineHeight: 18,
-                fontWeight: '500',
-                color: ok ? colors.forest : colors.muted,
-                textAlign: isRTL ? 'right' : 'left',
-              }}
-            >
-              {label}
-            </Text>
-          </View>
-        ))}
-      </View>
 
       {/* Bouton vert forêt : soumission du formulaire et création du compte */}
       <Button label={t('creer_compte')} onPress={submit} loading={busy} />
