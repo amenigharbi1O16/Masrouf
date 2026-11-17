@@ -40,6 +40,7 @@ import {
   addDays,
   daysBetween,
   fmtRange,
+  getExactMonthBounds,
   isValidISO,
   money,
   todayISO,
@@ -72,7 +73,7 @@ export default function BudgetPeriodScreen() {
   // Extraction des données SQLite, du profil connecté et des actions
   const { db, me, actions } = useStore();
   // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
   // Booléen indiquant si l'utilisateur modifie un budget existant
   const editing = mode === 'edit';
@@ -91,18 +92,45 @@ export default function BudgetPeriodScreen() {
   // Une période existante dont la date de fin est antérieure à aujourd'hui est clôturée (lecture seule)
   const isClosedPeriod = !!(editing && existing && existing.end < today);
 
-  // État local de la date de début (initialisée avec la période sélectionnée, le budget existant ou aujourd'hui)
-  const [start, setStart] = useState(existing?.start ?? defaultStart ?? today);
-  // État local de la date de fin (initialisée avec la fin de période exacte, le budget existant ou J+29)
-  const [end, setEnd] = useState(existing?.end ?? defaultEnd ?? addDays(start, 29));
+  // Bornes exactes de début (AAAA-MM-01) et fin (dernier jour du mois)
+  const initialBounds = useMemo(() => {
+    const seed = existing?.start ?? defaultStart ?? today;
+    return getExactMonthBounds(seed);
+  }, [existing, defaultStart, today]);
+
+  // État local de la date de début (toujours le 1er jour exact du mois)
+  const [start, setStart] = useState(existing?.start ?? defaultStart ?? initialBounds.start);
+  // État local de la date de fin (toujours le dernier jour exact du mois)
+  const [end, setEnd] = useState(existing?.end ?? defaultEnd ?? initialBounds.end);
   // État local du montant total en Dinars Tunisiens (chaîne de caractères pour saisie fluide)
   const [total, setTotal] = useState(existing ? String(existing.total) : '');
 
-  // Détection stricte d'un budget préexistant pour ces mêmes dates (Règle : un seul budget par période)
+  const monthKey = start.slice(0, 7);
+
+  // Détection stricte d'un budget préexistant pour ce même mois (Règle : un seul budget par mois civil)
   const duplicateBudget = useMemo(() => {
     if (editing || !me) return null;
-    return db.budgets.find((b) => b.userId === me.id && b.start === start && b.end === end) ?? null;
-  }, [editing, me, db.budgets, start, end]);
+    return (
+      db.budgets.find(
+        (b) =>
+          b.userId === me.id &&
+          (b.start.slice(0, 7) === monthKey || (b.start === start && b.end === end))
+      ) ?? null
+    );
+  }, [editing, me, db.budgets, monthKey, start, end]);
+
+  // Synchronisation automatique et stricte des bornes du mois lors de toute saisie
+  const handleDateChange = (text: string) => {
+    setError('');
+    if (/^\d{4}-\d{1,2}/.test(text.trim())) {
+      const b = getExactMonthBounds(text.trim());
+      setStart(b.start);
+      setEnd(b.end);
+    } else {
+      setStart(text);
+    }
+  };
+
   // État local des montants alloués par catégorie en mode édition
   const [alloc, setAlloc] = useState<Record<string, string>>(
     Object.fromEntries(
@@ -166,12 +194,17 @@ export default function BudgetPeriodScreen() {
     if (end < start) {
       return t('erreur_date_fin_anterieure');
     }
+    // Règle stricte : la date de début doit être exactement le 1er du mois et la fin le dernier jour du mois
+    const expectedBounds = getExactMonthBounds(start);
+    if (start !== expectedBounds.start || end !== expectedBounds.end) {
+      return t('erreur_dates_mois_exactes');
+    }
     if (!Number.isFinite(totalN) || totalN <= 0) {
       return t('erreur_total_positif');
     }
-    // Règle stricte d'unicité : interdiction absolue de créer un second budget pour la même période
+    // Règle stricte d'unicité : interdiction absolue de créer un second budget pour le même mois
     if (!editing && duplicateBudget) {
-      return `Un budget existe déjà pour cette période (${fmtRange(start, end)}). Chaque période ne peut comporter qu'un seul budget.`;
+      return t('erreur_budget_unique_mois');
     }
     if (editing && allocSum > totalN) {
       return `${t('erreur_depassement_allocations')}${money(allocSum - totalN)}.`;
@@ -270,27 +303,28 @@ export default function BudgetPeriodScreen() {
         />
       ) : null}
 
-      {/* Champ de saisie de la date de début au format standard AAAA-MM-JJ */}
+      {/* Bannière de règle stricte : un seul budget mensuel civil exact */}
+      <AlertBanner
+        tone="info"
+        title={t('budget_unique_mois_info')}
+        detail={validRange ? `${fmtRange(start, end, langue)} · ${daysBetween(start, end)} ${t('jours')}` : t('choisir_dates_debut_fin')}
+      />
+
+      {/* Champ de saisie de la date de début au format standard AAAA-MM-01 (1er du mois exact) */}
       <Input
-        label={t('date_debut_label')}
+        label={`${t('date_debut_label')} (AAAA-MM-01)`}
         value={start}
-        onChangeText={(text) => {
-          setStart(text);
-          setError('');
-        }}
-        placeholder="YYYY-MM-DD"
+        onChangeText={handleDateChange}
+        placeholder="YYYY-MM-01"
         keyboardType="numbers-and-punctuation"
       />
 
-      {/* Champ de saisie de la date de fin au format standard AAAA-MM-JJ */}
+      {/* Champ de saisie de la date de fin au format standard AAAA-MM-XX (dernier jour exact du mois) */}
       <Input
-        label={t('date_fin_label')}
+        label={`${t('date_fin_label')} (AAAA-MM-XX)`}
         value={end}
-        onChangeText={(text) => {
-          setEnd(text);
-          setError('');
-        }}
-        placeholder="YYYY-MM-DD"
+        onChangeText={handleDateChange}
+        placeholder="YYYY-MM-XX"
         keyboardType="numbers-and-punctuation"
       />
 
@@ -318,7 +352,7 @@ export default function BudgetPeriodScreen() {
           {Object.keys(alloc).map((cid) => (
             <Input
               key={cid}
-              label={db.categories.find((c) => c.id === cid)?.name ?? cid}
+              label={traduireCategorie(db.categories.find((c) => c.id === cid)?.name ?? cid)}
               value={alloc[cid]}
               onChangeText={(text) =>
                 setAlloc((prev) => ({ ...prev, [cid]: text }))
@@ -354,13 +388,13 @@ export default function BudgetPeriodScreen() {
           {/* Alerte stricte informant que la période existe déjà et empêchant le doublon */}
           <AlertBanner
             tone="warning"
-            title="Période déjà existante"
-            detail={`Un budget de ${money(duplicateBudget.total)} existe déjà pour cette période exacte (${fmtRange(start, end)}). Conformément à la règle de gestion Masrouf, chaque période ne peut comporter qu'un seul budget. Vous pouvez modifier ce budget existant.`}
+            title={t('budget_unique_mois_titre')}
+            detail={`${t('erreur_budget_unique_mois')} (${fmtRange(duplicateBudget.start, duplicateBudget.end, langue)}).`}
           />
 
           {/* Bouton pour rediriger directement vers la modification du budget existant */}
           <Button
-            label="Modifier le budget existant"
+            label={t('modifier_budget_existant')}
             onPress={() =>
               router.replace({
                 pathname: '/budget-mois',
