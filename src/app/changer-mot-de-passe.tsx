@@ -31,9 +31,7 @@
 
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Text, View } from 'react-native';
-// Icônes vectorielles Ionicons pour remplacer les caractères emojis et coches textuelles
-import { Ionicons } from '@expo/vector-icons';
+import { View } from 'react-native';
 // Conteneur d'écran avec retour conditionnel et gestion du défilement
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
@@ -45,7 +43,7 @@ import { useStore } from '@/state/store';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
 // Moteur de validation des règles de sécurité de mot de passe
-import { passwordChecks } from '@/utils/security';
+import { getMissingPasswordRequirements, passwordChecks } from '@/utils/security';
 
 /**
  * MISSION DU COMPOSANT :
@@ -91,6 +89,23 @@ export default function ChangePasswordScreen() {
    * En cas de succès : redirige automatiquement vers le tableau de bord sans écran blanc.
    */
   const submit = async () => {
+    // Vérification des critères de sécurité du mot de passe
+    if (!c.allValid) {
+      const missing = getMissingPasswordRequirements(next, t);
+      setError(
+        missing.length > 0
+          ? `${t('erreur_mot_de_passe_exigences')} : ${missing.join(', ')}`
+          : t('erreur_mot_de_passe_exigences')
+      );
+      return;
+    }
+
+    // Vérification de la concordance avec la confirmation
+    if (!c.match) {
+      setError(t('regle_identiques'));
+      return;
+    }
+
     // Début de l'animation de chargement
     setBusy(true);
     const res = await actions.changePassword(current, next);
@@ -158,6 +173,7 @@ export default function ChangePasswordScreen() {
         value={next}
         onChangeText={setNext}
         secure
+        placeholder={t('placeholder_mdp')}
       />
 
       {/* Champ 3 : Confirmation du nouveau mot de passe secret */}
@@ -166,56 +182,15 @@ export default function ChangePasswordScreen() {
         value={confirm}
         onChangeText={setConfirm}
         secure
+        placeholder={t('placeholder_confirmer_mdp')}
       />
 
-      {/* Indicateurs dynamiques des 5 critères de conformité avec icônes vectorielles Ionicons sans aucun emoji */}
-      <View style={{ gap: 6, marginVertical: 8 }}>
-        {(
-          [
-            [t('regle_8_chars'), c.length],
-            [t('regle_majuscule'), c.uppercase],
-            [t('regle_chiffre'), c.number],
-            [t('regle_special'), c.special],
-            [t('regle_identiques'), c.match && confirm.length > 0],
-          ] as const
-        ).map(([label, ok]) => (
-          // Ligne d'indicateur avec icône vectorielle à gauche (ou à droite en arabe)
-          <View
-            key={label}
-            style={{
-              flexDirection: isRTL ? 'row-reverse' : 'row',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            {/* Icône de validation vectorielle (coche verte si rempli, cercle vide si non rempli) */}
-            <Ionicons
-              name={ok ? 'checkmark-circle' : 'ellipse-outline'}
-              size={16}
-              color={ok ? colors.forest : colors.muted}
-            />
-            {/* Libellé textuel de la règle */}
-            <Text
-              style={{
-                fontSize: 13,
-                lineHeight: 19,
-                fontWeight: '500',
-                color: ok ? colors.forest : colors.muted,
-                textAlign: isRTL ? 'right' : 'left',
-              }}
-            >
-              {label}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Bouton vert forêt : actif uniquement si toutes les règles de sécurité sont au vert */}
+      {/* Bouton vert forêt : soumission du nouveau mot de passe */}
       <Button
         label={t('enregistrer_nouveau_mdp')}
         onPress={submit}
         loading={busy}
-        disabled={!current || !c.allValid || !c.match}
+        disabled={!current || !next || !confirm}
       />
 
       {/* Bouton secondaire clair : permet de se déconnecter si on ne souhaite pas changer son mot de passe maintenant */}
