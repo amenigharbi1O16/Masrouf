@@ -21,7 +21,7 @@
 // Importation de React
 import React from 'react';
 // Importation des composants d'affichage et de mise en page React Native
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 // Constantes de thème officielles
 import { colors, radius } from '@/constants/theme';
 // Utilitaire de formatage décimal en Dinars Tunisiens
@@ -61,8 +61,12 @@ export function PriceChart({ title, unit, points }: PriceChartProps) {
   // Fonctions de traduction et sens de lecture RTL
   const { t, isRTL } = useTranslation();
 
-  // Largeur totale du canevas SVG
-  const W = 320;
+  // Dimensions de l'écran et mesure de la boîte conteneur
+  const { width: windowWidth } = useWindowDimensions();
+  const [containerWidth, setContainerWidth] = React.useState<number>(0);
+
+  // Largeur totale adaptative du canevas SVG (s'adapte à 100% de la carte)
+  const W = containerWidth > 0 ? containerWidth : Math.max(220, windowWidth - 68);
   // Hauteur totale du canevas SVG
   const H = 140;
   // Marge gauche pour les graduations d'ordonnées
@@ -142,8 +146,16 @@ export function PriceChart({ title, unit, points }: PriceChartProps) {
           {t('aucun_prix_enregistre')}
         </Text>
       ) : (
-        // Conteneur du graphique et de ses axes
-        <View style={styles.chartArea}>
+        // Conteneur du graphique et de ses axes avec mesure dynamique de la largeur disponible
+        <View
+          style={styles.chartArea}
+          onLayout={(e) => {
+            const w = Math.round(e.nativeEvent.layout.width);
+            if (w > 0 && Math.abs(w - containerWidth) > 2) {
+              setContainerWidth(w);
+            }
+          }}
+        >
           {/* Surface graphique traçant les repères et la courbe */}
           <View style={{ width: '100%', height: H, position: 'relative' }}>
             {/* Lignes de repère horizontales */}
