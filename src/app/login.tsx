@@ -51,7 +51,7 @@ import { useAuth } from '@/utils/auth';
 // Détermination de la route d'accueil prioritaire selon le rôle et le statut
 import { homeRouteFor } from '@/utils/session';
 // Système d'internationalisation et détection du sens d'écriture RTL
-import { useTranslation } from '@/utils/i18n';
+import { Langue, useTranslation } from '@/utils/i18n';
 // Validation de format d'email pour la connexion
 import { isValidLoginEmail } from '@/utils/security';
 
@@ -73,7 +73,7 @@ export default function LoginScreen() {
   // Méthode de connexion fournie par le contexte d'authentification
   const { login } = useAuth();
   // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, changerLangue } = useTranslation();
 
   // États locaux des champs de saisie (pré-rempli si retour d'inscription)
   const [email, setEmail] = useState(params.email ?? '');
@@ -129,6 +129,10 @@ export default function LoginScreen() {
 
     // En cas de succès, redirection explicite et immédiate vers l'espace cible
     if (res.user) {
+      // Synchronisation immédiate de la langue sélectionnée pour toutes les pages de l'application
+      if (res.user.langue && (res.user.langue === 'fr' || res.user.langue === 'ar' || res.user.langue === 'en')) {
+        await changerLangue(res.user.langue as Langue);
+      }
       // Calcul de la destination selon le profil (admin -> /(admin)/dashboard, user -> /(tabs))
       const destination = homeRouteFor(res.user);
       // Remplacement de la route actuelle sans retour possible en arrière vers login
@@ -138,7 +142,7 @@ export default function LoginScreen() {
 
   return (
     // Screen : conteneur plein écran sans en-tête parasite
-    <Screen title="MASROUF" plain>
+    <Screen title={t('nom_app')} plain>
       {/* Sélecteur de langue supérieur : permet de basculer en arabe RTL, français ou anglais à tout moment */}
       <LanguageSelector />
 
@@ -155,6 +159,7 @@ export default function LoginScreen() {
           height: 176,
           padding: 24,
           justifyContent: 'space-between',
+          alignItems: isRTL ? 'flex-end' : 'flex-start',
         }}
       >
         {/* Icône de feuille vert menthe lumineuse */}
