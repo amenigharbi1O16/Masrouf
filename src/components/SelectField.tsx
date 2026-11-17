@@ -80,9 +80,20 @@ export function SelectField({
         accessibilityLabel={label}
       >
         <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
-          <Text style={styles.label}>{label}</Text>
           <Text
-            style={[styles.value, !current && { color: '#9AA9A3' }]}
+            style={[
+              styles.label,
+              { textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr' },
+            ]}
+          >
+            {label}
+          </Text>
+          <Text
+            style={[
+              styles.value,
+              { textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr' },
+              !current && { color: '#9AA9A3' },
+            ]}
             numberOfLines={1}
           >
             {current?.label ?? defaultPlaceholder}
@@ -94,7 +105,10 @@ export function SelectField({
       {/* Message d'erreur éventuel sous le champ */}
       {error ? (
         <Text
-          style={[styles.error, { textAlign: isRTL ? 'right' : 'left' }]}
+          style={[
+            styles.error,
+            { textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr' },
+          ]}
         >
           {error}
         </Text>
@@ -115,7 +129,7 @@ export function SelectField({
           <Text
             style={[
               styles.sheetTitle,
-              { textAlign: isRTL ? 'right' : 'left' },
+              { textAlign: isRTL ? 'right' : 'left', writingDirection: isRTL ? 'rtl' : 'ltr' },
             ]}
           >
             {label}
