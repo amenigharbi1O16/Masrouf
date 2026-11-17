@@ -51,7 +51,7 @@ import type { InAppNotification } from '@/state/types';
 export default function NotificationsScreen() {
   // Outil de navigation
   const router = useRouter();
-  // Accès aux notifications, profil connecté et aux actions de mutation du store
+  // Accès aux notifications et aux actions de mutation du store
   const { notifications, unreadNotificationsCount, actions, me } = useStore();
   // Outils de traduction et détection du sens d'écriture
   const { t, isRTL, langue } = useTranslation();
@@ -69,7 +69,7 @@ export default function NotificationsScreen() {
       case 'user_registered':
         return { icon: 'person-add' as const, color: colors.forest, bg: '#E8F5E9' };
       case 'system':
-        return { icon: 'information-circle' as const, color: colors.forest, bg: '#EBF4F0' };
+        return { icon: 'leaf' as const, color: colors.forest, bg: '#EBF4F0' };
       case 'alert_100':
         return { icon: 'alert-circle' as const, color: colors.coral, bg: '#FDF0ED' };
       case 'alert_80':
@@ -88,7 +88,7 @@ export default function NotificationsScreen() {
       title={t('notifications')}
       // Bouton flèche retour vers la page précédente
       back
-      // Action de retour adaptée selon le rôle de l'utilisateur
+      // Action de retour explicite adaptée au rôle utilisateur / administrateur
       onBack={() => {
         if (me?.role === 'admin') {
           router.replace('/(admin)/dashboard');
@@ -99,15 +99,7 @@ export default function NotificationsScreen() {
         }
       }}
     >
-      {/* 1. Bannière explicative sur l'architecture locale native sans backend */}
-      <View style={[styles.banner, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-        <Ionicons name="information-circle-outline" size={20} color={colors.forest} />
-        <Text style={[styles.bannerText, { textAlign: isRTL ? 'right' : 'left' }]}>
-          {t('notif_banner_info')}
-        </Text>
-      </View>
-
-      {/* 2. Barre d'action supérieure : compteur et bouton tout marquer comme lu */}
+      {/* 1. Barre d'action supérieure : compteur et bouton tout marquer comme lu */}
       {list.length > 0 && (
         <View
           style={[
@@ -173,11 +165,11 @@ export default function NotificationsScreen() {
                   <Text style={[styles.titleText, { textAlign: isRTL ? 'right' : 'left' }]}>
                     {item.title}
                   </Text>
-                  {item.periodLabel ? (
+                  {!!item.periodLabel && (
                     <Text style={[styles.periodText, { textAlign: isRTL ? 'right' : 'left' }]}>
                       {t('periode_concernee')} : {item.periodLabel}
                     </Text>
-                  ) : null}
+                  )}
                 </View>
 
                 {/* Pastille visuelle pour les alertes non lues */}
@@ -230,24 +222,6 @@ export default function NotificationsScreen() {
 
 // Feuilles de styles du centre de notifications
 const styles = StyleSheet.create({
-  // Bannière informative
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#EBF4F0',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#CDE5DB',
-  },
-  // Texte de la bannière
-  bannerText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.forest,
-  },
   // Rangée d'actions
   actionBar: {
     justifyContent: 'space-between',
