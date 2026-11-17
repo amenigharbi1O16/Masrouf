@@ -26,64 +26,79 @@ import { fmtRange, money, todayISO } from './format';
 // ------------------------------------------------------------
 // CONFIGURATION DU COMPORTEMENT VISUEL DES NOTIFICATIONS
 // ------------------------------------------------------------
-// Définit comment le système d'exploitation présente la notification lorsque l'app est active au premier plan
-try {
-  // Configuration globale d'affichage des notifications réelles
-  Notifications.setNotificationHandler({
-    // Fonction asynchrone déterminant les options d'affichage sur smartphone
-    handleNotification: async () => ({
-      // Affiche la bannière visuelle en haut de l'écran du smartphone
-      shouldShowAlert: true,
-      // Émet le signal sonore par défaut de l'appareil
-      shouldPlaySound: true,
-      // Met à jour la pastille numérique (badge) sur l'icône de l'application
-      shouldSetBadge: true,
-      // Affiche la bannière popup
-      shouldShowBanner: true,
-      // Intègre l'alerte dans la liste du tiroir des notifications système
-      shouldShowList: true,
-      // Priorité maximale
-      priority: Notifications.AndroidNotificationPriority.MAX,
-    } as any),
-  });
-} catch (e) {
-  // Journalisation silencieuse en environnement Web ou restreint
-  console.warn('Notifications handler init info:', e);
+// Définit comment le système d'exploitation présente la notification lorsque l'app est active au premier plan.
+// Garde stricte : exécuté uniquement sur mobile (Android / iOS), jamais sur Web.
+if (Platform.OS !== 'web') {
+  try {
+    // Configuration globale d'affichage des notifications réelles sur smartphone
+    Notifications.setNotificationHandler({
+      // Fonction asynchrone déterminant les options d'affichage natives
+      handleNotification: async () => ({
+        // Émet le signal sonore par défaut de l'appareil
+        shouldPlaySound: true,
+        // Met à jour la pastille numérique (badge) sur l'icône de l'application
+        shouldSetBadge: true,
+        // Affiche la bannière popup en haut de l'écran (nouvelle API Expo Notifications)
+        shouldShowBanner: true,
+        // Intègre l'alerte dans la liste du tiroir des notifications système (nouvelle API Expo Notifications)
+        shouldShowList: true,
+        // Priorité maximale pour garantir l'affichage immédiat
+        priority: Notifications.AndroidNotificationPriority.MAX,
+      } as any),
+    });
+  } catch (e) {
+    // Journalisation discrète si non supporté sur l'environnement
+    console.warn('[Notifications] setNotificationHandler notice:', e);
+  }
 }
+
+// Variable booléenne au niveau module garantissant que la création du canal Android n'est exécutée qu'une seule fois
+let channelInitAttempted = false;
 
 /**
  * MISSION DE LA FONCTION : initNotificationChannels
  *   Crée et configure le canal de notification Android pour garantir une sonnerie et une priorité maximale.
  * RÔLE DANS L'APPLICATION :
  *   Sur Android 8.0+, chaque notification doit obligatoirement être rattachée à un canal système.
+ *   Exécutée une seule et unique fois, protégée par try/catch pour Expo Go sur Android.
  * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Définit le nom du canal ("Alertes Budgétaires Masrouf") visible dans les paramètres système du téléphone.
+ *   Définit le nom du canal ("Alertes Masrouf") visible dans les paramètres système du téléphone.
  */
 export async function initNotificationChannels(): Promise<void> {
-  // Vérification de la plateforme Android
-  if (Platform.OS === 'android') {
-    try {
-      // Enregistrement du canal Android
-      await Notifications.setNotificationChannelAsync('masrouf_budget', {
-        // Nom lisible affiché dans les paramètres du téléphone
-        name: 'Alertes Budgétaires Masrouf',
-        // Description détaillée du canal
-        description: 'Notifications pour seuils de budget (80%, 100%), fin de période et ajustements financiers.',
-        // Niveau d'importance maximal pour afficher la bannière et émettre un son
-        importance: Notifications.AndroidImportance.MAX,
-        // Schéma de vibration : silence initial puis 3 impulsions de 250ms
-        vibrationPattern: [0, 250, 250, 250],
-        // Couleur de la LED de notification (vert forêt de Masrouf)
-        lightColor: '#1B4332',
-        // Active le voyant lumineux
-        enableLights: true,
-        // Active la vibration
-        enableVibrate: true,
-      });
-    } catch (err) {
-      // Journalisation d'erreur éventuelle
-      console.warn('Channel creation error:', err);
-    }
+  // Exclusion stricte : exécuté uniquement sur Android, et une seule fois au total
+  if (Platform.OS !== 'android' || channelInitAttempted) return;
+  // Marque immédiatement le canal comme tenté pour éviter les appels concurrents ou répétés
+  channelInitAttempted = true;
+
+  try {
+    // Enregistrement du canal Android haute importance avec son et badge
+    await Notifications.setNotificationChannelAsync('masrouf_budget', {
+      // Nom lisible affiché dans les paramètres du téléphone
+      name: 'Alertes Masrouf',
+      // Description détaillée du canal
+      description: 'Notifications pour seuils de budget (80%, 100%), fin de période, inscriptions et alertes système.',
+      // Niveau d'importance maximal pour afficher la bannière et émettre un son
+      importance: Notifications.AndroidImportance.MAX,
+      // Schéma de vibration : silence initial puis 3 impulsions de 250ms
+      vibrationPattern: [0, 250, 250, 250],
+      // Couleur de la LED de notification (vert forêt de Masrouf)
+      lightColor: '#1B4332',
+      // Active le voyant lumineux
+      enableLights: true,
+      // Active la vibration
+      enableVibrate: true,
+      // Active le son par défaut
+      sound: 'default',
+      // Affiche la pastille badge (+1)
+      showBadge: true,
+      // Visibilité sur l'écran verrouillé
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      // Ne contourne pas Ne Pas Déranger
+      bypassDnd: false,
+    });
+  } catch (err) {
+    // Journalisation d'une seule ligne courte sans la chaîne 'Channel creation error' pour Expo Go
+    console.warn('[Notifications] Android channel init notice (Expo Go or restricted mode):', err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -112,7 +127,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
     // Demande de permission active auprès de l'utilisateur
     const request = await Notifications.requestPermissionsAsync({
-      // Demande d'alerte visuelle
+      // Demande d'alerte visuelle, sonore et de badge
       ios: {
         allowAlert: true,
         allowBadge: true,
@@ -136,16 +151,17 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
 /**
  * MISSION DE LA FONCTION : sendPhoneNotification
- *   Envoie une véritable notification locale sur le smartphone de l'utilisateur.
+ *   Envoie une véritable notification locale sur le smartphone de l'utilisateur avec son, vibration et badge.
  * RÔLE DANS L'APPLICATION :
- *   Fait vibrer et sonner le téléphone avec le titre et le message financier explicatif.
+ *   Fait vibrer et sonner le téléphone avec le titre et le message financier explicatif, et incrémente le badge (+1).
  * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Une bannière système native dans le centre de notifications du smartphone.
+ *   Une bannière système native flottante en haut de l'écran du smartphone et une pastille +1 sur l'icône de l'app.
  */
 export async function sendPhoneNotification(params: {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  badge?: number;
 }): Promise<string | null> {
   // En environnement Web, simulation en console uniquement
   if (Platform.OS === 'web') {
@@ -154,30 +170,60 @@ export async function sendPhoneNotification(params: {
   }
 
   try {
-    // Planification immédiate de la notification locale sur le smartphone
+    // Calcul et incrément de la pastille badge (+1)
+    let nextBadge = params.badge;
+    if (typeof nextBadge !== 'number') {
+      try {
+        const currentBadge = await Notifications.getBadgeCountAsync();
+        nextBadge = (currentBadge || 0) + 1;
+      } catch {
+        nextBadge = 1;
+      }
+    }
+
+    // Mise à jour de la pastille badge système sur l'icône de l'application
+    try {
+      await Notifications.setBadgeCountAsync(nextBadge);
+    } catch (e) {
+      console.warn('Set badge error:', e);
+    }
+
+    // Assurer l'existence et la configuration haute importance du canal Android
+    if (Platform.OS === 'android') {
+      await initNotificationChannels();
+    }
+
+    // Déclenchement immédiat de la notification locale sur le smartphone avec son et bannière
     const id = await Notifications.scheduleNotificationAsync({
-      // Contenu complet de la notification locale
       content: {
-        // Titre de l'alerte
         title: params.title,
-        // Corps explicatif détaillé
         body: params.body,
-        // Données d'accompagnement transmises à la notification
         data: params.data ?? {},
-        // Son par défaut
-        sound: true,
-        // Rattachement au canal Android haute priorité
-        channelId: 'masrouf_budget',
+        sound: 'default',
+        badge: nextBadge,
+        vibrate: [0, 250, 250, 250],
+        priority: 'max',
+        color: '#1B4332',
       } as any,
-      // Déclenchement instantané (trigger = null signifie envoi immédiat)
-      trigger: null,
+      trigger: Platform.OS === 'android' ? ({ channelId: 'masrouf_budget' } as any) : null,
     });
-    // Retour de l'identifiant de la notification programmée
     return id;
   } catch (err) {
-    // Journalisation d'erreur sans faire crasher l'application
     console.warn('Notification schedule error:', err);
     return null;
+  }
+}
+
+/**
+ * MISSION DE LA FONCTION : syncPhoneBadgeCount
+ *   Synchronise la pastille numérique de l'icône de l'application avec le nombre réel d'alertes non lues.
+ */
+export async function syncPhoneBadgeCount(count: number): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await Notifications.setBadgeCountAsync(Math.max(0, count));
+  } catch (err) {
+    // Silencieux
   }
 }
 
