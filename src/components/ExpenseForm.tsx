@@ -81,7 +81,7 @@ export function ExpenseForm({
   const userCatIds = me?.categoryIds ?? [];
 
   // Détection du compte de test officiel Ines Ben Ali pour garantir ses 5 enveloppes de démonstration
-  const isInes = me?.email?.toLowerCase() === 'ines.benali@email.tn';
+  const isInes = me?.email?.toLowerCase() === 'ines.benali@gmail.com';
   // Mots-clés de détection pour les 5 catégories garanties pour Ines
   const inesKeywords = ['aliment', 'food', 'transport', 'facture', 'bill', 'loisir', 'entertain', 'épargne', 'epargne', 'saving'];
 
