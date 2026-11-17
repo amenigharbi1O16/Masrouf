@@ -15,7 +15,8 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { Animated, DimensionValue, StyleSheet, View } from 'react-native';
+// Importation des utilitaires d'animation et de détection de plateforme
+import { Animated, DimensionValue, Platform, StyleSheet, View } from 'react-native';
 // Constantes de thème
 import { colors } from '@/constants/theme';
 
@@ -40,18 +41,20 @@ export function Skeleton({
   const o = useRef(new Animated.Value(0.45)).current;
 
   useEffect(() => {
+    // Variable déterminant l'utilisation du pilote natif (désactivé sur Web pour éviter l'avertissement console)
+    const useNativeDriver = Platform.OS !== 'web';
     // Boucle continue de pulsation douce (700ms aller, 700ms retour)
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(o, {
           toValue: 1,
           duration: 700,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
         Animated.timing(o, {
           toValue: 0.45,
           duration: 700,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
       ])
     );

@@ -92,7 +92,10 @@ export function Input({
         <Text
           style={[
             styles.label,
-            { textAlign: isRTL ? 'right' : 'left' },
+            {
+              textAlign: isRTL ? 'right' : 'left',
+              writingDirection: isRTL ? 'rtl' : 'ltr',
+            },
           ]}
         >
           {label}
@@ -102,7 +105,10 @@ export function Input({
         <TextInput
           style={[
             styles.input,
-            { textAlign: isRTL ? 'right' : 'left' },
+            {
+              textAlign: isRTL ? 'right' : 'left',
+              writingDirection: isRTL ? 'rtl' : 'ltr',
+            },
           ]}
           value={value}
           onChangeText={onChangeText}
@@ -121,7 +127,10 @@ export function Input({
         <Text
           style={[
             styles.error,
-            { textAlign: isRTL ? 'right' : 'left' },
+            {
+              textAlign: isRTL ? 'right' : 'left',
+              writingDirection: isRTL ? 'rtl' : 'ltr',
+            },
           ]}
         >
           {error}
@@ -130,7 +139,10 @@ export function Input({
         <Text
           style={[
             styles.hint,
-            { textAlign: isRTL ? 'right' : 'left' },
+            {
+              textAlign: isRTL ? 'right' : 'left',
+              writingDirection: isRTL ? 'rtl' : 'ltr',
+            },
           ]}
         >
           {hint}
