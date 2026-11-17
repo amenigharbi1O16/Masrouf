@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { LANGUES_DISPONIBLES, Langue, useTranslation } from '@/utils/i18n';
 
@@ -25,6 +25,8 @@ interface LanguageSelectorProps {
 export function LanguageSelector({ style, variant = 'pills' }: LanguageSelectorProps) {
   // Récupération de la langue active, de la fonction de bascule et du sens d'écriture
   const { langue, changerLangue, isRTL } = useTranslation();
+  const { width } = useWindowDimensions();
+  const isSmall = width < 360;
 
   // Affichage spécifique au tiroir latéral (fond vert foncé)
   if (variant === 'drawer') {
@@ -86,7 +88,15 @@ export function LanguageSelector({ style, variant = 'pills' }: LanguageSelectorP
             accessibilityState={{ selected: active }}
           >
             {/* Libellé natif de la langue (ex: Français, العربية, English) */}
-            <Text style={[styles.label, active ? styles.labelActive : styles.labelInactive]}>
+            <Text
+              style={[
+                styles.label,
+                { fontSize: isSmall ? 12 : 14 },
+                active ? styles.labelActive : styles.labelInactive,
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               {cfg.nomNatif}
             </Text>
           </Pressable>
@@ -104,9 +114,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     marginVertical: 12,
+    width: '100%',
   },
   pill: {
-    paddingHorizontal: 16,
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 8,
     paddingVertical: 8,
     borderRadius: radius.pill,
     minHeight: 38,
