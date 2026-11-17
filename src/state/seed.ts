@@ -8,8 +8,8 @@
  * 1. 16 Catégories budgétaires de référence réparties entre Produits physiques et Dépenses directes,
  *    avec une clé de répartition par défaut dont la somme fait exactement 100 %.
  * 2. Comptes de démonstration avec hachage cryptographique sécurisé SHA-256 :
- *    - Administrateur : `admin@masrouf.tn` / mot de passe : `Admin2026` (rôle 'admin').
- *    - Utilisateur actif : `ines.benali@email.tn` / mot de passe : `Masrouf2026` (rôle 'user'),
+ *    - Administrateur : `admin@gmail.com` / mot de passe : `Admin2026` (rôle 'admin').
+ *    - Utilisateur actif : `ines.benali@gmail.com` / mot de passe : `Masrouf2026` (rôle 'user'),
  *      avec 3 mois de budgets consécutifs, produits tunisiens réels et historique de prix.
  *    - Autres utilisateurs : Sami Trabelsi, Rania Gharbi, Youssef Mansour (compte suspendu pour démonstration).
  * 3. Produits tunisiens du quotidien avec magasins réels (Huile d'olive Châal, Lait Délice, Pâtes Warda, Thon Sicam chez Monoprix/Carrefour).
@@ -110,23 +110,23 @@ export async function buildSeed(): Promise<DB> {
     ...extra,
   });
 
-  // Profils de test essentiels pour la connexion
-  // 1. Profil Administrateur (admin@masrouf.tn / Admin2026)
-  const admin = await mk('u-admin', 'Administrator', 'admin@masrouf.tn', 'Admin2026', 'admin', true, {
+  // Profils de test essentiels pour la connexion au format strict Gmail (name@gmail.com)
+  // 1. Profil Administrateur (admin@gmail.com / Admin2026)
+  const admin = await mk('u-admin', 'Administrator', 'admin@gmail.com', 'Admin2026', 'admin', true, {
     onboarded: true,
   });
 
-  // 2. Profil Utilisateur Standard (user@masrouf.tn / Masrouf2026)
-  const user = await mk('u-user', 'Utilisateur Test', 'user@masrouf.tn', 'Masrouf2026', 'user', true, {
+  // 2. Profil Utilisateur Standard (user@gmail.com / Masrouf2026)
+  const user = await mk('u-user', 'Utilisateur Test', 'user@gmail.com', 'Masrouf2026', 'user', true, {
     onboarded: true,
     categoryIds: ['food', 'transport', 'bills', 'entertainment', 'savings'],
   });
 
-  // 3. Profil Utilisateur Ines Ben Ali (ines.benali@email.tn / Masrouf2026)
+  // 3. Profil Utilisateur Ines Ben Ali (ines.benali@gmail.com / Masrouf2026)
   const ines = await mk(
     'u-ines',
     'Ines Ben Ali',
-    'ines.benali@email.tn',
+    'ines.benali@gmail.com',
     'Masrouf2026',
     'user',
     true,
