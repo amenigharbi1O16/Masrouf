@@ -37,13 +37,16 @@ import {
   passwordChecks,
   randomTemporaryPassword,
 } from '@/utils/security';
-import { getLanguePreLogin } from '@/utils/i18n';
-import { todayISO, uid } from '@/utils/format';
+// Importation de la fonction de récupération de langue pré-connexion depuis le module dédié languageStorage (évite le cycle de dépendances)
+import { getLanguePreLogin } from '@/utils/languageStorage';
+import { getExactMonthBounds, todayISO, uid } from '@/utils/format';
 import { buildSeed } from './seed';
 import {
   evaluateBudgetAlerts,
   notifyBudgetChange,
   requestNotificationPermissions,
+  sendPhoneNotification,
+  syncPhoneBadgeCount,
 } from '@/utils/notifications';
 import {
   loadDBFromSQLite,
@@ -139,7 +142,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // Demande d'autorisations pour les notifications réelles dès le chargement
   useEffect(() => {
-    requestNotificationPermissions().catch(() => {});
+    requestNotificationPermissions().catch(() => { });
   }, []);
 
   // ------------------------------------------------------------
@@ -149,44 +152,136 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     let alive = true;
     (async () => {
       let loaded: DB | null = null;
-      let savedSessionId: string | null = null;
 
-      // 1. Tente de récupérer l'identifiant de la dernière session sauvegardée
-      try {
-        const raw = await AsyncStorage.getItem(KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed.sessionUserId) {
-            savedSessionId = String(parsed.sessionUserId);
-          }
-        }
-      } catch {}
-
-      // 2. Chargement prioritaire depuis la base SQLite locale
+      // 1. Chargement prioritaire depuis la base SQLite locale
       try {
         loaded = await loadDBFromSQLite();
-        if (loaded && savedSessionId) {
-          // Vérification de la présence de l'utilisateur dans la base rechargée
-          const exists = loaded.users.some((u) => u.id === savedSessionId);
-          if (exists) {
-            loaded.sessionUserId = savedSessionId;
-          }
-        }
       } catch (err) {
         console.warn('SQLite init/load warning:', err);
       }
 
-      // 3. Repli de secours sur AsyncStorage si la base SQLite est vide
-      if (!loaded || loaded.users.length === 0) {
-        try {
-          const raw = await AsyncStorage.getItem(KEY);
-          if (raw) loaded = JSON.parse(raw) as DB;
-        } catch { /* stockage corrompu -> amorçage par défaut */ }
-      }
+      let savedSessionUserId: string | null = null;
 
-      // 4. Amorçage de données de démonstration de secours si tout est vierge
+      // 2. Fusion avec AsyncStorage pour garantir que TOUTES les données (utilisateurs, budgets, produits, achats, dépenses, notifications) ne sont JAMAIS perdues
+      try {
+        const raw = await AsyncStorage.getItem(KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as DB;
+          if (parsed) {
+            if (parsed.sessionUserId) {
+              savedSessionUserId = parsed.sessionUserId;
+            }
+
+            if (!loaded || loaded.users.length === 0) {
+              loaded = parsed;
+            } else {
+              // A. Fusionner les comptes créés : si un compte existe dans AsyncStorage mais pas encore dans SQLite
+              if (Array.isArray(parsed.users)) {
+                for (const u of parsed.users) {
+                  const existingIdx = loaded.users.findIndex((existing) => existing.email.toLowerCase() === u.email.toLowerCase());
+                  if (existingIdx === -1) {
+                    loaded.users.push(u);
+                    try {
+                      sqliteAddUser(u);
+                    } catch { }
+                  } else {
+                    if (u.celebratedBudgetIds && u.celebratedBudgetIds.length > 0) {
+                      loaded.users[existingIdx].celebratedBudgetIds = u.celebratedBudgetIds;
+                    }
+                  }
+                }
+              }
+
+              // B. Fusionner les budgets : si un budget existe dans AsyncStorage mais pas encore dans SQLite
+              if (Array.isArray(parsed.budgets)) {
+                for (const b of parsed.budgets) {
+                  const { monthKey } = getExactMonthBounds(b.start);
+                  const exists = loaded.budgets.some(
+                    (x) => x.id === b.id || (x.userId === b.userId && x.start.slice(0, 7) === monthKey)
+                  );
+                  if (!exists) {
+                    loaded.budgets.push(b);
+                    try {
+                      sqliteSaveBudget(b);
+                    } catch { }
+                  }
+                }
+              }
+
+              // C. Fusionner les produits : si un produit existe dans AsyncStorage mais pas encore dans SQLite
+              if (Array.isArray(parsed.products)) {
+                for (const p of parsed.products) {
+                  const exists = loaded.products.some(
+                    (x) => x.id === p.id || (x.userId === p.userId && x.name.trim().toLowerCase() === p.name.trim().toLowerCase())
+                  );
+                  if (!exists) {
+                    loaded.products.push(p);
+                    try {
+                      sqliteAddProduct(p);
+                    } catch { }
+                  }
+                }
+              }
+
+              // D. Fusionner les achats : si un achat existe dans AsyncStorage mais pas encore dans SQLite
+              if (Array.isArray(parsed.purchases)) {
+                for (const pu of parsed.purchases) {
+                  const exists = loaded.purchases.some((x) => x.id === pu.id);
+                  if (!exists) {
+                    loaded.purchases.push(pu);
+                    try {
+                      sqliteAddPurchase(pu);
+                    } catch { }
+                  }
+                }
+              }
+
+              // E. Fusionner les dépenses : si une dépense existe dans AsyncStorage mais pas encore dans SQLite
+              if (Array.isArray(parsed.expenses)) {
+                for (const ex of parsed.expenses) {
+                  const exists = loaded.expenses.some((x) => x.id === ex.id);
+                  if (!exists) {
+                    loaded.expenses.push(ex);
+                    try {
+                      sqliteAddExpense(ex);
+                    } catch { }
+                  }
+                }
+              }
+
+              // F. Fusionner les notifications : si une notification existe dans AsyncStorage mais pas encore dans SQLite
+              if (Array.isArray(parsed.notifications)) {
+                for (const n of parsed.notifications) {
+                  const exists = loaded.notifications.some((x) => x.id === n.id);
+                  if (!exists) {
+                    loaded.notifications.push(n);
+                    try {
+                      sqliteSaveNotification(n);
+                    } catch { }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch { /* stockage corrompu -> amorçage par défaut */ }
+
+      // 3. Amorçage de données de démonstration de secours si tout est vierge
       if (!loaded || loaded.users.length === 0) {
         loaded = await buildSeed();
+      }
+
+      // 4. Maintien de session persistante au reload / restart de l'application :
+      // L'utilisateur connecté ne doit JAMAIS être déconnecté lors d'un reload ou redémarrage.
+      // Si une session active était sauvegardée (savedSessionUserId), on vérifie que le compte
+      // existe toujours dans loaded.users et est actif. Si oui, la session est immédiatement restaurée.
+      // La déconnexion ne se produit QUE si l'utilisateur clique explicitement sur "Se déconnecter" (actions.logout).
+      if (loaded) {
+        if (savedSessionUserId && loaded.users.some((u) => u.id === savedSessionUserId && u.active)) {
+          loaded.sessionUserId = savedSessionUserId;
+        } else {
+          loaded.sessionUserId = null;
+        }
       }
 
       if (alive) setDb(loaded);
@@ -200,7 +295,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // EFFET 2 : Miroir instantané vers AsyncStorage pour la fluidité
   // ------------------------------------------------------------
   useEffect(() => {
-    if (db) AsyncStorage.setItem(KEY, JSON.stringify(db)).catch(() => {});
+    if (db) AsyncStorage.setItem(KEY, JSON.stringify(db)).catch(() => { });
   }, [db]);
 
   // Fonction utilitaire de mise à jour fonctionnelle de l'état
@@ -245,15 +340,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const hashedTrim = await hashPassword(pwdTrim);
 
         // Détection des comptes de test officiels pour garantir une authentification sans accroc
-        const isTestAccount = ['admin@masrouf.tn', 'ines.benali@email.tn', 'user@masrouf.tn'].includes(emailNorm);
+        const isTestAccount = ['admin@gmail.com', 'ines.benali@gmail.com', 'user@gmail.com'].includes(emailNorm);
 
         // Vérification de concordance du mot de passe
         const isMatch =
           hashedInput === u.passwordHash ||
           hashedTrim === u.passwordHash ||
-          (emailNorm === 'admin@masrouf.tn' && (pwdTrim === 'Admin2026' || pwdTrim === 'admin123' || pwdTrim === 'admin' || pwdTrim === 'Masrouf2026')) ||
-          (emailNorm === 'user@masrouf.tn' && (pwdTrim === 'Masrouf2026' || pwdTrim === 'user123' || pwdTrim === 'user' || pwdTrim === 'Admin2026')) ||
-          (emailNorm === 'ines.benali@email.tn' && (pwdTrim === 'Masrouf2026' || pwdTrim === 'admin123' || pwdTrim === 'user123' || pwdTrim === '123456' || pwdTrim === 'Admin2026'));
+          (emailNorm === 'admin@gmail.com' && (pwdTrim === 'Admin2026' || pwdTrim === 'admin123' || pwdTrim === 'admin' || pwdTrim === 'Masrouf2026')) ||
+          (emailNorm === 'user@gmail.com' && (pwdTrim === 'Masrouf2026' || pwdTrim === 'user123' || pwdTrim === 'user' || pwdTrim === 'Admin2026')) ||
+          (emailNorm === 'ines.benali@gmail.com' && (pwdTrim === 'Masrouf2026' || pwdTrim === 'admin123' || pwdTrim === 'user123' || pwdTrim === '123456' || pwdTrim === 'Admin2026'));
 
         // Rejet si le mot de passe ne correspond à aucun format valide
         if (!isMatch) return { ok: false, error: 'Incorrect password. Please try again.' };
@@ -261,21 +356,32 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // Contrôle de l'activation du compte (les comptes de test sont toujours considérés actifs)
         if (!u.active && !isTestAccount) return { ok: false, error: 'This account is suspended. Contact an administrator.' };
 
+        // Si l'utilisateur a choisi une langue sur la page de connexion ou d'inscription,
+        // on l'applique et on la synchronise immédiatement avec son compte dans SQLite et le store
+        let selectedLang = (await getLanguePreLogin()) || u.langue || 'fr';
+        if (selectedLang !== 'fr' && selectedLang !== 'ar' && selectedLang !== 'en') {
+          selectedLang = 'fr';
+        }
+
         // Objet utilisateur validé et déverrouillé pour la session
         const activeUser: User = {
           ...u,
+          langue: selectedLang,
           active: true,
           mustChangePassword: isTestAccount ? false : u.mustChangePassword,
           onboarded: isTestAccount ? true : u.onboarded,
         };
 
+        // Sauvegarde de la préférence linguistique dans SQLite pour ce compte
+        try {
+          sqliteUpdateUser(u.id, { langue: selectedLang });
+        } catch { }
+
         // Mise à jour de l'identifiant de session dans le store global
         update((s) => ({
           ...s,
           sessionUserId: u.id,
-          users: isTestAccount
-            ? s.users.map((x) => (x.id === u.id ? activeUser : x))
-            : s.users,
+          users: s.users.map((x) => (x.id === u.id ? activeUser : x)),
         }));
 
         // Retour du succès avec le profil utilisateur pour permettre la redirection immédiate
@@ -287,7 +393,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const d = dbRef.current!;
         if (!d.settings.allowRegistration) return { ok: false, error: 'Registration is currently closed.' };
         if (!name.trim()) return { ok: false, error: 'Please enter your full name.' };
-        
+
         // Règle 1 : Seules les adresses Gmail valides sont acceptées
         if (!isValidGmail(email)) {
           return { ok: false, error: 'Only valid Gmail addresses (name@gmail.com) are allowed.' };
@@ -313,7 +419,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         let userLang: string = 'fr';
         try {
           userLang = (await getLanguePreLogin()) || 'fr';
-        } catch {}
+        } catch { }
 
         const user: User = {
           id: uid(),
@@ -352,6 +458,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }));
         adminNotifs.forEach((n) => sqliteSaveNotification(n));
 
+        // Envoi de la notification réelle sur le smartphone de l'administrateur (sonnerie, bannière flottante et badge +1)
+        if (adminNotifs.length > 0) {
+          sendPhoneNotification({
+            title: adminNotifs[0].title,
+            body: adminNotifs[0].body,
+            data: { type: 'user_registered', newUserId: savedUser.id, newUserEmail: savedUser.email },
+          }).catch(() => {});
+        }
+
         // Création de la notification de bienvenue pour le nouvel utilisateur
         const welcomeNotif: InAppNotification = {
           id: uid(),
@@ -368,6 +483,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           createdAt: new Date().toISOString(),
         };
         sqliteSaveNotification(welcomeNotif);
+
+        // Envoi de la notification réelle de bienvenue sur le smartphone du nouvel utilisateur (sonnerie, bannière et badge +1)
+        sendPhoneNotification({
+          title: welcomeNotif.title,
+          body: welcomeNotif.body,
+          data: { type: 'system', userId: savedUser.id },
+        }).catch(() => {});
 
         const newNotifs = [...adminNotifs, welcomeNotif];
 
@@ -395,8 +517,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const currentHash = await hashPassword(current);
         const isCurrentMatch =
           currentHash === u.passwordHash ||
-          (u.email === 'admin@masrouf.tn' && (current === 'Admin2026' || current === 'admin123')) ||
-          (u.email === 'user@masrouf.tn' && (current === 'Masrouf2026' || current === 'user123'));
+          (u.email === 'admin@gmail.com' && (current === 'Admin2026' || current === 'admin123')) ||
+          (u.email === 'user@gmail.com' && (current === 'Masrouf2026' || current === 'user123')) ||
+          (u.email === 'ines.benali@gmail.com' && (current === 'Masrouf2026' || current === '123456'));
 
         if (!isCurrentMatch) return { ok: false, error: 'The current password is incorrect.' };
 
@@ -439,37 +562,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const d = dbRef.current!;
         const currentUserId = meId();
 
-        // Contrôle d'unicité temporelle : recherche d'un budget préexistant sur cette période exacte
-        const existingSameDates = d.budgets.find(
-          (x) => x.userId === currentUserId && x.start === b.start && x.end === b.end
+        // 1. Normalisation stricte : premier jour exact (01) et dernier jour exact du mois civil
+        const { start: exactStart, end: exactEnd, monthKey } = getExactMonthBounds(b.start);
+
+        // 2. Règle absolue : UN SEUL budget par mois civil et par utilisateur
+        // Recherche de tout budget préexistant pour ce même mois ou ces mêmes dates ou cet ID
+        const existingForSameMonth = d.budgets.find(
+          (x) =>
+            x.userId === currentUserId &&
+            (x.id === b.id || x.start.slice(0, 7) === monthKey || (x.start === exactStart && x.end === exactEnd))
         );
 
-        // Si déjà existant, on réutilise son identifiant unique pour mise à jour sans doublon
-        const id = existingSameDates ? existingSameDates.id : (b.id ?? uid());
-        const isCreation = !existingSameDates && !b.id;
+        // Si déjà existant pour ce mois, on réutilise son identifiant pour mise à jour sans doublon
+        const idCandidate = existingForSameMonth ? existingForSameMonth.id : (b.id ?? uid());
+        const isCreation = !existingForSameMonth && !b.id;
 
-        const budget: Budget = {
-          id,
+        const budgetCandidate: Budget = {
+          id: idCandidate,
           userId: currentUserId,
-          start: b.start,
-          end: b.end,
+          start: exactStart,
+          end: exactEnd,
           total: b.total,
           allocations: b.allocations,
         };
 
-        sqliteSaveBudget(budget);
+        const savedBudgetId = sqliteSaveBudget(budgetCandidate);
+        const finalId = savedBudgetId || idCandidate;
+        const budget: Budget = { ...budgetCandidate, id: finalId };
+
         update((state) => {
-          const exists = state.budgets.some((x) => x.id === id);
+          // Filtrer les éventuels doublons pour ce mois afin de garantir l'unicité stricte
+          const otherBudgets = state.budgets.filter(
+            (x) => !(x.userId === currentUserId && (x.id === finalId || x.start.slice(0, 7) === monthKey))
+          );
           return {
             ...state,
-            budgets: exists
-              ? state.budgets.map((x) => (x.id === id ? budget : x))
-              : [...state.budgets, budget],
+            budgets: [budget, ...otherBudgets],
           };
         });
 
         // La période enregistrée devient immédiatement la référence centrale active pour tout Masrouf
-        setSelectedBudgetIdState(id);
+        setSelectedBudgetIdState(finalId);
 
         // Déclenchement de la notification réelle sur le smartphone
         try {
@@ -490,7 +623,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           console.warn('notifyBudgetChange warning:', err);
         }
 
-        return id;
+        return finalId;
       },
 
       // 9. Création ou déduplication d'un article dans le catalogue produit
@@ -534,16 +667,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           return existing.id;
         }
 
-        // Génération d'un identifiant unique si c'est un tout nouveau produit
-        const id = uid();
-        // Assemblage de l'objet produit
-        const product: Product = { ...p, id, userId: currentUserId, name: p.name.trim(), brand: p.brand.trim() };
-        // Insertion persistante dans SQLite
-        sqliteAddProduct(product);
+        // Génération d'un identifiant candidat si c'est un tout nouveau produit
+        const candidateId = uid();
+        // Assemblage de l'objet produit candidat
+        const productCandidate: Product = { ...p, id: candidateId, userId: currentUserId, name: p.name.trim(), brand: p.brand.trim() };
+        // Insertion persistante dans SQLite et récupération de la clé primaire SQLite
+        const insertedId = sqliteAddProduct(productCandidate);
+        const finalId = insertedId || candidateId;
+        const product: Product = { ...productCandidate, id: finalId };
         // Mise à jour de la liste des produits en mémoire
         update((state) => ({ ...state, products: [...state.products, product] }));
         // Retour du nouvel identifiant généré
-        return id;
+        return finalId;
       },
 
       // 10. Modification d'un produit existant
@@ -554,9 +689,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       // 11. Enregistrement d'un achat au détail avec magasin et prix unitaire
       addPurchase(p) {
-        const id = uid();
-        const purchase: Purchase = { ...p, id, userId: meId() };
-        sqliteAddPurchase(purchase);
+        const candidateId = uid();
+        const purchaseCandidate: Purchase = { ...p, id: candidateId, userId: meId() };
+        const insertedId = sqliteAddPurchase(purchaseCandidate);
+        const finalId = insertedId || candidateId;
+        const purchase: Purchase = { ...purchaseCandidate, id: finalId };
         update((d) => ({ ...d, purchases: [...d.purchases, purchase] }));
         // Évaluation automatique des seuils de notification (80%, 100%)
         setTimeout(() => {
@@ -593,7 +730,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             },
           });
         }, 50);
-        return id;
+        return finalId;
       },
 
       // 12. Modification d'un achat existant
@@ -604,9 +741,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       // 13. Enregistrement d'une dépense forfaitaire directe
       addExpense(e) {
-        const id = uid();
-        const expense: Expense = { ...e, id, userId: meId() };
-        sqliteAddExpense(expense);
+        const candidateId = uid();
+        const expenseCandidate: Expense = { ...e, id: candidateId, userId: meId() };
+        const insertedId = sqliteAddExpense(expenseCandidate);
+        const finalId = insertedId || candidateId;
+        const expense: Expense = { ...expenseCandidate, id: finalId };
         update((d) => ({ ...d, expenses: [...d.expenses, expense] }));
         // Évaluation automatique des seuils de notification (80%, 100%)
         setTimeout(() => {
@@ -643,7 +782,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             },
           });
         }, 50);
-        return id;
+        return finalId;
       },
 
       // 14. Modification d'une dépense directe
@@ -725,8 +864,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (d.categories.some((c) => c.name.toLowerCase() === n.toLowerCase())) {
           return { ok: false, error: 'This category already exists.' };
         }
-        const newCat: Category = { id: uid(), name: n, kind, active: true };
-        sqliteAddCategory(newCat);
+        const candidateId = uid();
+        const catCandidate: Category = { id: candidateId, name: n, kind, active: true };
+        const insertedId = sqliteAddCategory(catCandidate);
+        const finalId = insertedId || candidateId;
+        const newCat: Category = { ...catCandidate, id: finalId };
         update((s) => ({ ...s, categories: [...s.categories, newCat] }));
         return { ok: true };
       },
@@ -776,6 +918,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const unreadNotificationsCount = useMemo<number>(() => {
     return userNotifications.filter((n) => !n.isRead).length;
   }, [userNotifications]);
+
+  // Synchronisation dynamique de la pastille badge (+1 / nombre non lu) sur l'icône de l'appareil
+  useEffect(() => {
+    syncPhoneBadgeCount(unreadNotificationsCount);
+  }, [unreadNotificationsCount]);
 
   // Période centrale de référence calculée dynamiquement pour toute l'application
   const selectedBudget = useMemo<Budget | null>(() => {
