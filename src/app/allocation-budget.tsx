@@ -38,7 +38,7 @@ import { AlertBanner, Button, Eyebrow, Input } from '@/components/ui';
 // Magasin d'état global connecté à SQLite
 import { useStore } from '@/state/store';
 // Fonctions utilitaires de calcul et formatage monétaire tunisien (3 décimales)
-import { daysBetween, dt, fmtRange, money, toNum } from '@/utils/format';
+import { daysBetween, dt, fmtRange, getExactMonthBounds, money, toNum } from '@/utils/format';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
 
@@ -69,7 +69,12 @@ export default function AllocateBudgetScreen() {
   // Extraction des données de catalogue, du profil et des actions de sauvegarde
   const { db, me, actions } = useStore();
   // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, langue, traduireCategorie } = useTranslation();
+
+  // Bornes mensuelles exactes : 1er du mois au dernier jour réel du mois
+  const exactBounds = getExactMonthBounds(start);
+  const normalizedStart = exactBounds.start;
+  const normalizedEnd = exactBounds.end;
 
   // Conversion numérique du montant total saisi
   const totalN = toNum(total);
@@ -121,10 +126,10 @@ export default function AllocateBudgetScreen() {
     // Sécurité : bloque la validation si dépassement ou total nul/invalide
     if (over || !Number.isFinite(totalN) || totalN <= 0) return;
     
-    // Écriture atomique dans SQLite
+    // Écriture atomique dans SQLite avec bornes exactes de mois
     actions.saveBudget({
-      start,
-      end,
+      start: normalizedStart,
+      end: normalizedEnd,
       total: totalN,
       allocations: Object.fromEntries(
         Object.entries(nums).filter(([, v]) => v > 0)
@@ -141,7 +146,7 @@ export default function AllocateBudgetScreen() {
     <Screen title={t('repartir_le_budget')} back>
       {/* Surtitre affichant les dates exactes et le nombre de jours de la période */}
       <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {fmtRange(start, end)} · {daysBetween(start, end)}{' '}
+        {fmtRange(normalizedStart, normalizedEnd, langue)} · {daysBetween(normalizedStart, normalizedEnd)}{' '}
         {t('jours').toUpperCase()}
       </Eyebrow>
 
@@ -168,7 +173,7 @@ export default function AllocateBudgetScreen() {
       {cats.map((c) => (
         <Input
           key={c.id}
-          label={`${c.name} · DT`}
+          label={`${traduireCategorie(c.name)} · DT`}
           value={vals[c.id]}
           keyboardType="decimal-pad"
           onChangeText={(text) =>
