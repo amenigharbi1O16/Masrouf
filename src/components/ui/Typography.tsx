@@ -18,6 +18,7 @@ import React from 'react';
 import { StyleProp, Text, TextStyle } from 'react-native';
 // Constantes de thème
 import { colors } from '@/constants/theme';
+import { useTranslation } from '@/utils/i18n';
 
 /**
  * Propriétés standard pour les éléments typographiques.
@@ -30,45 +31,92 @@ type TypographyProps = {
 /**
  * Surtitre décoratif ou indicateur d'étape.
  */
-export const Eyebrow = ({ children, style }: TypographyProps) => (
-  <Text style={[{ fontSize: 14, lineHeight: 20, color: colors.muted }, style]}>
-    {children}
-  </Text>
-);
+export const Eyebrow = ({ children, style }: TypographyProps) => {
+  const { isRTL } = useTranslation();
+  return (
+    <Text
+      style={[
+        {
+          fontSize: 14,
+          lineHeight: 20,
+          color: colors.muted,
+          textAlign: isRTL ? 'right' : 'left',
+          writingDirection: isRTL ? 'rtl' : 'ltr',
+        },
+        style,
+      ]}
+    >
+      {children}
+    </Text>
+  );
+};
 
 /**
  * Titre de section standard d'écran.
  */
-export const SectionTitle = ({ children, style }: TypographyProps) => (
-  <Text
-    style={[
-      {
-        fontSize: 18,
-        lineHeight: 26,
-        fontWeight: '600',
-        color: colors.forest,
-      },
-      style,
-    ]}
-  >
-    {children}
-  </Text>
-);
+export const SectionTitle = ({ children, style }: TypographyProps) => {
+  const { isRTL } = useTranslation();
+  return (
+    <Text
+      style={[
+        {
+          fontSize: 18,
+          lineHeight: 26,
+          fontWeight: '600',
+          color: colors.forest,
+          textAlign: isRTL ? 'right' : 'left',
+          writingDirection: isRTL ? 'rtl' : 'ltr',
+        },
+        style,
+      ]}
+    >
+      {children}
+    </Text>
+  );
+};
 
 /**
  * Corps de texte pour paragraphes et descriptions.
  */
-export const Body = ({ children, style }: TypographyProps) => (
-  <Text style={[{ fontSize: 14, lineHeight: 20, color: colors.muted }, style]}>
-    {children}
-  </Text>
-);
+export const Body = ({ children, style }: TypographyProps) => {
+  const { isRTL } = useTranslation();
+  return (
+    <Text
+      style={[
+        {
+          fontSize: 14,
+          lineHeight: 20,
+          color: colors.muted,
+          textAlign: isRTL ? 'right' : 'left',
+          writingDirection: isRTL ? 'rtl' : 'ltr',
+        },
+        style,
+      ]}
+    >
+      {children}
+    </Text>
+  );
+};
 
 /**
  * Note explicative ou conseil discret de bas de formulaire.
  */
-export const Hint = ({ children, style }: TypographyProps) => (
-  <Text style={[{ fontSize: 12, lineHeight: 17, color: colors.muted }, style]}>
-    {children}
-  </Text>
-);
+export const Hint = ({ children, style }: TypographyProps) => {
+  const { isRTL } = useTranslation();
+  return (
+    <Text
+      style={[
+        {
+          fontSize: 12,
+          lineHeight: 17,
+          color: colors.muted,
+          textAlign: isRTL ? 'right' : 'left',
+          writingDirection: isRTL ? 'rtl' : 'ltr',
+        },
+        style,
+      ]}
+    >
+      {children}
+    </Text>
+  );
+};
