@@ -61,8 +61,8 @@ console.log('✓ Centre de notifications : icônes dédiées et bouton retour ad
 
 // 7. Simulation logique du Store : inscription, isolation et notifications
 const mockUsers = [
-  { id: '1', name: 'Admin', email: 'admin@masrouf.tn', role: 'admin', active: true },
-  { id: '2', name: 'Ines Ben Ali', email: 'ines.benali@email.tn', role: 'user', active: true }
+  { id: '1', name: 'Admin', email: 'admin@gmail.com', role: 'admin', active: true },
+  { id: '2', name: 'Ines Ben Ali', email: 'ines.benali@gmail.com', role: 'user', active: true }
 ];
 
 let mockNotifications = [];
