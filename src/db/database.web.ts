@@ -131,7 +131,7 @@ class WebDatabaseStore {
     {
       id: 1,
       name: 'Administrateur',
-      email: 'admin@masrouf.tn',
+      email: 'admin@gmail.com',
       password_hash: DEFAULT_ADMIN_HASH,
       salt: DEFAULT_SALT,
       role: 'admin',
@@ -146,7 +146,7 @@ class WebDatabaseStore {
     {
       id: 2,
       name: 'Ahmed Ben Ali',
-      email: 'user@masrouf.tn',
+      email: 'user@gmail.com',
       password_hash: DEFAULT_USER_HASH,
       salt: DEFAULT_SALT,
       role: 'user',
@@ -161,7 +161,7 @@ class WebDatabaseStore {
     {
       id: 3,
       name: 'Ines Ben Ali',
-      email: 'ines.benali@email.tn',
+      email: 'ines.benali@gmail.com',
       password_hash: DEFAULT_USER_HASH,
       salt: DEFAULT_SALT,
       role: 'user',
@@ -259,18 +259,18 @@ class WebDatabaseStore {
             this.user = parsed.user.map((u: any) => ({
               ...u,
               // Déverrouillage systématique des comptes de test pour le Web
-              is_active: ['admin@masrouf.tn', 'ines.benali@email.tn', 'user@masrouf.tn'].includes(String(u.email).toLowerCase()) ? 1 : (u.is_active ?? 1),
-              must_change_password: ['admin@masrouf.tn', 'ines.benali@email.tn', 'user@masrouf.tn'].includes(String(u.email).toLowerCase()) ? 0 : (u.must_change_password ?? 0),
+              is_active: ['admin@gmail.com', 'ines.benali@gmail.com', 'user@gmail.com'].includes(String(u.email).toLowerCase()) ? 1 : (u.is_active ?? 1),
+              must_change_password: ['admin@gmail.com', 'ines.benali@gmail.com', 'user@gmail.com'].includes(String(u.email).toLowerCase()) ? 0 : (u.must_change_password ?? 0),
               onboarding_done: u.onboarding_done ?? 1,
               hash_version: u.hash_version ?? 1,
             }));
 
             // Si Ines Ben Ali est absente de la sauvegarde Web locale, l'injecter
-            if (!this.user.some((u) => u.email.toLowerCase() === 'ines.benali@email.tn')) {
+            if (!this.user.some((u) => u.email.toLowerCase() === 'ines.benali@gmail.com')) {
               this.user.push({
                 id: 3,
                 name: 'Ines Ben Ali',
-                email: 'ines.benali@email.tn',
+                email: 'ines.benali@gmail.com',
                 password_hash: DEFAULT_USER_HASH,
                 salt: DEFAULT_SALT,
                 role: 'user',
@@ -694,16 +694,22 @@ export const db = {
 
     // BUDGET (Périodes personnalisées)
     if (s.includes('FROM BUDGET')) {
-      // Transformation des month_budget en budget de période pour le Web
-      return store.month_budget.map((mb) => ({
-        id: mb.id,
-        user_id: mb.user_id,
-        start_date: `${mb.month}-01`,
-        end_date: `${mb.month}-30`,
-        month: mb.month,
-        total: mb.total,
-        is_evaluated: mb.is_evaluated,
-      })) as unknown as T[];
+      // Transformation des month_budget en budget de période pour le Web avec bornes exactes
+      return store.month_budget.map((mb) => {
+        const parts = mb.month.split('-');
+        const y = parseInt(parts[0], 10) || 2026;
+        const m = parseInt(parts[1], 10) || 11;
+        const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+        return {
+          id: mb.id,
+          user_id: mb.user_id,
+          start_date: `${mb.month}-01`,
+          end_date: `${mb.month}-${String(lastDay).padStart(2, '0')}`,
+          month: mb.month,
+          total: mb.total,
+          is_evaluated: mb.is_evaluated,
+        };
+      }) as unknown as T[];
     }
 
     // CATEGORY_BUDGET (Enveloppes allouées)
