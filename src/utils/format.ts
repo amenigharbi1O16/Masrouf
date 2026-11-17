@@ -285,6 +285,35 @@ export function fmtRange(start: string, end: string, lang: 'fr' | 'ar' | 'en' = 
 export const unitPrice = (price: number, quantity: number) => (quantity > 0 ? price / quantity : 0);
 
 /**
+ * MISSION DE LA FONCTION : getExactMonthBounds
+ *   Calcule rigoureusement les dates exactes de début (AAAA-MM-01) et de fin (dernier jour réel du mois)
+ *   pour un mois ou une date ISO donnée.
+ *   Gère parfaitement février bissextile (29 jours), les mois de 30 jours et de 31 jours.
+ */
+export function getExactMonthBounds(dateOrMonthStr?: string): {
+  start: string;
+  end: string;
+  monthKey: string;
+  year: number;
+  month: number;
+  lastDay: number;
+} {
+  let clean = dateOrMonthStr ? String(dateOrMonthStr).trim() : '';
+  if (!clean || !/^\d{4}-\d{1,2}/.test(clean)) {
+    clean = todayISO();
+  }
+  const parts = clean.split('-');
+  const y = parseInt(parts[0], 10) || new Date().getFullYear();
+  const m = parseInt(parts[1], 10) || 1; // 1 à 12
+  const monthKey = `${y}-${pad(m)}`;
+  const start = `${monthKey}-01`;
+  // Dernier jour exact du mois en UTC
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const end = `${monthKey}-${pad(lastDay)}`;
+  return { start, end, monthKey, year: y, month: m, lastDay };
+}
+
+/**
  * Message d'accueil selon l'heure de la journée.
  */
 export function greeting(): string {
