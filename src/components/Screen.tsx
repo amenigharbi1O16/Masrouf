@@ -63,51 +63,54 @@ export function Screen({
   const { width } = useWindowDimensions();
   const { isRTL } = useTranslation();
 
-  // Padding horizontal adaptatif : 16px sur petits appareils, 24px sur téléphones standards
-  const pad = width < 360 ? 16 : 24;
+  // Padding horizontal adaptatif : 14px sur petits appareils (<360px), 18px sur téléphones standards (360-480px), 24px sur grands écrans/tablettes (>480px)
+  const pad = width < 360 ? 14 : width > 480 ? 24 : 18;
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* En-tête de page unifié */}
-        <View style={{ paddingHorizontal: pad, paddingTop: 4 }}>
-          <AppHeader title={title} back={back} onBack={onBack} plain={plain} />
-        </View>
+        <View style={styles.centerWrapper}>
+          {/* En-tête de page unifié */}
+          <View style={{ paddingHorizontal: pad, paddingTop: 4 }}>
+            <AppHeader title={title} back={back} onBack={onBack} plain={plain} />
+          </View>
 
-        {/* Zone de contenu principale défilable */}
-        <ScrollView
-          contentContainerStyle={{
-            paddingHorizontal: pad,
-            paddingTop: 14,
-            paddingBottom: fab ? 120 : 40,
-            gap: 14,
-          }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {children}
-        </ScrollView>
-
-        {/* Bouton d'action flottant FAB optionnel */}
-        {fab ? (
-          <Pressable
-            onPress={fab.onPress}
-            style={({ pressed }) => [
-              styles.fab,
-              {
-                [isRTL ? 'left' : 'right']: pad,
-                opacity: pressed ? 0.85 : 1,
-              },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={fab.label}
+          {/* Zone de contenu principale défilable */}
+          <ScrollView
+            contentContainerStyle={{
+              paddingHorizontal: pad,
+              paddingTop: 14,
+              paddingBottom: fab ? 120 : 40,
+              gap: 14,
+            }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.fabText}>{fab.label}</Text>
-          </Pressable>
-        ) : null}
+            {children}
+          </ScrollView>
+
+          {/* Bouton d'action flottant FAB optionnel */}
+          {fab ? (
+            <Pressable
+              onPress={fab.onPress}
+              style={({ pressed }) => [
+                styles.fab,
+                {
+                  [isRTL ? 'left' : 'right']: pad,
+                  maxWidth: width < 360 ? width - pad * 2 : 280,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={fab.label}
+            >
+              <Text style={styles.fabText} numberOfLines={1} adjustsFontSizeToFit>{fab.label}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -118,13 +121,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.warm,
   },
+  keyboardContainer: {
+    flex: 1,
+  },
+  centerWrapper: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
+  },
   fab: {
     position: 'absolute',
     bottom: 16,
-    height: 56,
-    minWidth: 190,
-    paddingHorizontal: 22,
-    borderRadius: 28,
+    height: 54,
+    minWidth: 160,
+    paddingHorizontal: 20,
+    borderRadius: 27,
     backgroundColor: colors.green,
     alignItems: 'center',
     justifyContent: 'center',
