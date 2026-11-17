@@ -19,7 +19,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 // Constantes de thème (couleurs écologiques)
 import { colors } from '@/constants/theme';
 // Hook d'authentification pour connaître le rôle de l'utilisateur
@@ -52,6 +52,8 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
   const { isAdmin } = useAuth();
   const { unreadNotificationsCount } = useStore();
   const { t, isRTL } = useTranslation();
+  const { width } = useWindowDimensions();
+  const isSmall = width < 360;
 
   /**
    * Action : retour en arrière ou retour à l'accueil si aucune route historique.
@@ -74,9 +76,7 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
       ]}
     >
       {/* 1. Bouton d'action gauche : Retour ou Burger Menu */}
-      {plain ? (
-        <View style={styles.slot} />
-      ) : (
+      {plain ? null : (
         <Pressable
           onPress={back ? goBack : open}
           hitSlop={12}
@@ -98,21 +98,25 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
         </Pressable>
       )}
 
-      {/* 2. Titre centré de l'écran */}
+      {/* 2. Titre centré ou aligné de l'écran avec adaptation dynamique de taille */}
       <Text
         style={[
           styles.title,
-          { textAlign: isRTL ? 'right' : 'left' },
+          {
+            fontSize: isSmall ? 18 : 22,
+            lineHeight: isSmall ? 26 : 32,
+            textAlign: isRTL ? 'right' : 'left',
+            writingDirection: isRTL ? 'rtl' : 'ltr',
+          },
         ]}
         numberOfLines={1}
+        adjustsFontSizeToFit
       >
         {title}
       </Text>
 
       {/* 3. Boutons d'action droits : Notifications et Profil */}
-      {plain ? (
-        <View style={styles.slot} />
-      ) : (
+      {plain ? null : (
         <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', gap: 6 }}>
           {/* Bouton cloche des notifications avec badge d'alertes non lues */}
           <Pressable
