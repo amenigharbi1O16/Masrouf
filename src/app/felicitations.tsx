@@ -63,7 +63,7 @@ export default function CongratulationsScreen() {
   // Extraction des données de la base, de l'utilisateur connecté et des actions
   const { db, me, actions } = useStore();
   // Fonctions de traduction, sens de lecture et traduction des niveaux
-  const { t, isRTL, traduireNiveau } = useTranslation();
+  const { t, isRTL, langue, traduireNiveau } = useTranslation();
 
   // Calcul du solde de points et de l'historique des périodes réussies depuis SQLite
   const pts = me ? pointsFor(db, me) : null;
@@ -117,7 +117,7 @@ export default function CongratulationsScreen() {
         {period ? (
           <Body style={{ textAlign: 'center' }}>
             {t('terminee_dans_le_budget')} (
-            {fmtRange(period.budget.start, period.budget.end)})
+            {fmtRange(period.budget.start, period.budget.end, langue)})
           </Body>
         ) : (
           <Body style={{ textAlign: 'center' }}>

@@ -76,7 +76,7 @@ export default function ConfirmationScreen() {
   // Extraction des données de la base et du profil utilisateur
   const { db, me } = useStore();
   // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, traduireCategorie } = useTranslation();
 
   // Recherche du budget actif de l'utilisateur connecté
   const budget = me ? currentBudget(db, me.id) : null;
@@ -143,13 +143,13 @@ export default function ConfirmationScreen() {
       {/* Ligne récapitulative affichant le nom du rayon de dépenses */}
       <InfoRow
         label={t('categorie')}
-        value={categoryName(db, categoryId)}
+        value={traduireCategorie(categoryName(db, categoryId))}
       />
 
       {/* Ligne de consommation budgétaire : verte si sous le plafond, rouge si dépassement */}
       {budget ? (
         <InfoRow
-          label={`${categoryName(db, categoryId)} (${t('budget')})`}
+          label={`${traduireCategorie(categoryName(db, categoryId))} (${t('budget')})`}
           value={`${short(spent)} / ${short(alloc)} DT`}
           tone={spent > alloc && alloc > 0 ? 'danger' : 'good'}
         />

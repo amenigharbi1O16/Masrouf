@@ -63,7 +63,7 @@ export default function EditProductScreen() {
   // Extraction des données de catalogue, du profil et des actions
   const { db, me, actions } = useStore();
   // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, traduireCategorie } = useTranslation();
 
   // Recherche du produit ciblé dans la table SQLite 'products'
   const product = db.products.find((p) => p.id === id);
@@ -199,7 +199,7 @@ export default function EditProductScreen() {
       <SelectField
         label={t('categorie_produit_label')}
         value={categoryId}
-        options={cats.map((c) => ({ value: c.id, label: c.name }))}
+        options={cats.map((c) => ({ value: c.id, label: traduireCategorie(c.name) }))}
         onChange={setCategoryId}
       />
 

@@ -154,6 +154,7 @@ export default function OnboardingScreen() {
               height: 248,
               padding: 24,
               justifyContent: 'space-between',
+              alignItems: isRTL ? 'flex-end' : 'flex-start',
             }}
           >
             {/* Icône de feuille menthe lumineuse */}
