@@ -43,34 +43,32 @@ import { useStore } from '../state/store';
 import { updateLangue } from '../db/queries';
 
 // ------------------------------------------------------------
-// TYPES ET DÉFINITIONS DES LANGUES
+// TYPES ET DÉFINITIONS DES LANGUES (RÉ-EXPORTÉS DEPUIS languageStorage POUR ÉVITER LE CYCLE)
 // ------------------------------------------------------------
-export type Langue = 'fr' | 'ar' | 'en';
+// Ré-exportation du type officiel de langue
+export type { Langue, LangueConfig } from './languageStorage';
+// Ré-exportation des constantes et fonctions partagées
+export {
+  LANGUES_DISPONIBLES,
+  PRE_LOGIN_LANG_KEY,
+  getLanguePreLogin,
+  setLanguePreLogin,
+  appliquerDirectionLangue,
+  getModuleLangue,
+  setModuleLangue,
+} from './languageStorage';
+// Importation locale des éléments nécessaires au fournisseur de traduction
+import {
+  Langue,
+  getLanguePreLogin,
+  setLanguePreLogin,
+  appliquerDirectionLangue,
+  getModuleLangue,
+  setModuleLangue,
+} from './languageStorage';
 
-export interface LangueConfig {
-  code: Langue;
-  nomNatif: string;
-  isRTL: boolean;
-}
-
-/**
- * Liste officielle des trois langues supportées par Masrouf, avec leur nom natif
- * et leur sens d'écriture (RTL ou LTR).
- */
-export const LANGUES_DISPONIBLES: LangueConfig[] = [
-  { code: 'fr', nomNatif: 'Français', isRTL: false },
-  { code: 'ar', nomNatif: 'العربية', isRTL: true },
-  { code: 'en', nomNatif: 'English', isRTL: false },
-];
-
-/** Clé de persistance pour sauvegarder la langue choisie avant toute inscription/connexion */
-const PRE_LOGIN_LANG_KEY = 'masrouf_langue_pre_login';
-
-/** Table de correspondance des ressources de traduction */
+// Table de correspondance des ressources de traduction
 const traductions: Record<Langue, Record<string, string>> = { fr, ar, en };
-
-/** Variable réactive au niveau module pour les appels hors arborescence React (tests, scripts) */
-let moduleLangue: Langue = 'fr';
 
 /**
  * Dictionnaire multilingue complet des catégories système.
@@ -173,59 +171,6 @@ export function translate(
   return texte;
 }
 
-/**
- * MISSION DE LA FONCTION : appliquerDirectionLangue
- *   Configure le sens d'affichage global du moteur React Native (LTR vs RTL) via I18nManager.
- */
-export function appliquerDirectionLangue(langue: Langue): void {
-  const isRTL = langue === 'ar';
-  try {
-    if (I18nManager.isRTL !== isRTL) {
-      I18nManager.allowRTL(isRTL);
-      I18nManager.forceRTL(isRTL);
-    }
-  } catch (e) {
-    console.warn('[i18n] Ajustement RTL non supporté sur cette plateforme :', e);
-  }
-}
-
-/**
- * MISSION DE LA FONCTION : getLanguePreLogin
- *   Récupère la préférence linguistique choisie par le visiteur avant qu'il ne soit connecté.
- */
-export async function getLanguePreLogin(): Promise<Langue> {
-  try {
-    let val: string | null = null;
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        val = window.localStorage.getItem(PRE_LOGIN_LANG_KEY);
-      }
-    } else {
-      val = await SecureStore.getItemAsync(PRE_LOGIN_LANG_KEY);
-    }
-    if (val === 'fr' || val === 'ar' || val === 'en') {
-      return val;
-    }
-  } catch { }
-  return 'fr';
-}
-
-/**
- * MISSION DE LA FONCTION : setLanguePreLogin
- *   Sauvegarde durablement la langue choisie dans le coffre sécurisé de l'appareil.
- */
-export async function setLanguePreLogin(langue: Langue): Promise<void> {
-  try {
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(PRE_LOGIN_LANG_KEY, langue);
-      }
-    } else {
-      await SecureStore.setItemAsync(PRE_LOGIN_LANG_KEY, langue);
-    }
-  } catch { }
-}
-
 // ------------------------------------------------------------
 // CONTEXTE ET FOURNISSEUR GLOBAL DE LANGUE (REACT CONTEXT)
 // ------------------------------------------------------------
@@ -254,7 +199,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     if (me?.langue && (me.langue === 'fr' || me.langue === 'ar' || me.langue === 'en')) {
       return me.langue;
     }
-    return moduleLangue;
+    return getModuleLangue();
   });
 
   // 1. Initialisation réactive au montage
@@ -265,7 +210,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       if (me?.langue && (me.langue === 'fr' || me.langue === 'ar' || me.langue === 'en')) {
         if (active) {
           setLangueState(me.langue);
-          moduleLangue = me.langue;
+          setModuleLangue(me.langue);
           appliquerDirectionLangue(me.langue);
         }
         return;
@@ -274,7 +219,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       const saved = await getLanguePreLogin();
       if (active && saved) {
         setLangueState(saved);
-        moduleLangue = saved;
+        setModuleLangue(saved);
         appliquerDirectionLangue(saved);
       }
     })();
@@ -288,7 +233,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     if (me?.langue && (me.langue === 'fr' || me.langue === 'ar' || me.langue === 'en')) {
       if (me.langue !== langue) {
         setLangueState(me.langue);
-        moduleLangue = me.langue;
+        setModuleLangue(me.langue);
         appliquerDirectionLangue(me.langue);
       }
     }
@@ -298,7 +243,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const changerLangue = useCallback(
     async (nouvelleLangue: Langue) => {
       // Étape 1 : Mise à jour synchrone de l'état React global -> tous les écrans se re-rendent directement
-      moduleLangue = nouvelleLangue;
+      setModuleLangue(nouvelleLangue);
       setLangueState(nouvelleLangue);
 
       // Étape 2 : Application du sens de lecture
@@ -351,17 +296,18 @@ export function useTranslation(): LanguageContextType {
     return ctx;
   }
   // Repli sécurisé pour exécution hors LanguageProvider (ex: tests automatisés)
-  const isRTL = moduleLangue === 'ar';
+  const fallbackLangue = getModuleLangue();
+  const isRTL = fallbackLangue === 'ar';
   return {
-    langue: moduleLangue,
+    langue: fallbackLangue,
     isRTL,
     changerLangue: async (nouvelleLangue: Langue) => {
-      moduleLangue = nouvelleLangue;
+      setModuleLangue(nouvelleLangue);
       appliquerDirectionLangue(nouvelleLangue);
       await setLanguePreLogin(nouvelleLangue);
     },
-    t: (cle: string, params?: Record<string, string | number>) => translate(cle, moduleLangue, params),
-    traduireCategorie: (nom: string) => traduireNomCategorie(nom, moduleLangue),
-    traduireNiveau: (niveau: string) => traduireNiveau(niveau, moduleLangue),
+    t: (cle: string, params?: Record<string, string | number>) => translate(cle, getModuleLangue(), params),
+    traduireCategorie: (nom: string) => traduireNomCategorie(nom, getModuleLangue()),
+    traduireNiveau: (niveau: string) => traduireNiveau(niveau, getModuleLangue()),
   };
 }
