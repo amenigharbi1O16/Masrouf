@@ -66,6 +66,42 @@ export function CategoryPicker({ categories, selected, onToggle }: CategoryPicke
   return (
     // Conteneur global avec espacement de 20px entre les deux grands rayons
     <View style={{ gap: 20 }}>
+      {/* =========================================================================
+          COMPTEUR DYNAMIQUE DE CATÉGORIES SÉLECTIONNÉES
+          - Initialisé à 0 à la découverte
+          - S'incrémente automatiquement (+1) quand une catégorie est cochée
+          - Se décrémente automatiquement (-1) quand une catégorie est décochée
+          - Reflète la sélection réelle sans aucune valeur codée en dur
+          ========================================================================= */}
+      <View
+        style={[
+          styles.counterBanner,
+          { flexDirection: isRTL ? 'row-reverse' : 'row' },
+        ]}
+      >
+        <View
+          style={[
+            styles.counterBadge,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          {/* Icône de case à cocher vectorielle évolutive */}
+          <Ionicons
+            name={selected.length > 0 ? 'checkbox-outline' : 'square-outline'}
+            size={20}
+            color={colors.forest}
+          />
+          {/* Libellé textuel traduit selon la langue active (FR: Catégories sélectionnées, AR: الفئات المحددة, EN: Selected categories) */}
+          <Text style={[styles.counterLabel, { textAlign: isRTL ? 'right' : 'left' }]}>
+            {t('categories_selectionnees')} :
+          </Text>
+          {/* Pastille numérique affichant le décompte exact et réactif */}
+          <View style={styles.counterPill}>
+            <Text style={styles.counterNumber}>{selected.length}</Text>
+          </View>
+        </View>
+      </View>
+
       {groups.map(([title, list]) => (
         <View key={title} style={{ gap: 4 }}>
           {/* Titre de section stylisé en vert forêt (Produits d'épicerie ou Dépenses fixes) */}
@@ -161,6 +197,46 @@ const styles = StyleSheet.create({
     color: colors.forest,
     marginTop: 12,
     marginBottom: 6,
+  },
+  // Conteneur centré du compteur dynamique de catégories sélectionnées
+  counterBanner: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: 4,
+  },
+  // Badge visuel du compteur avec bordure douce et fond vert menthe translucide
+  counterBadge: {
+    backgroundColor: 'rgba(28, 81, 67, 0.08)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(28, 81, 67, 0.16)',
+  },
+  // Libellé textuel du compteur
+  counterLabel: {
+    fontSize: 14.5,
+    fontWeight: '600',
+    color: colors.forest,
+  },
+  // Pastille ronde vert forêt pour le chiffre dynamique
+  counterPill: {
+    backgroundColor: colors.forest,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    minWidth: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Chiffre dynamique en lettres blanches très lisibles
+  counterNumber: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.white,
   },
   // Ligne de catégorie : hauteur confortable au toucher (46px minimum) avec séparateur visuel naturel
   row: {
