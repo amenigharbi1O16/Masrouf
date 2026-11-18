@@ -64,10 +64,13 @@ export default function PurchaseHistoryScreen() {
   const router = useRouter();
   // Extraction de l'ID du produit depuis les paramètres d'URL
   const { id } = useLocalSearchParams<{ id: string }>();
-  // Extraction des données SQLite
-  const { db } = useStore();
+  // Extraction des données SQLite et de la période active
+  const { db, selectedBudget } = useStore();
   // Fonctions de traduction et sens de lecture
   const { t, isRTL, langue } = useTranslation();
+
+  // Vérification de la présence d'une période sélectionnée avec budget alloué
+  const hasBudget = Boolean(selectedBudget && Number(selectedBudget.total) > 0);
 
   // Recherche de l'article dans la base SQLite
   const product = db.products.find((p) => p.id === id);
@@ -152,12 +155,17 @@ export default function PurchaseHistoryScreen() {
         <EmptyState
           icon="receipt-outline"
           title={t('aucun_achat_enregistre')}
-          actionLabel={t('ajouter_un_achat')}
+          detail={hasBudget ? undefined : t('selectionner_periode_et_budget_detail')}
+          actionLabel={hasBudget ? t('ajouter_un_achat') : t('definir_periode_budget')}
           onAction={() =>
-            router.push({
-              pathname: '/nouvel-achat',
-              params: { productId: product.id },
-            } as never)
+            router.push(
+              hasBudget
+                ? ({
+                    pathname: '/nouvel-achat',
+                    params: { productId: product.id },
+                  } as never)
+                : '/budget-mois'
+            )
           }
         />
       ) : (
