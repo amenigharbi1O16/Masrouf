@@ -52,11 +52,13 @@ export function AppDrawer() {
       href: '/(tabs)/analyses',
     },
     {
+      // Destination vers la page des points et récompenses
       label: t('points'),
       icon: 'trophy-outline',
       href: '/points',
     },
     {
+      // Destination vers la page des réglages (le manuel d'utilisation PDF y est exclusivement accessible)
       label: t('reglages'),
       icon: 'settings-outline',
       href: '/(tabs)/reglages',
