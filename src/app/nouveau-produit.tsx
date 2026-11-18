@@ -110,6 +110,9 @@ export default function AddProductScreen() {
   // Message d'erreur de validation éventuel
   const [error, setError] = useState('');
 
+  // Vérification stricte : une période doit être sélectionnée et un budget doit lui être alloué
+  const hasBudget = Boolean(selectedBudget && Number(selectedBudget.total) > 0);
+
   // Détection si la date choisie est en dehors de la période budgétaire sélectionnée
   const isOutsidePeriod = !!selectedBudget && !!date && (date < selectedBudget.start || date > selectedBudget.end);
   const targetCorrectionDate = selectedBudget
@@ -125,6 +128,9 @@ export default function AddProductScreen() {
    *   Affiche une bannière rouge en cas de champ incomplet ou bascule vers la fiche produit créée.
    */
   const save = () => {
+    // Blocage strict : création interdite sans période sélectionnée et budget alloué
+    if (!hasBudget) return setError(t('selectionner_periode_et_budget_dabord'));
+
     // Conversion numérique du prix
     const p = toNum(price);
     // Conversion numérique de la quantité
@@ -184,6 +190,22 @@ export default function AddProductScreen() {
       >
         {t('un_nouveau_produit_suivre')}
       </Text>
+
+      {/* Message explicatif clair si aucune période n'est sélectionnée ou aucun budget alloué */}
+      {!hasBudget && (
+        <View style={{ gap: 8, marginVertical: 6 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('selectionner_periode_et_budget_dabord')}
+            detail={t('selectionner_periode_et_budget_detail')}
+          />
+          <Button
+            label={t('definir_periode_budget')}
+            variant="secondary"
+            onPress={() => router.push('/budget-mois')}
+          />
+        </View>
+      )}
 
       {/* Bannière d'alerte rouge affichée si une erreur survient */}
       {error ? (
@@ -341,10 +363,11 @@ export default function AddProductScreen() {
         {t('categories_produits_liste_aide')}
       </Text>
 
-      {/* Bouton d'action primaire : Enregistrer le produit et l'achat */}
+      {/* Bouton d'action primaire : Enregistrer le produit et l'achat (désactivé si aucune période/budget) */}
       <Button
         label={t('enregistrer_produit_et_achat')}
         onPress={save}
+        disabled={!hasBudget}
       />
 
       {/* Bouton d'action secondaire : Annuler */}
