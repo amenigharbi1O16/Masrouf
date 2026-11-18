@@ -50,9 +50,6 @@ import { useTranslation } from '@/utils/i18n';
 // Résolveur d'icône représentative par catégorie
 import { getCategoryIcon } from '@/utils/categoryIcons';
 
-// Liste des identifiants de catégories cochées par défaut à la première ouverture pour faciliter la prise en main
-const DEFAULTS = ['food', 'transport', 'bills', 'entertainment', 'savings'];
-
 /**
  * MISSION DU COMPOSANT :
  * Orchestrer le déroulement des 3 étapes de l'assistant d'accueil (Onboarding).
@@ -73,8 +70,9 @@ export default function OnboardingScreen() {
 
   // État local : numéro de l'étape en cours (1: Découverte, 2: Sélection, 3: Récapitulatif)
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  // État local : tableau des catégories sélectionnées (initialisé avec les valeurs par défaut tunisiennes)
-  const [selected, setSelected] = useState<string[]>(DEFAULTS);
+  // État local : tableau des catégories sélectionnées
+  // Initialisé strictement à 0 (tableau vide []), puis s'incrémente ou se décrémente dynamiquement sans valeur codée en dur
+  const [selected, setSelected] = useState<string[]>([]);
 
   /**
    * MISSION DE LA FONCTION :
