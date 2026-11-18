@@ -31,7 +31,9 @@ import { useTranslation } from '@/utils/i18n';
  * Propriétés du composant PriceIndicator.
  */
 interface Props {
+  // Objet de variation de prix contenant la différence absolue, le pourcentage et la direction
   change: PriceChange | null;
+  // Libellé de l'unité physique (ex: "kg", "L", "pièce")
   unitLabel: string;
 }
 
@@ -39,11 +41,13 @@ interface Props {
  * Indicateur visuel d'évolution de prix unitaire.
  */
 export function PriceIndicator({ change, unitLabel }: Props) {
+  // Hook d'internationalisation pour adapter l'orientation en mode RTL (arabe)
   const { t, isRTL } = useTranslation();
 
-  // Cas du premier achat : aucune base de comparaison antérieure
+  // Cas du premier achat : aucune base de comparaison antérieure disponible dans l'historique
   if (!change) {
     return (
+      // Pastille vert menthe douce avec icône étincelles sparkles
       <View
         style={[
           styles.box,
@@ -53,7 +57,9 @@ export function PriceIndicator({ change, unitLabel }: Props) {
           },
         ]}
       >
+        {/* Icône étincelles en vert émeraude */}
         <Ionicons name="sparkles" size={20} color={colors.green} />
+        {/* Message d'information indiquant qu'il s'agit du premier relevé de prix */}
         <Text
           style={[
             styles.text,
@@ -66,20 +72,23 @@ export function PriceIndicator({ change, unitLabel }: Props) {
     );
   }
 
-  // Configuration visuelle selon la direction (baisse, hausse, égalité)
+  // Configuration visuelle selon la direction (baisse = vert, hausse = corail, égalité = or)
   const cfg = {
+    // Cas de baisse de prix : vert menthe apaisant avec flèche vers le bas
     down: {
       bg: colors.mint,
       fg: colors.green,
       icon: 'trending-down' as const,
       label: t('moins_cher_que_precedent'),
     },
+    // Cas de hausse de prix : rose corail doux avec flèche vers le haut
     up: {
       bg: colors.coralSoft,
       fg: '#9B3B35',
       icon: 'trending-up' as const,
       label: t('plus_cher_que_precedent'),
     },
+    // Cas de prix strictement identique : fond doré avec tiret horizontal
     same: {
       bg: colors.goldSoft,
       fg: '#8A5A12',
@@ -88,9 +97,11 @@ export function PriceIndicator({ change, unitLabel }: Props) {
     },
   }[change.direction];
 
+  // Détermination du signe arithmétique (+ pour hausse, − pour baisse, neutre pour égalité)
   const sign = change.diff > 0 ? '+' : change.diff < 0 ? '−' : '';
 
   return (
+    // Boîte stylisée avec fond dynamique selon l'évolution du prix
     <View
       style={[
         styles.box,
@@ -100,8 +111,11 @@ export function PriceIndicator({ change, unitLabel }: Props) {
         },
       ]}
     >
+      {/* Icône vectorielle dynamique (flèche montante, descendante ou tiret) */}
       <Ionicons name={cfg.icon} size={22} color={cfg.fg} />
+      {/* Conteneur des deux lignes de texte informatif */}
       <View style={{ flex: 1 }}>
+        {/* Ligne 1 : Intitulé de la variation (ex: "Moins cher que la dernière fois") */}
         <Text
           style={[
             styles.text,
@@ -114,6 +128,7 @@ export function PriceIndicator({ change, unitLabel }: Props) {
         >
           {cfg.label}
         </Text>
+        {/* Ligne 2 : Détail chiffré de l'écart unitaire en DT et variation en pourcentage */}
         <Text
           style={[
             styles.text,
@@ -133,15 +148,24 @@ export function PriceIndicator({ change, unitLabel }: Props) {
   );
 }
 
+/** Styles graphiques de l'indicateur de prix */
 const styles = StyleSheet.create({
+  // Boîte avec alignement centré, coins arrondis de 16px et padding confortable de 14px
   box: {
+    // Alignement vertical centré de l'icône et des textes
     alignItems: 'center',
+    // Espacement horizontal régulier entre l'icône et le texte
     gap: 10,
+    // Rembourrage interne homogène de 14px
     padding: 14,
+    // Coins arrondis assortis aux cartes de l'application (16px)
     borderRadius: radius.card,
   },
+  // Typographie standardisée avec interlignage équilibré
   text: {
+    // Taille de police lisible de 14px
     fontSize: 14,
+    // Hauteur de ligne proportionnelle
     lineHeight: 20,
   },
 });
