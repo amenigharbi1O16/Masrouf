@@ -28,7 +28,7 @@ import { ProductCard } from '@/components/Cards';
 // Conteneur d'écran avec tiroir latéral et marges de sécurité
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
-import { Button, EmptyState, Eyebrow, Hint, Input } from '@/components/ui';
+import { AlertBanner, Button, EmptyState, Eyebrow, Hint, Input } from '@/components/ui';
 // Constantes de thème officielles
 import { colors, radius } from '@/constants/theme';
 // Sélecteurs de calcul financier SQLite (nom de catégorie, achats associés, unité de mesure)
@@ -58,6 +58,9 @@ export default function ProductsScreen() {
   const { db, me, selectedBudget } = useStore();
   // Fonctions de traduction et sens d'écriture RTL
   const { t, isRTL, langue, traduireCategorie } = useTranslation();
+
+  // Vérification de la présence d'une période sélectionnée avec budget alloué
+  const hasBudget = Boolean(selectedBudget && Number(selectedBudget.total) > 0);
 
   // État local de la chaîne de recherche textuelle
   const [q, setQ] = useState('');
@@ -174,6 +177,22 @@ export default function ProductsScreen() {
         </View>
       )}
 
+      {/* Message explicatif clair si aucune période n'est sélectionnée ou aucun budget alloué */}
+      {!hasBudget && (
+        <View style={{ gap: 8, marginVertical: 6 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('selectionner_periode_et_budget_dabord')}
+            detail={t('selectionner_periode_et_budget_detail')}
+          />
+          <Button
+            label={t('definir_periode_budget')}
+            variant="secondary"
+            onPress={() => router.push('/budget-mois')}
+          />
+        </View>
+      )}
+
       {/* Surtitre : VOS ESSENTIELS DU QUOTIDIEN */}
       <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
         {t('vos_essentiels_du_quotidien')}
@@ -267,9 +286,9 @@ export default function ProductsScreen() {
         <EmptyState
           icon="bag-outline"
           title={t('aucun_produit_enregistre')}
-          detail={t('produits_suivi_detail')}
-          actionLabel={t('ajouter_produit_achete')}
-          onAction={() => router.push('/nouveau-produit')}
+          detail={hasBudget ? t('produits_suivi_detail') : t('selectionner_periode_et_budget_detail')}
+          actionLabel={hasBudget ? t('ajouter_produit_achete') : t('definir_periode_budget')}
+          onAction={() => router.push(hasBudget ? '/nouveau-produit' : '/budget-mois')}
         />
       ) : list.length === 0 ? (
         // État vide si la recherche textuelle ne donne aucun résultat
@@ -307,13 +326,20 @@ export default function ProductsScreen() {
         {t('categories_produits_seules')}
       </Hint>
 
-      {/* Bouton d'action principal vert sombre : Ajouter un produit (affiché uniquement lorsqu'il y a déjà des produits dans le catalogue) */}
+      {/* Bouton d'action principal vert sombre : Ajouter un produit (bloqué si aucune période et budget alloué) */}
       {mine.length > 0 && (
         <Button
           // Libellé avec un seul signe plus et nom traduit
           label={`＋ ${t('ajouter_produit')}`}
-          // Redirection vers le formulaire d'ajout
-          onPress={() => router.push('/nouveau-produit')}
+          // Redirection vers le formulaire d'ajout avec protection
+          onPress={() => {
+            if (!hasBudget) {
+              router.push('/budget-mois');
+              return;
+            }
+            router.push('/nouveau-produit');
+          }}
+          disabled={!hasBudget}
         />
       )}
 

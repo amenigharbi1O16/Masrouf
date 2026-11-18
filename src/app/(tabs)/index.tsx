@@ -69,22 +69,29 @@ export default function HomeScreen() {
     }
   }, [reward?.budget.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Si l'utilisateur n'est pas encore chargé depuis la mémoire, affichage du sablier animé
-  if (!me) return <LoadingScreen />;
-
-  // Récupération des 4 transactions les plus récentes rattachées à la période centrale sélectionnée
+  // Récupération sécurisée des 4 transactions les plus récentes rattachées à la période centrale sélectionnée
   const txns = useMemo(() => {
+    // Si aucun profil connecté n'est chargé, liste vide par précaution
     if (!me) return [];
+    // Récupération de l'ensemble des transactions de l'utilisateur
     const all = userTxns(db, me.id);
+    // Si aucun budget n'est actif, retourne les 4 premières transactions
     if (!budget) return all.slice(0, 4);
-    return all.filter((t) => t.date >= budget.start && t.date <= budget.end).slice(0, 4);
+    // Filtrage rigoureux sur l'intervalle de dates du budget avec vérification d'existence
+    return all
+      .filter((t) => Boolean(t && t.date && t.date >= budget.start && t.date <= budget.end))
+      .slice(0, 4);
   }, [db, me, budget]);
 
-  // Filtrage des catégories associées au budget ayant soit une allocation, soit des dépenses enregistrées
+  // Si l'utilisateur n'est pas encore chargé depuis la mémoire, affichage du sablier animé (placé strictement après tous les hooks)
+  if (!me) return <LoadingScreen />;
+
+  // Vérification de la présence d'une période sélectionnée avec un budget alloué
+  const hasBudget = Boolean(budget && Number(budget.total) > 0);
+
+  // Filtrage des catégories associées au budget ayant une allocation définie
   const allocCats = budget
-    ? Object.keys(budget.allocations).filter(
-        (id) => (budget.allocations[id] ?? 0) > 0 || (sum?.byCat[id] ?? 0) > 0
-      )
+    ? Object.keys(budget.allocations).filter((id) => (budget.allocations[id] ?? 0) > 0)
     : [];
 
   // Découpage pour afficher soit les 2 premières catégories, soit l'ensemble si "Voir plus" est cliqué
@@ -98,8 +105,15 @@ export default function HomeScreen() {
     <Screen
       // Titre en haut de page avec salutation selon l'heure et prénom de l'utilisateur
       title={`${t('bonjour')}, ${me.name.split(' ')[0]}`}
-      // Bouton flottant d'action principale (+ Ajouter un achat) ouvrant le formulaire complet
-      fab={{ label: `＋ ${t('ajouter_un_achat')}`, onPress: () => router.push('/nouveau-produit') }}
+      // Bouton flottant d'action principale (+ Ajouter un achat) actif uniquement si une période et un budget sont alloués
+      fab={
+        hasBudget
+          ? {
+              label: `＋ ${t('ajouter_un_achat')}`,
+              onPress: () => router.push('/nouveau-produit'),
+            }
+          : undefined
+      }
     >
       {budget && sum && d ? (
         <>
@@ -143,7 +157,7 @@ export default function HomeScreen() {
             <AlertBanner
               tone="success"
               title={t('budget_se_porte_bien')}
-              detail={`${money(sum.left)} restants pour cette période.`}
+              detail={t('budget_se_porte_bien_detail', { montant: money(sum.left) })}
             />
           )}
 
@@ -152,7 +166,7 @@ export default function HomeScreen() {
             <AlertBanner
               tone="warning"
               title={t('budget_alerte_80')}
-              detail={`${money(sum.left)} restants — ralentissez sur les dépenses non essentielles.`}
+              detail={t('budget_alerte_80_detail', { montant: money(sum.left) })}
             />
           )}
 
@@ -161,7 +175,7 @@ export default function HomeScreen() {
             <AlertBanner
               tone="danger"
               title={t('budget_depasse')}
-              detail={`Dépassement de ${money(sum.over)} par rapport à votre prévision.`}
+              detail={t('budget_depasse_detail', { montant: money(sum.over) })}
             />
           )}
 
@@ -180,18 +194,17 @@ export default function HomeScreen() {
             const catIcon = getCategoryIcon(rawCatName);
 
             return (
-              // Carte de catégorie avec son icône propre
+              // Carte de catégorie affichant uniquement son nom et son budget alloué
               <CategoryCard
                 key={id}
                 name={translatedCatName}
                 icon={catIcon}
-                spent={sum.byCat[id] ?? 0}
                 allocation={budget.allocations[id] ?? 0}
               />
             );
           })}
 
-          {/* Ligne récapitulative des autres catégories lorsque la liste est repliée */}
+          {/* Ligne récapitulative des autres catégories lorsque la liste est repliée (montre uniquement le budget alloué) */}
           {!expanded && rest.length > 0 && (
             <Pressable
               onPress={() => setExpanded(true)}
@@ -214,7 +227,7 @@ export default function HomeScreen() {
                 {rest.map((id) => traduireCategorie(categoryName(db, id))).join(' · ')}
               </Text>
               <Text style={{ fontSize: 13, fontWeight: '600', color: colors.forest }}>
-                {short(restSpent)} / {short(restAlloc)} DT
+                {short(restAlloc)} DT
               </Text>
             </Pressable>
           )}
@@ -241,7 +254,7 @@ export default function HomeScreen() {
           <EmptyState
             icon="wallet-outline"
             title={t('donner_direction_dinar')}
-            detail="Aucun budget actif aujourd'hui. Créez-en un pour toute période de votre choix."
+            detail={t('aucun_budget_actif_detail')}
             actionLabel={t('creer_budget')}
             onAction={() => router.push('/budget-mois')}
           />
@@ -254,53 +267,62 @@ export default function HomeScreen() {
       </SectionTitle>
 
       {/* Affichage des transactions récentes ou état vide si aucune opération n'a encore été saisie */}
-      {txns.length === 0 ? (
+      {(!txns || txns.length === 0) ? (
+        // Composant d'état vide invitant l'utilisateur à créer sa première dépense
         <EmptyState
           icon="receipt-outline"
-          title="Aucune transaction enregistrée"
-          detail="Ajoutez votre premier achat ou dépense pour la voir apparaître ici."
+          title={t('aucune_transaction_enregistree')}
+          detail={t('premiere_transaction_detail')}
         />
       ) : (
-        // Parcours et affichage sécurisé de chaque transaction récente
-        txns.filter(Boolean).map((tItem) => {
-          // Date sécurisée de l'opération
-          const safeDate = tItem.date || '';
-          // Détails textuels (magasin ou note)
-          const safeDetail = tItem.detail || '';
-          // Titre descriptif
-          const safeTitle = tItem.title || 'Transaction';
-          // Montant numérique garanti
-          const safeAmount = Number(tItem.amount) || 0;
-          // Libellé de date localisé (ex: "12 nov. 2026")
-          const formattedDate = safeDate ? fmtDateLocale(safeDate, langue) : '';
-          // Concaténation élégante du magasin et de la date
-          const fullDetail = [safeDetail, formattedDate].filter(Boolean).join(' · ');
+        // Parcours et affichage sécurisé de chaque transaction récente filtrée
+        txns
+          .filter((item): item is typeof item & { id: string } => Boolean(item && typeof item === 'object' && item.id))
+          .map((tItem, index) => {
+            // Date sécurisée de l'opération
+            const safeDate = tItem.date || '';
+            // Détails textuels (magasin ou note)
+            const safeDetail = tItem.detail || '';
+            // Titre descriptif
+            const safeTitle = tItem.title || 'Transaction';
+            // Montant numérique garanti
+            const safeAmount = Number(tItem.amount) || 0;
+            // Libellé de date localisé (ex: "12 nov. 2026")
+            const formattedDate = safeDate ? fmtDateLocale(safeDate, langue) : '';
+            // Concaténation élégante du magasin et de la date
+            const fullDetail = [safeDetail, formattedDate].filter(Boolean).join(' · ');
+            // Clé React garantie unique combinant le type, l'identifiant et l'index (évite toute collision)
+            const uniqueKey = `${tItem.kind || 'txn'}-${tItem.id}-${index}`;
 
-          return tItem.kind === 'purchase' ? (
-            // Ligne de transaction pour un ticket de supermarché / achat d'articles
-            <TransactionRow
-              key={tItem.id}
-              title={safeTitle}
-              detail={fullDetail}
-              amount={`−${money(safeAmount).replace(' DT', '')}`}
-              onPress={() =>
-                router.push({ pathname: '/modifier-achat', params: { id: tItem.id } } as never)
-              }
-            />
-          ) : (
-            // Carte de transaction pour une dépense globale avec son icône descriptive dédiée
-            <ExpenseCard
-              key={tItem.id}
-              title={safeTitle}
-              detail={fullDetail}
-              icon={getCategoryIcon(categoryName(db, tItem.categoryId), 'expense')}
-              amount={money(safeAmount)}
-              onPress={() =>
-                router.push({ pathname: '/modifier-depense', params: { id: tItem.id } } as never)
-              }
-            />
-          );
-        })
+            // Branche 1 : Transaction d'achat de produits avec ticket détaillé
+            if (tItem.kind === 'purchase') {
+              return (
+                <TransactionRow
+                  key={uniqueKey}
+                  title={safeTitle}
+                  detail={fullDetail}
+                  amount={`−${money(safeAmount).replace(' DT', '')}`}
+                  onPress={() =>
+                    router.push({ pathname: '/modifier-achat', params: { id: tItem.id } } as never)
+                  }
+                />
+              );
+            }
+
+            // Branche 2 : Dépense directe avec icône personnalisée selon la catégorie
+            return (
+              <ExpenseCard
+                key={uniqueKey}
+                title={safeTitle}
+                detail={fullDetail}
+                icon={getCategoryIcon(categoryName(db, tItem.categoryId), 'expense')}
+                amount={money(safeAmount)}
+                onPress={() =>
+                  router.push({ pathname: '/modifier-depense', params: { id: tItem.id } } as never)
+                }
+              />
+            );
+          })
       )}
 
       {/* Bouton secondaire d'ajout de dépense simple */}

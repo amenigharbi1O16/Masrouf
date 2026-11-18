@@ -62,6 +62,7 @@ export default function CalendarScreen() {
   const { db, me, selectedBudgetId, actions } = useStore();
   const { t, isRTL, langue } = useTranslation();
 
+  // Date actuelle du système servant de point d'ancrage pour l'année et le mois
   const now = new Date();
   // État local : année courante sélectionnée (par défaut l'année actuelle)
   const [year, setYear] = useState(now.getFullYear());
@@ -191,7 +192,7 @@ export default function CalendarScreen() {
               onPress={() => setMonth(m)}
               accessibilityRole="button"
               style={{
-                width: '48%',
+                flexBasis: '47%',
                 flexGrow: 1,
                 backgroundColor: on ? colors.forest : colors.white,
                 borderRadius: radius.card,
@@ -351,6 +352,7 @@ export default function CalendarScreen() {
                       alignItems: 'center',
                     }}
                   >
+                    {/* Bouton d'action permettant de définir cette période comme référence centrale dans l'application */}
                     {!isActive && (
                       <Pressable
                         onPress={() => {
@@ -372,6 +374,7 @@ export default function CalendarScreen() {
                       </Pressable>
                     )}
 
+                    {/* Badge grisé pour les mois révolus où la période budgétaire est désormais clôturée */}
                     {isSelectedPast ? (
                       <View
                         style={{
@@ -389,6 +392,7 @@ export default function CalendarScreen() {
                         </Text>
                       </View>
                     ) : (
+                      // Bouton d'édition ouvrant l'éditeur de budget pour réajuster les montants de la période
                       <Pressable
                         onPress={() =>
                           router.push({
@@ -414,22 +418,6 @@ export default function CalendarScreen() {
                 </View>
               );
             })
-          )}
-
-          {/* Bouton unique de création d'une nouvelle période (uniquement pour les mois en cours et futurs) */}
-          {!isSelectedPast && selected.length > 0 && (
-            <Button
-              label={t('creer_periode_budget')}
-              onPress={() =>
-                router.push({
-                  pathname: '/budget-mois',
-                  params: {
-                    defaultStart: selectedRange.start,
-                    defaultEnd: selectedRange.end,
-                  },
-                } as never)
-              }
-            />
           )}
         </>
       )}

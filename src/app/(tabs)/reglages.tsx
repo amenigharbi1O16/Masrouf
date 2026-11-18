@@ -32,6 +32,7 @@ import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/compo
 import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
 import { useTranslation } from '@/utils/i18n';
+import { ouvrirManuelUtilisation } from '@/utils/pdf';
 
 /**
  * MISSION DE LA FONCTION : Row
@@ -120,10 +121,15 @@ function Row({
  *   - Bouton d'action rouge de déconnexion "Se déconnecter".
  */
 export default function SettingsScreen() {
+  // Outil de routage déclaratif Expo Router pour les transitions d'écran
   const router = useRouter();
+  // Données de l'utilisateur connecté et actions de mise à jour du profil et déconnexion
   const { me, actions } = useStore();
-  const { t, isRTL } = useTranslation();
+  // Hook de traduction multilingue, détection RTL et langue courante
+  const { t, isRTL, langue } = useTranslation();
+  // État local du champ nom complet synchronisé avec le profil utilisateur
   const [name, setName] = useState(me?.name ?? '');
+  // État local indiquant si la confirmation de sauvegarde doit être affichée
   const [saved, setSaved] = useState(false);
 
   if (!me) return null;
@@ -133,6 +139,7 @@ export default function SettingsScreen() {
       <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
         {t('compte_personnel').toUpperCase()}
       </Eyebrow>
+      {/* Champ de saisie pour modifier le nom complet de l'utilisateur */}
       <Input
         label={t('nom_complet')}
         value={name}
@@ -142,8 +149,11 @@ export default function SettingsScreen() {
         }}
         autoCapitalize="words"
       />
+      {/* Champ d'affichage en lecture seule de l'adresse e-mail de connexion */}
       <Input label={t('email')} value={me.email} editable={false} />
+      {/* Bannière de confirmation verte affichée dès que les modifications sont enregistrées */}
       {saved ? <AlertBanner tone="success" title={t('profil_enregistre')} /> : null}
+      {/* Bouton d'action pour enregistrer le nouveau nom (actif uniquement si le nom a changé) */}
       <Button
         label={t('enregistrer')}
         variant="secondary"
@@ -158,6 +168,7 @@ export default function SettingsScreen() {
         {t('preferences')}
       </SectionTitle>
 
+      {/* Ligne cliquable vers l'écran de modification du budget mensuel */}
       <Row
         icon="wallet-outline"
         label={t('budget_du_mois')}
@@ -167,6 +178,7 @@ export default function SettingsScreen() {
         }
         isRTL={isRTL}
       />
+      {/* Ligne cliquable vers l'écran d'activation/désactivation des catégories */}
       <Row
         icon="pricetags-outline"
         label={t('gerer_categories')}
@@ -174,6 +186,7 @@ export default function SettingsScreen() {
         onPress={() => router.push('/gerer-categories')}
         isRTL={isRTL}
       />
+      {/* Ligne cliquable vers l'écran de gamification et d'historique des points */}
       <Row
         icon="trophy-outline"
         label={t('points')}
@@ -181,21 +194,32 @@ export default function SettingsScreen() {
         onPress={() => router.push('/points')}
         isRTL={isRTL}
       />
+      {/* Ligne cliquable vers l'écran de changement sécurisé du mot de passe */}
       <Row
         icon="lock-closed-outline"
         label={t('changer_mot_de_passe')}
         onPress={() => router.push('/changer-mot-de-passe')}
         isRTL={isRTL}
       />
+      {/* Cadre cliquable du Manuel d'utilisation PDF dans la langue active (FR, AR, EN) */}
+      <Row
+        icon="document-text-outline"
+        label={t('manuel_utilisation')}
+        detail={t('ouvrir_manuel_pdf')}
+        onPress={() => ouvrirManuelUtilisation(langue as any)}
+        isRTL={isRTL}
+      />
 
       <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
         {t('langue')}
       </SectionTitle>
+      {/* Sélecteur visuel sous forme de pastilles pour basculer instantanément de langue */}
       <LanguageSelector />
 
       <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
         {t('stockage_local_info')}
       </Body>
+      {/* Bouton d'action rouge pour fermer la session utilisateur en toute sécurité */}
       <Button label={t('se_deconnecter')} variant="danger" onPress={actions.logout} />
     </Screen>
   );

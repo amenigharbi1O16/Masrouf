@@ -17,22 +17,38 @@
  * Toutes les données proviennent exclusivement des tables SQLite locales réelles (zéro mock, zéro hardcodage).
  */
 
+// ============================================================================
+// IMPORTS ET DÉPENDANCES TECHNIQUES
+// ============================================================================
+
+// Icônes vectorielles IonIcons pour la signalétique visuelle (étoiles, ampoules, jauges, calendriers)
 import { Ionicons } from '@expo/vector-icons';
+// Routeur de navigation déclaratif d'Expo Router pour les redirections
 import { useRouter } from 'expo-router';
+// React core et hook de mémoïsation pour optimiser les calculs d'agrégation financière
 import React, { useMemo } from 'react';
+// Composants primitifs d'interface utilisateur React Native
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+// Conteneur d'écran standardisé avec barre d'état et marges de sécurité
 import { Screen } from '@/components/Screen';
+// Composants atomiques d'état vide (sans budget) et de titres de section
 import { EmptyState, SectionTitle } from '@/components/ui';
+// Constantes de thème : palette chromatique (vert forêt, corail, menthe) et arrondis
 import { colors, radius } from '@/constants/theme';
+// Sélecteurs d'état SQLite : filtrage par intervalle, fenêtre temporelle antérieure et transactions
 import {
   categoryName,
   inRange,
   previousWindow,
   userTxns,
 } from '@/state/selectors';
+// Store global de l'application Masrouf (Zustand synchronisé avec SQLite)
 import { useStore } from '@/state/store';
+// Utilitaire d'assignation d'icônes vectorielles selon le nom de la catégorie
 import { getCategoryIcon } from '@/utils/categoryIcons';
+// Outils de formatage des montants en Dinars Tunisiens (DT), calcul de dates et libellés
 import { daysBetween, fmtRange, formatDT, money, todayISO } from '@/utils/format';
+// Hook de traduction multilingue (Français, Anglais, Arabe RTL)
 import { useTranslation } from '@/utils/i18n';
 
 export default function AnalyticsScreen() {
@@ -40,14 +56,12 @@ export default function AnalyticsScreen() {
   const { db, me, selectedBudget } = useStore();
   const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
-  if (!me) return null;
-
   // Période de référence centrale active
   const budget = selectedBudget;
   const win = budget ? previousWindow(budget) : null;
 
-  // Transactions réelles filtrées sur la période active et la période précédente
-  const allTxns = useMemo(() => userTxns(db, me.id), [db, me.id]);
+  // Transactions réelles filtrées sur la période active et la période précédente (sécurisé si me est temporairement nul)
+  const allTxns = useMemo(() => (me ? userTxns(db, me.id) : []), [db, me?.id]);
 
   const curTxns = useMemo(() => {
     if (!budget) return [];
@@ -81,32 +95,48 @@ export default function AnalyticsScreen() {
   const isSaving = diff < 0;
   const isStable = Math.abs(diff) < 0.001;
 
-  // Calcul du rythme journalier (Pace)
+  // ==========================================================================
+  // CALCULS DU RYTHME JOURNALIER ET PROJECTIONS (SECTION 6 : PACE INSIGHT)
+  // ==========================================================================
+  // Date du jour courante au format ISO YYYY-MM-DD
   const today = todayISO();
+  // Nombre total de jours composant la période budgétaire (minimum 1 pour éviter la division par zéro)
   const totalDays = budget ? Math.max(1, daysBetween(budget.start, budget.end) + 1) : 1;
 
+  // Calcul dynamique et réactif du nombre de jours consommés et restants
   const { daysElapsed, daysRemaining } = useMemo(() => {
+    // Si aucun budget n'est sélectionné, initialisation neutre à 0
     if (!budget) return { daysElapsed: 0, daysRemaining: 0 };
+    // Cas où la période budgétaire est future (la date d'aujourd'hui précède le début)
     if (today < budget.start) {
       return { daysElapsed: 0, daysRemaining: totalDays };
     }
+    // Cas où la période budgétaire est déjà révolue (la date d'aujourd'hui dépasse la fin)
     if (today > budget.end) {
       return { daysElapsed: totalDays, daysRemaining: 0 };
     }
+    // Période active en cours : calcul des jours passés depuis le début (inclusif) et restants jusqu'à la fin
     const elapsed = Math.max(1, daysBetween(budget.start, today) + 1);
     const rem = Math.max(0, daysBetween(today, budget.end));
     return { daysElapsed: elapsed, daysRemaining: rem };
   }, [budget, today, totalDays]);
 
+  // Vitesse de dépense moyenne par jour écoulé (Burn Rate quotidien en Dinars)
   const avgDailySpend = daysElapsed > 0 ? curTotal / daysElapsed : 0;
+  // Extrapolation linéaire du montant final si le rythme actuel se maintient jusqu'au dernier jour
   const projectedTotal = curTotal + avgDailySpend * daysRemaining;
+  // Indicateur de viabilité : vrai si la projection reste inférieure ou égale au budget alloué
   const isPaceSustainable = totalBudget > 0 ? projectedTotal <= totalBudget : true;
+  // Écart absolu entre la projection finale et le plafond budgétaire (marge de sécurité ou déficit)
   const projectedDifference = Math.abs(projectedTotal - totalBudget);
 
-  // Ventilation et calculs par catégorie
+  // ==========================================================================
+  // VENTILATION ET STATISTIQUES PAR CATÉGORIE (SECTION 5)
+  // ==========================================================================
   const catStats = useMemo(() => {
     if (!budget) return [];
 
+    // Table de hachage associant chaque identifiant unique de catégorie à ses métriques cumulées
     const map = new Map<
       string,
       {
@@ -120,7 +150,7 @@ export default function AnalyticsScreen() {
       }
     >();
 
-    // Initialisation avec toutes les catégories actives ou présentes
+    // Étape 1 : Initialisation de la carte avec toutes les catégories définies dans la base SQLite
     for (const c of db.categories) {
       const allocated = budget.allocations[c.id] ?? 0;
       map.set(c.id, {
@@ -134,20 +164,40 @@ export default function AnalyticsScreen() {
       });
     }
 
-    // Cumul des dépenses réelles
+    // Étape 2 : Agrégation des dépenses réelles à partir des transactions de la période
     for (const tx of curTxns) {
-      const entry = map.get(tx.categoryId);
-      if (entry) {
-        entry.spent += Math.round(tx.amount * 1000);
+      if (!tx || !tx.categoryId) continue;
+      let entry = map.get(tx.categoryId);
+      // Création dynamique d'une entrée si une catégorie personnalisée n'était pas pré-initialisée
+      if (!entry) {
+        const catName = categoryName(db, tx.categoryId);
+        const alloc = budget.allocations[tx.categoryId] ?? 0;
+        entry = {
+          id: tx.categoryId,
+          name: catName,
+          spent: 0,
+          allocated: alloc,
+          hasBudget: alloc > 0,
+          consumptionPct: 0,
+          shareOfTotal: 0,
+        };
+        map.set(tx.categoryId, entry);
       }
+      // Cumul précis en millimes entiers (1 DT = 1000 millimes) pour éliminer les dérives décimales
+      entry.spent += Math.round(Number(tx.amount || 0) * 1000);
     }
 
+    // Étape 3 : Conversion du Map en tableau et calcul des ratios de consommation et part du total
     const list = Array.from(map.values())
+      // Filtrer pour ne conserver que les catégories qui ont soit des dépenses soit un budget alloué
       .filter((item) => item.spent > 0 || item.allocated > 0)
       .map((item) => {
+        // Reconversion des millimes en dinars réels
         const spentDT = item.spent / 1000;
+        // Taux de consommation par rapport à l'enveloppe allouée spécifique
         const consumptionPct =
           item.allocated > 0 ? (spentDT / item.allocated) * 100 : 0;
+        // Part relative de cette catégorie dans le total des dépenses de la période
         const shareOfTotal = curTotal > 0 ? (spentDT / curTotal) * 100 : 0;
         return {
           ...item,
@@ -157,9 +207,9 @@ export default function AnalyticsScreen() {
         };
       });
 
-    // Tri strict du PLUS FAIBLE au PLUS FORT pourcentage de consommation (Section 5)
+    // Étape 4 : Tri strict du PLUS FAIBLE au PLUS FORT pourcentage de consommation (Exigence Section 5)
     return list.sort((a, b) => {
-      // Si les deux ont un budget alloué, trier par consumptionPct croissant
+      // Si les deux ont un budget alloué, trier par consumptionPct croissant (du moins consommé au plus consommé)
       if (a.hasBudget && b.hasBudget) {
         return a.consumptionPct - b.consumptionPct;
       }
@@ -167,7 +217,7 @@ export default function AnalyticsScreen() {
       if (!a.hasBudget && !b.hasBudget) {
         return a.shareOfTotal - b.shareOfTotal;
       }
-      // Catégories avec budget affichées en premier
+      // Les catégories dotées d'un budget alloué apparaissent prioritairement en tête de liste
       return a.hasBudget ? -1 : 1;
     });
   }, [db.categories, budget, curTxns, curTotal]);
@@ -250,6 +300,9 @@ export default function AnalyticsScreen() {
     traduireCategorie,
   ]);
 
+  // Sécurité de session : si aucun profil utilisateur n'est connecté (placé strictement après tous les hooks)
+  if (!me) return null;
+
   // Si aucun budget n'est sélectionné ou actif
   if (!budget) {
     return (
@@ -304,6 +357,7 @@ export default function AnalyticsScreen() {
       {/* 1. CARTE DE SYNTHÈSE BUDGÉTAIRE VERT FORÊT */}
       {/* ============================================================ */}
       <View style={styles.summaryCard}>
+        {/* Ligne d'en-tête de synthèse : surtitre vert menthe à gauche et badge de statut à droite */}
         <View
           style={{
             flexDirection: isRTL ? 'row-reverse' : 'row',
@@ -311,15 +365,18 @@ export default function AnalyticsScreen() {
             alignItems: 'center',
           }}
         >
+          {/* Surtitre "SYNTHÈSE DU BUDGET" en lettres capitales */}
           <Text style={styles.summaryEyebrow}>
             {t('synthese_budget').toUpperCase()}
           </Text>
+          {/* Badge dynamique : vert menthe translucide si respecté, rouge alerte translucide si dépassé */}
           <View
             style={[
               styles.summaryBadge,
               isExceeded && { backgroundColor: 'rgba(220, 38, 38, 0.25)' },
             ]}
           >
+            {/* Pourcentage de consommation (ex: "45.2%") ou mention textuelle d'alerte "DÉPASSEMENT" */}
             <Text
               style={[
                 styles.summaryBadgeText,
@@ -331,7 +388,7 @@ export default function AnalyticsScreen() {
           </View>
         </View>
 
-        {/* Montant principal consommé */}
+        {/* Montant principal consommé en gros caractères (32px) : blanc pur si conforme, rouge saumon (#FF8A80) si dépassé */}
         <Text
           style={[
             styles.summaryAmount,
@@ -341,6 +398,7 @@ export default function AnalyticsScreen() {
         >
           {formatDT(curTotal)}
         </Text>
+        {/* Sous-titre textuel rappelant le libellé "Montant consommé" et la période exacte */}
         <Text style={[styles.summarySub, { textAlign: isRTL ? 'right' : 'left' }]}>
           {t('montant_consomme')} · {rangeLabel}
         </Text>
@@ -391,40 +449,47 @@ export default function AnalyticsScreen() {
       {/* ============================================================ */}
       {/* 2. CONCLUSION FINANCIÈRE ET RECOMMANDATION PERSONNALISÉE */}
       {/* ============================================================ */}
+      {/* Carte d'analyse intelligente formulant un diagnostic synthétique automatique */}
       <View style={styles.insightCard}>
-        {/* En-tête : Conclusion financière */}
+        {/* En-tête avec icône d'étincelles pour la conclusion financière */}
         <View
           style={[
             styles.insightHeader,
             { flexDirection: isRTL ? 'row-reverse' : 'row' },
           ]}
         >
+          {/* Icône sparkles en vert forêt */}
           <Ionicons name="sparkles" size={18} color={colors.forest} />
+          {/* Titre "Conclusion financière" */}
           <Text style={styles.insightHeaderTitle}>
             {t('conclusion_financiere')}
           </Text>
         </View>
+        {/* Texte dynamique de conclusion calculé selon le taux d'épuisement réel */}
         <Text
           style={[styles.insightBodyText, { textAlign: isRTL ? 'right' : 'left' }]}
         >
           {conclusionText}
         </Text>
 
-        {/* Séparateur fin */}
+        {/* Ligne séparatrice horizontale discrète */}
         <View style={styles.insightDivider} />
 
-        {/* Sous-section : Recommandation personnalisée */}
+        {/* En-tête avec icône ampoule pour la recommandation personnalisée */}
         <View
           style={[
             styles.insightHeader,
             { flexDirection: isRTL ? 'row-reverse' : 'row' },
           ]}
         >
+          {/* Icône ampoule en vert clair stimulant l'action d'épargne */}
           <Ionicons name="bulb-outline" size={18} color={colors.green} />
+          {/* Titre "Recommandation personnalisée" */}
           <Text style={[styles.insightHeaderTitle, { color: colors.green }]}>
             {t('recommandation_personnalisee')}
           </Text>
         </View>
+        {/* Recommandation pragmatique sur mesure adaptée au comportement financier de l'utilisateur */}
         <Text
           style={[styles.insightBodyText, { textAlign: isRTL ? 'right' : 'left' }]}
         >
@@ -442,13 +507,14 @@ export default function AnalyticsScreen() {
       <View style={styles.comparisonCard}>
         {win ? (
           <>
+            {/* Rangée comparant visuellement la période active et la période passée équivalente */}
             <View
               style={[
                 styles.comparisonRow,
                 { flexDirection: isRTL ? 'row-reverse' : 'row' },
               ]}
             >
-              {/* Colonne Période active */}
+              {/* Colonne Période active (dates et total dépensé) */}
               <View style={{ flex: 1 }}>
                 <Text style={styles.comparisonPeriodTitle}>
                   {t('periode_actuelle')}
@@ -459,10 +525,10 @@ export default function AnalyticsScreen() {
                 <Text style={styles.comparisonAmount}>{formatDT(curTotal)}</Text>
               </View>
 
-              {/* Point de séparation vertical */}
+              {/* Trait fin de séparation vertical entre les deux colonnes */}
               <View style={styles.verticalDivider} />
 
-              {/* Colonne Période précédente symétrique */}
+              {/* Colonne Période précédente symétrique de même durée */}
               <View style={{ flex: 1 }}>
                 <Text style={styles.comparisonPeriodTitle}>
                   {t('periode_precedente')}
@@ -575,8 +641,9 @@ export default function AnalyticsScreen() {
           </View>
         </View>
 
-        {/* Barre de progression avec marqueur de seuil 100% */}
+        {/* Barre de progression visuelle (jauge) avec seuil dynamique et arrondi complet */}
         <View style={styles.gaugeTrack}>
+          {/* Remplissage de la jauge : vert (< 80%), or (80-99%) ou corail (>= 100% ou dépassement) */}
           <View
             style={[
               styles.gaugeFill,
@@ -670,8 +737,9 @@ export default function AnalyticsScreen() {
                   </Text>
                 </View>
 
-                {/* Barre de progression visuelle */}
+                {/* Piste grise de la barre de progression pour la catégorie */}
                 <View style={styles.catProgressTrack}>
+                  {/* Remplissage coloré proportionnel au pourcentage consommé ou part du total */}
                   <View
                     style={[
                       styles.catProgressFill,
@@ -918,6 +986,7 @@ export default function AnalyticsScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Bouton sélecteur de période : cadre blanc épuré avec bordure discrète et disposition flexible
   periodSelector: {
     backgroundColor: colors.white,
     borderRadius: radius.card,
@@ -928,49 +997,58 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  // Libellé de la période temporelle : typographie bold vert forêt pour une excellente lisibilité
   periodLabel: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.forest,
   },
+  // Indication textuelle invitant au clic pour changer de période
   periodHint: {
     fontSize: 11,
     color: colors.muted,
   },
+  // Section 1 : Carte de synthèse vert forêt (#1B4332) servant d'ancrage visuel supérieur
   summaryCard: {
     backgroundColor: colors.forest,
     borderRadius: radius.card,
     padding: 20,
     gap: 6,
   },
+  // Surtitre en lettres capitales vert menthe (#D9F0E4) pour l'identité visuelle
   summaryEyebrow: {
     fontSize: 11,
     fontWeight: '600',
     color: colors.mint,
     letterSpacing: 0.5,
   },
+  // Badge de statut supérieur avec fond translucide menthe ou corail selon l'état
   summaryBadge: {
     backgroundColor: 'rgba(217, 240, 228, 0.2)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
   },
+  // Texte du badge de statut affichant le pourcentage ou l'alerte de dépassement
   summaryBadgeText: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.mint,
   },
+  // Grand montant consommé (32px, bold) mis en exergue au centre de la carte
   summaryAmount: {
     fontSize: 32,
     fontWeight: '700',
     color: colors.white,
     lineHeight: 38,
   },
+  // Sous-titre textuel rappelant la période sous le montant principal
   summarySub: {
     fontSize: 12,
     color: colors.track,
     marginBottom: 8,
   },
+  // Grille inférieure de synthèse à 3 colonnes séparée par un liseré semi-transparent
   summaryGrid: {
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.12)',
@@ -978,19 +1056,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
+  // Cellule individuelle de la grille de synthèse budgétaire
   summaryGridItem: {
     flex: 1,
   },
+  // Libellé de métrique secondaire (Budget total, Restant, Pourcentage)
   gridLabel: {
     fontSize: 11,
     color: colors.track,
     marginBottom: 2,
   },
+  // Chiffre clé formaté en dinars ou pourcentage dans la synthèse
   gridValue: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.white,
   },
+  // Section 2 : Carte d'intelligence financière blanche avec encadrement fin
   insightCard: {
     backgroundColor: colors.white,
     borderRadius: radius.card,
@@ -999,25 +1081,30 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
+  // En-tête de bloc d'analyse avec icône thématique alignée
   insightHeader: {
     alignItems: 'center',
     gap: 6,
   },
+  // Titre en vert forêt soulignant la conclusion ou recommandation
   insightHeaderTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.forest,
   },
+  // Paragraphe explicatif de conseil budgétaire rédigé en langage naturel
   insightBodyText: {
     fontSize: 13,
     lineHeight: 19,
     color: '#333333',
   },
+  // Trait de séparation horizontal discret entre conclusion et recommandation
   insightDivider: {
     height: 1,
     backgroundColor: colors.border,
     marginVertical: 4,
   },
+  // Section 3 : Carte de comparaison temporelle avec la période précédente
   comparisonCard: {
     backgroundColor: colors.white,
     borderRadius: radius.card,
@@ -1026,33 +1113,39 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  // Conteneur en ligne alignant les deux périodes comparées côte à côte
   comparisonRow: {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 12,
   },
+  // En-tête de colonne en majuscules (Période actuelle vs Période précédente)
   comparisonPeriodTitle: {
     fontSize: 11,
     fontWeight: '700',
     color: colors.muted,
     textTransform: 'uppercase',
   },
+  // Plage de dates calendaires de la période comparée
   comparisonDates: {
     fontSize: 11,
     color: colors.muted,
     marginTop: 2,
   },
+  // Montant total dépensé durant la période comparée
   comparisonAmount: {
     fontSize: 17,
     fontWeight: '700',
     color: colors.forest,
     marginTop: 4,
   },
+  // Séparateur vertical fin entre les deux colonnes temporelles
   verticalDivider: {
     width: 1,
     backgroundColor: colors.border,
     alignSelf: 'stretch',
   },
+  // Pastille horizontale de tendance colorée selon économie ou surcoût
   trendBadge: {
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -1060,11 +1153,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  // Texte explicatif de l'écart budgétaire et du pourcentage de variation
   trendBadgeText: {
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
   },
+  // Conteneur de carte blanche standard pour les jauges et graphiques
   cardContainer: {
     backgroundColor: colors.white,
     borderRadius: radius.card,
@@ -1073,56 +1168,67 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  // En-tête supérieur de la jauge affichant consommé vs seuil maximal
   gaugeHeader: {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
+  // Libellé informatif au-dessus du montant consommé
   gaugeSpentLabel: {
     fontSize: 11,
     color: colors.muted,
     fontWeight: '500',
   },
+  // Montant consommé et pourcentage affichés en gros caractères
   gaugeSpentAmount: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.forest,
     marginTop: 2,
   },
+  // Libellé informatif au-dessus du plafond budgétaire
   gaugeCeilLabel: {
     fontSize: 11,
     color: colors.muted,
     fontWeight: '500',
   },
+  // Plafond maximal autorisé pour la période active
   gaugeCeilAmount: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.forest,
     marginTop: 2,
   },
+  // Piste grise d'arrière-plan de la jauge de progression
   gaugeTrack: {
     height: 12,
     backgroundColor: '#EBEBEB',
     borderRadius: 6,
     overflow: 'hidden',
   },
+  // Barre dynamique de remplissage de la jauge colorée selon le niveau
   gaugeFill: {
     height: 12,
     borderRadius: 6,
   },
+  // Pied d'information sous la jauge indiquant le solde et les jours
   gaugeFooter: {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  // Message textuel du solde restant ou du montant dépassé
   gaugeFooterText: {
     fontSize: 12,
     color: colors.muted,
     fontWeight: '500',
   },
+  // Compteur textuel de jours restants jusqu'à la fin de la période
   gaugeFooterDays: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.forest,
   },
+  // Section 5 : Carte individuelle d'une catégorie dans la liste ordonnée
   categoryCard: {
     backgroundColor: colors.white,
     borderRadius: radius.card,
@@ -1131,88 +1237,107 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 8,
   },
+  // Ligne d'en-tête de catégorie associant icône, nom et montant
   categoryHeaderRow: {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  // Bloc horizontal regroupant l'icône vectorielle et le nom traduit
   categoryNameBox: {
     alignItems: 'center',
     gap: 8,
   },
+  // Intitulé de la catégorie en vert forêt soutenu
   categoryNameText: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.forest,
   },
+  // Montant exact dépensé pour cette catégorie en dinars
   categorySpentText: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.forest,
   },
+  // Piste d'arrière-plan de la mini-jauge de catégorie
   catProgressTrack: {
     height: 6,
     backgroundColor: '#EBEBEB',
     borderRadius: 3,
     overflow: 'hidden',
   },
+  // Remplissage dynamique de la mini-jauge de catégorie
   catProgressFill: {
     height: 6,
     borderRadius: 3,
   },
+  // Ligne inférieure précisant l'enveloppe allouée ou la part du total
   categoryMetaRow: {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  // Pourcentage consommé ou part relative dans les dépenses
   categoryMetaText: {
     fontSize: 12,
     color: colors.forest,
   },
+  // Plafond budgétaire individuel alloué à cette catégorie
   categoryMetaAlloc: {
     fontSize: 12,
     color: colors.muted,
   },
+  // Mention stylisée en italique pour les catégories sans budget
   categoryMetaUnallocated: {
     fontSize: 12,
     color: colors.muted,
     fontStyle: 'italic',
   },
+  // Section 6 : Grille horizontale à 3 métriques d'allure quotidienne
   paceGrid: {
     justifyContent: 'space-between',
     gap: 8,
   },
+  // Cellule individuelle de rythme (moyenne, jours écoulés, restants)
   paceGridItem: {
     flex: 1,
   },
+  // Libellé de métrique d'allure journalière
   paceLabel: {
     fontSize: 11,
     color: colors.muted,
     fontWeight: '500',
     marginBottom: 2,
   },
+  // Valeur chiffrée de la cadence de dépenses
   paceValue: {
     fontSize: 15,
     fontWeight: '700',
     color: colors.forest,
   },
+  // Trait horizontal séparateur dans le bloc de rythme
   paceDivider: {
     height: 1,
     backgroundColor: colors.border,
   },
+  // Ligne de projection financière finale avec badge d'évaluation
   paceProjectionRow: {
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
   },
+  // Libellé invitant à lire la projection en fin de période
   paceProjectionLabel: {
     fontSize: 12,
     color: colors.muted,
   },
+  // Montant total estimé en fin de cycle selon la vitesse actuelle
   paceProjectionValue: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.forest,
     marginTop: 2,
   },
+  // Badge d'évaluation de durabilité (soutenable vs risque)
   paceBadge: {
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -1220,10 +1345,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  // Texte du badge de viabilité du rythme de dépenses
   paceBadgeText: {
     fontSize: 11,
     fontWeight: '700',
   },
+  // Message explicatif détaillé avec estimation de la marge ou du déficit
   paceMessageText: {
     fontSize: 12,
     lineHeight: 17,
@@ -1231,6 +1358,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 4,
   },
+  // Section 7 : Carte d'alerte spécifique pour la catégorie critique
   attentionCard: {
     backgroundColor: '#FFF8F8',
     borderRadius: radius.card,
@@ -1239,35 +1367,42 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
   },
+  // En-tête de la carte d'alerte avec nom et badge de criticité
   attentionHeader: {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  // Bloc horizontal associant l'icône corail et le nom en alerte
   attentionTitleBox: {
     alignItems: 'center',
     gap: 8,
   },
+  // Nom de la catégorie requérant une action immédiate
   attentionCategoryName: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.coral,
   },
+  // Pastille douce corail indiquant le taux de consommation excessif
   attentionBadge: {
     backgroundColor: colors.coralSoft,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
+  // Texte chiffré du dépassement de la catégorie sous tension
   attentionBadgeText: {
     fontSize: 11,
     fontWeight: '700',
     color: colors.coral,
   },
+  // Explication pédagogique claire de la cause de mise en garde
   attentionReasonText: {
     fontSize: 13,
     lineHeight: 18,
     color: '#444444',
   },
+  // Encadré blanc intérieur contenant le plan d'action préconisé
   suggestionBox: {
     backgroundColor: colors.white,
     borderRadius: 10,
@@ -1276,20 +1411,24 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 6,
   },
+  // En-tête avec bouclier vert forêt de protection budgétaire
   suggestionHeader: {
     alignItems: 'center',
     gap: 6,
   },
+  // Titre du plan d'action préventif
   suggestionHeaderTitle: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.forest,
   },
+  // Recommandation concrète pour assainir la dépense sur cette catégorie
   suggestionBody: {
     fontSize: 12,
     lineHeight: 17,
     color: '#333333',
   },
+  // Carte positive alternative : félicite pour la maîtrise globale
   healthyAttentionCard: {
     backgroundColor: '#E8F5E9',
     borderRadius: radius.card,
@@ -1298,12 +1437,14 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
+  // Titre de confirmation de gestion budgétaire saine
   healthyAttentionTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.green,
     flex: 1,
   },
+  // Corps de message rassurant confirmant le respect des plafonds
   healthyAttentionBody: {
     fontSize: 12,
     lineHeight: 17,
