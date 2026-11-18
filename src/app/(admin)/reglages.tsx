@@ -39,6 +39,8 @@ import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
+// Gestionnaire d'ouverture du guide d'utilisation PDF
+import { ouvrirManuelUtilisation } from '@/utils/pdf';
 
 /**
  * MISSION DU COMPOSANT :
@@ -56,7 +58,7 @@ export default function AdminSettingsScreen() {
   // Extraction des données de configuration, du profil connecté et des actions
   const { db, me, actions } = useStore();
   // Fonctions de traduction et sens de lecture (LTR/RTL)
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, langue } = useTranslation();
 
   return (
     // Screen : conteneur assurant les marges physiques et le défilement fluide
@@ -79,10 +81,10 @@ export default function AdminSettingsScreen() {
         }}
       >
         <View style={{ flex: 1 }}>
-          {/* Titre du paramètre */}
+          {/* Titre du paramètre avec taille de police légèrement augmentée (16.5) pour lisibilité optimale */}
           <Text
             style={{
-              fontSize: 15,
+              fontSize: 16.5,
               fontWeight: '600',
               color: colors.forest,
               textAlign: isRTL ? 'right' : 'left',
@@ -90,10 +92,10 @@ export default function AdminSettingsScreen() {
           >
             {t('autoriser_nouvelles_inscriptions')}
           </Text>
-          {/* Texte d'aide expliquant l'impact du verrouillage */}
+          {/* Texte d'aide avec taille de police légèrement augmentée (13.5) expliquant l'impact du verrouillage */}
           <Text
             style={{
-              fontSize: 12,
+              fontSize: 13.5,
               color: colors.muted,
               textAlign: isRTL ? 'right' : 'left',
             }}
@@ -126,6 +128,13 @@ export default function AdminSettingsScreen() {
         label={t('changer_mon_mot_de_passe')}
         variant="secondary"
         onPress={() => router.push('/changer-mot-de-passe')}
+      />
+
+      {/* Bouton secondaire clair : ouvre le guide d'utilisation officiel PDF */}
+      <Button
+        label={t('manuel_utilisation')}
+        variant="secondary"
+        onPress={() => ouvrirManuelUtilisation(langue as any)}
       />
 
       {/* Bouton rouge danger : efface la session en mémoire et renvoie vers /login */}

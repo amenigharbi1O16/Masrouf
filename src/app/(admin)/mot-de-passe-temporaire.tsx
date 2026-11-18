@@ -145,12 +145,12 @@ export default function TemporaryPasswordScreen() {
               alignItems: 'center',
             }}
           >
-            {/* Texte sélectionnable en gros caractères blancs espacés pour une lisibilité parfaite */}
+            {/* Texte sélectionnable en gros caractères blancs espacés avec taille légèrement augmentée (29.5) pour une clarté et lisibilité parfaite */}
             <Text
               selectable
               style={{
                 color: colors.white,
-                fontSize: 28,
+                fontSize: 29.5,
                 fontWeight: '700',
                 letterSpacing: 2,
               }}

@@ -180,7 +180,7 @@ export default function AdminCategoriesScreen() {
                   }}
                   style={{
                     flex: 1,
-                    fontSize: 14,
+                    fontSize: 15.5,
                     fontWeight: '600',
                     color: colors.forest,
                     textAlign: isRTL ? 'right' : 'left',
@@ -188,7 +188,7 @@ export default function AdminCategoriesScreen() {
                 />
 
                 {/* Libellé textuel indiquant si la catégorie est active ou masquée */}
-                <Text style={{ fontSize: 12, color: colors.muted }}>
+                <Text style={{ fontSize: 13.5, color: colors.muted }}>
                   {cat.active ? t('statut_actif') : t('statut_masque')}
                 </Text>
 

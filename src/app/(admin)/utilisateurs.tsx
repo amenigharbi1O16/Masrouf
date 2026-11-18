@@ -111,11 +111,11 @@ export default function AdminUsersScreen() {
             minHeight: 72,
           }}
         >
-          {/* Bloc gauche : identité de l'utilisateur (nom et email) */}
+          {/* Bloc gauche : identité de l'utilisateur (nom et email lisibles) */}
           <View style={{ flex: 1, alignItems: isRTL ? 'flex-end' : 'flex-start' }}>
             <Text
               style={{
-                fontSize: 14,
+                fontSize: 15.5,
                 fontWeight: '600',
                 color: colors.forest,
                 textAlign: isRTL ? 'right' : 'left',
@@ -125,7 +125,7 @@ export default function AdminUsersScreen() {
             </Text>
             <Text
               style={{
-                fontSize: 12,
+                fontSize: 13.5,
                 color: colors.muted,
                 textAlign: isRTL ? 'right' : 'left',
               }}
@@ -145,7 +145,7 @@ export default function AdminUsersScreen() {
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: 12.5,
                 fontWeight: '600',
                 color: u.active ? colors.green : '#9B3B35',
               }}

@@ -51,7 +51,7 @@ export default function AdminDefaultPercentagesScreen() {
   // Extraction des données de la base et de l'action de sauvegarde
   const { db, actions } = useStore();
   // Fonctions de traduction et sens de lecture
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, traduireCategorie } = useTranslation();
 
   // Filtrage des catégories actives (les catégories masquées ne reçoivent pas de quota par défaut)
   const cats = db.categories.filter((c) => c.active);
@@ -99,7 +99,7 @@ export default function AdminDefaultPercentagesScreen() {
       {cats.map((c) => (
         <Input
           key={c.id}
-          label={`${c.name} · %`}
+          label={`${traduireCategorie(c.name)} · %`}
           value={vals[c.id]}
           keyboardType="decimal-pad"
           onChangeText={(text) => {

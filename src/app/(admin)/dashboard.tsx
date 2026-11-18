@@ -62,7 +62,7 @@ function Stat({
     // Boîte de la statistique occupant environ la moitié de la largeur de l'écran pour former une grille à 2 colonnes
     <View
       style={{
-        width: '48%',
+        flexBasis: '47%',
         flexGrow: 1,
         backgroundColor: colors.white,
         borderRadius: radius.card,
@@ -71,17 +71,22 @@ function Stat({
         alignItems: isRTL ? 'flex-end' : 'flex-start',
       }}
     >
-      {/* Valeur numérique mise en évidence en grand caractère gras vert forêt */}
-      <Text style={{ fontSize: 28, fontWeight: '600', color: colors.forest }}>
+      {/* Valeur numérique mise en évidence en grand caractère gras vert forêt (taille rehaussée) */}
+      <Text
+        style={{ fontSize: 29.5, fontWeight: '600', color: colors.forest }}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
         {value}
       </Text>
-      {/* Intitulé traduit de la métrique en police discrète */}
+      {/* Intitulé traduit de la métrique en police claire et visible */}
       <Text
         style={{
-          fontSize: 12,
+          fontSize: 13.5,
           color: colors.muted,
           textAlign: isRTL ? 'right' : 'left',
         }}
+        numberOfLines={2}
       >
         {label}
       </Text>
