@@ -35,9 +35,11 @@ import { useDrawer } from './DrawerContext';
  * Propriétés du composant AppHeader.
  */
 interface Props {
+  /** Libellé du titre affiché au centre de la barre d'en-tête */
   title: string;
   /** Afficher une flèche de retour au lieu du bouton de menu */
   back?: boolean;
+  /** Action personnalisée de retour arrière (remplace router.back() si fournie) */
   onBack?: () => void;
   /** Mode épuré sans menu ni bouton de profil (ex: connexion, inscription) */
   plain?: boolean;
@@ -47,22 +49,32 @@ interface Props {
  * Composant de barre d'en-tête de page.
  */
 export function AppHeader({ title, back, onBack, plain }: Props) {
+  // Instance du routeur Expo Router pour la navigation impérative (back, push, replace)
   const router = useRouter();
+  // Méthode d'ouverture du menu tiroir latéral gauche via le contexte global
   const { open } = useDrawer();
+  // Rôle de l'utilisateur connecté (permet d'orienter vers les réglages admin ou utilisateur)
   const { isAdmin } = useAuth();
+  // Décompte réactif des notifications non lues pour alimenter la pastille rouge (badge)
   const { unreadNotificationsCount } = useStore();
+  // Outils de traduction multilingue et indicateur d'inversion bidirectionnelle RTL
   const { t, isRTL } = useTranslation();
+  // Largeur physique de l'écran pour adapter les tailles de polices sur petits appareils
   const { width } = useWindowDimensions();
+  // Détection des écrans étroits (<360px) pour éviter les débordements textuels
   const isSmall = width < 360;
 
   /**
    * Action : retour en arrière ou retour à l'accueil si aucune route historique.
    */
   const goBack = () => {
+    // 1. Exécution du rappel personnalisé s'il est défini
     if (onBack) {
       onBack();
+    // 2. Navigation vers la page précédente dans l'historique si possible
     } else if (router.canGoBack()) {
       router.back();
+    // 3. Repli de sécurité : redirection vers l'écran d'accueil des onglets
     } else {
       router.replace('/(tabs)' as never);
     }
@@ -71,6 +83,7 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
   return (
     <View
       style={[
+        // Conteneur en ligne alignant les éléments horizontalement (flexDirection dynamique LTR/RTL)
         styles.row,
         { flexDirection: isRTL ? 'row-reverse' : 'row' },
       ]}
@@ -101,6 +114,7 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
       {/* 2. Titre centré ou aligné de l'écran avec adaptation dynamique de taille */}
       <Text
         style={[
+          // Style typographique du titre principal avec écriture bidirectionnelle
           styles.title,
           {
             fontSize: isSmall ? 18 : 22,
@@ -141,7 +155,9 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
                   borderRadius: 7,
                   minWidth: 15,
                   height: 15,
+    // Alignement vertical centré des icônes et du texte
                   alignItems: 'center',
+    // Centrage horizontal et vertical de l'icône vectorielle
                   justifyContent: 'center',
                   paddingHorizontal: 2,
                 }}
@@ -178,22 +194,37 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
 }
 
 const styles = StyleSheet.create({
+  // Ligne horizontale contenant l'en-tête de page
   row: {
+    // Alignement vertical centré des icônes et du texte
     alignItems: 'center',
+    // Hauteur minimale standardisée de 56px assurant une zone tactile confortable
     minHeight: 56,
+    // Espacement régulier de 8px entre les boutons et le titre
     gap: 8,
   },
+  // Zone réservée pour les boutons d'action cliquables (32x32)
   slot: {
+    // Largeur fixe de la case
     width: 32,
+    // Hauteur fixe de la case
     height: 32,
+    // Alignement vertical centré des icônes et du texte
     alignItems: 'center',
+    // Centrage horizontal et vertical de l'icône vectorielle
     justifyContent: 'center',
   },
+  // Style typographique du titre de page
   title: {
+    // Occupe tout l'espace disponible entre les boutons gauche et droite
     flex: 1,
+    // Taille de police généreuse pour une visibilité optimale
     fontSize: 22,
+    // Hauteur de ligne proportionnelle
     lineHeight: 32,
+    // Graisse semi-grasse élégante
     fontWeight: '600',
+    // Teinte vert forêt emblématique de Masrouf
     color: colors.forest,
   },
 });
