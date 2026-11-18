@@ -66,12 +66,13 @@ function Gate({ children }: { children: React.ReactNode }) {
     // Si la base SQLite n'est pas encore prête, attendre la fin de l'initialisation
     if (!ready) return;
 
-    // Définition des routes publiques accessibles sans compte connecté
-    const isPublic = first === 'login' || first === 'inscription';
+    // Définition des routes publiques d'authentification (réservées aux personnes non connectées)
+    const isAuthRoute = first === 'login' || first === 'inscription';
 
-    // CAS 1 : Aucun utilisateur connecté -> redirection vers la connexion
+    // CAS 1 : Aucun utilisateur connecté -> redirection vers la connexion sauf si route d'auth ou manuel d'utilisation
     if (!me) {
-      if (!isPublic) {
+      // Autorise la consultation de login, inscription et du manuel d'utilisation officiel en mode déconnecté
+      if (!isAuthRoute && first !== 'manuel-utilisation') {
         router.replace('/login');
       }
       return;
@@ -93,7 +94,12 @@ function Gate({ children }: { children: React.ReactNode }) {
 
     // CAS 4 : Rôle Administrateur connecté
     if (me.role === 'admin') {
-      if (first !== '(admin)' && first !== 'changer-mot-de-passe' && first !== 'notifications') {
+      if (
+        first !== '(admin)' &&
+        first !== 'changer-mot-de-passe' &&
+        first !== 'notifications' &&
+        first !== 'manuel-utilisation'
+      ) {
         router.replace('/(admin)/dashboard');
       }
       return;
@@ -113,8 +119,9 @@ function Gate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // CAS 7 : Utilisateur normal connecté tentant d'accéder à login, inscription ou onboarding
-    if (isPublic || first === 'onboarding') {
+    // CAS 7 : Utilisateur normal connecté tentant d'accéder à login, inscription ou onboarding terminé
+    // La route 'manuel-utilisation' reste 100% accessible pour un utilisateur connecté
+    if (isAuthRoute || first === 'onboarding') {
       router.replace(homeRouteFor(me) as never);
     }
   }, [
