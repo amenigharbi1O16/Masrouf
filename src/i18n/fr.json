@@ -243,7 +243,7 @@
   "pret_a_commencer": "Prêt à démarrer !",
   "votre_selection": "Vos enveloppes budgétaires sont prêtes.",
   "plan_vous_ressemble": "Un plan sur mesure pour vos dépenses quotidiennes.",
-  "categories_selectionnees": "Catégories retenues",
+  "categories_selectionnees": "Catégories sélectionnées",
   "pas_besoin_budget": "Vous pouvez commencer dès maintenant à enregistrer vos dépenses.",
   "categorie_produit": "Articles & Produits",
   "categorie_depense": "Dépenses & Services",
@@ -721,5 +721,8 @@
   "budget_depasse_detail": "Dépassement de {montant} par rapport à votre prévision.",
   "aucun_budget_actif_detail": "Aucun budget actif aujourd'hui. Créez-en un pour toute période de votre choix.",
   "aucune_transaction_enregistree": "Aucune transaction enregistrée",
-  "premiere_transaction_detail": "Ajoutez votre premier achat ou dépense pour la voir apparaître ici."
+  "premiere_transaction_detail": "Ajoutez votre premier achat ou dépense pour la voir apparaître ici.",
+  "selectionner_periode_et_budget_dabord": "Sélectionnez une période et allouez-lui un budget d'abord.",
+  "selectionner_periode_et_budget_detail": "L'enregistrement d'un achat ou d'un produit nécessite une période active avec un budget alloué.",
+  "definir_periode_budget": "Définir une période et un budget"
 }
