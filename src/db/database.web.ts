@@ -25,104 +25,164 @@ export const DEFAULT_USER_HASH =
 
 export type UserRow = {
   id: number;
+  /** Nom complet de l'utilisateur affiché dans l'interface */
   name: string;
+  /** Adresse e-mail unique servant d'identifiant de connexion */
   email: string;
+  /** Empreinte SHA-256 salée pour l'authentification sécurisée */
   password_hash: string;
+  /** Sel cryptographique aléatoire de 32 caractères hexadécimaux */
   salt: string;
+  /** Rôle applicatif : privilèges complets (admin) ou gestion personnelle (user) */
   role: 'admin' | 'user';
+  /** Statut du compte : 1 = actif, 0 = désactivé/suspendu */
   is_active: number;
+  /** Indicateur de mot de passe temporaire à renouveler obligatoirement */
   must_change_password: number;
+  /** Statut d'achèvement de l'onboarding initial (catégories et budget) */
   onboarding_done: number;
+  /** Version de l'algorithme de hachage cryptographique */
   hash_version: number;
+  /** Enveloppe budgétaire mensuelle par défaut en Dinars Tunisiens (DT) */
   budget_mensuel: number;
+  /** Préférence de langue d'affichage de l'interface (fr, ar, en) */
   langue: string;
   created_at: string;
 };
 
 export type UserCategoryRow = {
   id: number;
+  /** Clé étrangère reliant l'enregistrement à son propriétaire (table user) */
   user_id: number;
+  /** Clé étrangère reliant l'opération à sa catégorie d'imputation */
   category_id: number;
+  /** Statut d'activation de la catégorie pour cet utilisateur (1 = visible) */
   enabled: number;
   created_at: string;
 };
 
 export type CategoryRow = {
   id: number;
+  /** Clé normalisée du libellé de catégorie utilisée pour la traduction i18n */
   name_key: string;
+  /** Typologie : catégorie à produits physiques ou dépenses forfaitaires directes */
   type: 'product' | 'expense';
+  /** Nom de l'icône vectorielle Ionicons affichée sur la carte de catégorie */
   icon: string;
+  /** Pourcentage recommandé par défaut lors de la répartition budgétaire */
   default_percent: number;
+  /** Indique si la catégorie fait partie du panier standard de départ */
   is_default: number;
+  /** Statut du compte : 1 = actif, 0 = désactivé/suspendu */
   is_active: number;
+  /** Catégorie système protégée ne pouvant être supprimée par l'admin */
   is_system: number;
+  /** Thème de regroupement visuel (Essentiel, Vie quotidienne, Logement, etc.) */
   theme: string;
 };
 
 export type ProductRow = {
   id: number;
+  /** Clé étrangère reliant l'enregistrement à son propriétaire (table user) */
   user_id: number;
+  /** Nom complet de l'utilisateur affiché dans l'interface */
   name: string;
+  /** Marque commerciale ou fabricant du produit */
   brand: string;
+  /** Clé étrangère reliant l'opération à sa catégorie d'imputation */
   category_id: number;
+  /** Chemin du fichier image ou photo associé au produit */
   photo_path: string;
+  /** Unité de mesure physique (L, kg, g, pc, mL) */
   unit: string;
   created_at: string;
 };
 
 export type PurchaseRow = {
   id: number;
+  /** Clé étrangère reliant l'enregistrement à son propriétaire (table user) */
   user_id: number;
+  /** Référence du produit physique acheté (table product) */
   product_id: number;
+  /** Clé étrangère reliant l'opération à sa catégorie d'imputation */
   category_id: number;
+  /** Montant en Dinars Tunisiens (DT) payé lors de la transaction */
   price: number;
+  /** Quantité achetée selon l'unité de mesure associée */
   quantity: number;
+  /** Unité de mesure physique (L, kg, g, pc, mL) */
   unit: string;
+  /** Enseigne commerciale ou magasin où l'achat a été effectué */
   store: string;
+  /** Date calendaire de l'opération au format standard ISO YYYY-MM-DD */
   date: string;
+  /** Mois calendaire d'imputation budgétaire au format YYYY-MM */
   month: string;
+  /** Commentaire ou observation textuelle optionnelle saisie par l'utilisateur */
   notes: string;
   created_at: string;
 };
 
 export type ExpenseRow = {
   id: number;
+  /** Clé étrangère reliant l'enregistrement à son propriétaire (table user) */
   user_id: number;
+  /** Clé étrangère reliant l'opération à sa catégorie d'imputation */
   category_id: number;
+  /** Montant financier de l'opération en Dinars Tunisiens (DT) */
   amount: number;
+  /** Libellé descriptif de la dépense (ex: Facture STEG, Loyer) */
   label: string;
+  /** Date calendaire de l'opération au format standard ISO YYYY-MM-DD */
   date: string;
+  /** Mois calendaire d'imputation budgétaire au format YYYY-MM */
   month: string;
+  /** Commentaire ou observation textuelle optionnelle saisie par l'utilisateur */
   notes: string;
   created_at: string;
 };
 
 export type MonthBudgetRow = {
   id: number;
+  /** Clé étrangère reliant l'enregistrement à son propriétaire (table user) */
   user_id: number;
+  /** Mois calendaire d'imputation budgétaire au format YYYY-MM */
   month: string;
+  /** Plafond global total alloué pour l'ensemble de la période en DT */
   total: number;
+  /** Drapeau indiquant si la période a été clôturée et évaluée pour les points */
   is_evaluated: number;
   created_at: string;
 };
 
 export type CategoryBudgetRow = {
   id: number;
+  /** Clé étrangère reliant l'enregistrement à son propriétaire (table user) */
   user_id: number;
+  /** Mois calendaire d'imputation budgétaire au format YYYY-MM */
   month: string;
+  /** Clé étrangère reliant l'opération à sa catégorie d'imputation */
   category_id: number;
+  /** Montant financier de l'opération en Dinars Tunisiens (DT) */
   amount: number;
+  /** Pourcentage de l'enveloppe globale alloué à cette catégorie */
   percent: number;
   created_at: string;
 };
 
 export type SettingsRow = {
   id: number;
+  /** Nombre de points attribués pour chaque catégorie respectée sans dépassement */
   points_per_category: number;
+  /** Bonus de points pour respect du budget global sur l'ensemble du mois */
   points_monthly_bonus: number;
+  /** Bonus accordé pour la régularité et les séries de mois vertueux consécutifs */
   points_streak_bonus: number;
+  /** Seuil de points requis pour l'obtention du niveau Débutant */
   threshold_beginner: number;
+  /** Seuil de points requis pour l'obtention du niveau Économe */
   threshold_saver: number;
+  /** Seuil de points requis pour l'obtention du niveau Expert */
   threshold_expert: number;
 };
 
@@ -340,6 +400,7 @@ export const db = {
     const s = sql.toUpperCase();
 
     // INSERT INTO USER
+    // Simulation SQL : Insertion d'un nouvel utilisateur lors de l'inscription ou initialisation
     if (s.includes('INSERT INTO USER') || s.includes('INSERT INTO UTILISATEURS')) {
       let name = params[0];
       let email = params[1];
@@ -375,6 +436,7 @@ export const db = {
       }
 
       const id = (store.user.length > 0 ? Math.max(...store.user.map((u) => u.id)) : 0) + 1;
+      // Ajout du nouvel utilisateur dans le tableau en mémoire
       store.user.push({
         id,
         name,
@@ -390,73 +452,96 @@ export const db = {
         langue,
         created_at: new Date().toISOString(),
       });
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
       store.sauvegarder();
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: id, changes: 1 };
     }
 
     // UPDATE USER
+    // Simulation SQL : Mises à jour des champs de profil, mot de passe ou préférences utilisateur
     if (s.includes('UPDATE USER') || s.includes('UPDATE UTILISATEURS')) {
       if (s.includes('ONBOARDING_DONE = ?')) {
         const [done, id] = params;
+      // Recherche de l'utilisateur dans le tableau des utilisateurs en mémoire
         const u = store.user.find((x) => x.id === id);
         if (u) {
           u.onboarding_done = Number(done);
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
           store.sauvegarder();
         }
       } else if (s.includes('PASSWORD_HASH = ?') && s.includes('HASH_VERSION = ?')) {
         const [hash, salt, hashVer, id] = params;
+      // Recherche de l'utilisateur dans le tableau des utilisateurs en mémoire
         const u = store.user.find((x) => x.id === id);
         if (u) {
           u.password_hash = hash;
           u.salt = salt;
           u.hash_version = hashVer;
           u.must_change_password = 0;
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
           store.sauvegarder();
         }
       } else if (s.includes('PASSWORD_HASH = ?')) {
         const [hash, id] = params;
+      // Recherche de l'utilisateur dans le tableau des utilisateurs en mémoire
         const u = store.user.find((x) => x.id === id);
         if (u) {
           u.password_hash = hash;
           u.must_change_password = s.includes('MUST_CHANGE_PASSWORD = 1') ? 1 : 0;
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
           store.sauvegarder();
         }
       } else if (s.includes('IS_ACTIVE = ?')) {
         const [active, id] = params;
+      // Recherche de l'utilisateur dans le tableau des utilisateurs en mémoire
         const u = store.user.find((x) => x.id === id);
         if (u) {
           u.is_active = active;
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
           store.sauvegarder();
         }
       } else if (s.includes('BUDGET_MENSUEL = ?')) {
         const [budget, id] = params;
+      // Recherche de l'utilisateur dans le tableau des utilisateurs en mémoire
         const u = store.user.find((x) => x.id === id);
         if (u) {
           u.budget_mensuel = budget;
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
           store.sauvegarder();
         }
       } else if (s.includes('LANGUE = ?')) {
         const [langue, id] = params;
+      // Recherche de l'utilisateur dans le tableau des utilisateurs en mémoire
         const u = store.user.find((x) => x.id === id);
         if (u) {
           u.langue = langue;
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
           store.sauvegarder();
         }
       }
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: 0, changes: 1 };
     }
 
     // USER_CATEGORY OPERATIONS
+    // Simulation SQL : Réinitialisation des associations de catégories pour un utilisateur
     if (s.includes('DELETE FROM USER_CATEGORY')) {
+      // Extraction de l'identifiant utilisateur pour filtrer les données associées
       const [userId] = params;
+      // Suppression des associations de catégories pour cet utilisateur
       store.user_category = store.user_category.filter((uc) => uc.user_id !== userId);
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
       store.sauvegarder();
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: 0, changes: 1 };
     }
 
+    // Simulation SQL : Activation d'une catégorie pour un utilisateur
     if (s.includes('INSERT INTO USER_CATEGORY')) {
       const [userId, catId, enabled] = params;
       const id = (store.user_category.length > 0 ? Math.max(...store.user_category.map((uc) => uc.id)) : 0) + 1;
+      // Ajout de l'association catégorie-utilisateur en mémoire
       store.user_category.push({
         id,
         user_id: userId,
@@ -464,11 +549,14 @@ export const db = {
         enabled: enabled ?? 1,
         created_at: new Date().toISOString(),
       });
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
       store.sauvegarder();
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: id, changes: 1 };
     }
 
     // INSERT INTO CATEGORY
+    // Simulation SQL : Création d'une nouvelle catégorie dans le catalogue universel
     if (s.includes('INSERT INTO CATEGORY') || s.includes('INSERT INTO CATEGORIES')) {
       const [nom, typeOrIcon, iconOrPct, pctOrTheme, theme] = params;
       let nameKey = nom;
@@ -489,6 +577,7 @@ export const db = {
       }
 
       const id = (store.category.length > 0 ? Math.max(...store.category.map((c) => c.id)) : 0) + 1;
+      // Ajout de la nouvelle catégorie dans le catalogue en mémoire
       store.category.push({
         id,
         name_key: nameKey,
@@ -500,13 +589,17 @@ export const db = {
         is_system: 0,
         theme: th,
       });
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
       store.sauvegarder();
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: id, changes: 1 };
     }
 
     // UPDATE CATEGORY
+    // Simulation SQL : Modification des propriétés d'une catégorie existante
     if (s.includes('UPDATE CATEGORY') || s.includes('UPDATE CATEGORIES')) {
       const id = params[params.length - 1];
+      // Recherche de la catégorie correspondante dans le tableau en mémoire
       const cat = store.category.find((c) => c.id === id);
       if (cat) {
         cat.name_key = params[0];
@@ -520,37 +613,57 @@ export const db = {
           cat.default_percent = params[2];
           cat.is_active = params[3];
         }
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
         store.sauvegarder();
       }
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: 0, changes: 1 };
     }
 
     // DELETE FROM PRODUCT
+    // Simulation SQL : Suppression d'un produit et de ses achats associés
     if (s.includes('DELETE FROM PRODUCT')) {
+      // Extraction de l'identifiant unique depuis les arguments de la requête
       const [id] = params;
+      // Suppression en cascade des produits associés
       store.product = store.product.filter((p) => p.id !== id);
+      // Suppression en cascade des achats de produits associés
       store.purchase = store.purchase.filter((p) => p.product_id !== id);
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
       store.sauvegarder();
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: 0, changes: 1 };
     }
 
     // DELETE FROM USER
+    // Simulation SQL : Suppression d'un compte utilisateur et purge en cascade de ses données
     if (s.includes('DELETE FROM USER')) {
+      // Extraction de l'identifiant unique depuis les arguments de la requête
       const [id] = params;
+      // Suppression de l'utilisateur du tableau principal en mémoire
       store.user = store.user.filter((u) => u.id !== id);
+      // Suppression en cascade des achats de produits associés
       store.purchase = store.purchase.filter((p) => p.user_id !== id);
+      // Suppression en cascade des dépenses directes associées
       store.expense = store.expense.filter((e) => e.user_id !== id);
+      // Suppression en cascade des produits associés
       store.product = store.product.filter((p) => p.user_id !== id);
+      // Suppression en cascade des budgets mensuels associés
       store.month_budget = store.month_budget.filter((b) => b.user_id !== id);
+      // Suppression en cascade des allocations de catégories associées
       store.category_budget = store.category_budget.filter((b) => b.user_id !== id);
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
       store.sauvegarder();
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: 0, changes: 1 };
     }
 
     // INSERT INTO PURCHASE
+    // Simulation SQL : Enregistrement d'un achat de produit avec prix, quantité et magasin
     if (s.includes('INSERT INTO PURCHASE')) {
       const [userId, prodId, catId, price, qte, unit, storeName, date, month, notes] = params;
       const id = (store.purchase.length > 0 ? Math.max(...store.purchase.map((p) => p.id)) : 0) + 1;
+      // Ajout du nouvel enregistrement d'achat dans le tableau en mémoire
       store.purchase.push({
         id,
         user_id: userId,
@@ -565,14 +678,18 @@ export const db = {
         notes: notes ?? '',
         created_at: new Date().toISOString(),
       });
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
       store.sauvegarder();
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: id, changes: 1 };
     }
 
     // INSERT INTO EXPENSE
+    // Simulation SQL : Enregistrement d'une dépense forfaitaire directe (facture, loyer)
     if (s.includes('INSERT INTO EXPENSE')) {
       const [userId, catId, amount, label, date, month, notes] = params;
       const id = (store.expense.length > 0 ? Math.max(...store.expense.map((e) => e.id)) : 0) + 1;
+      // Ajout de la nouvelle dépense directe dans le tableau en mémoire
       store.expense.push({
         id,
         user_id: userId,
@@ -584,11 +701,15 @@ export const db = {
         notes: notes ?? '',
         created_at: new Date().toISOString(),
       });
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
       store.sauvegarder();
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
       return { lastInsertRowId: id, changes: 1 };
     }
 
+      // Sauvegarde immédiate dans le localStorage pour garantir la persistance web
     store.sauvegarder();
+      // Renvoi du résultat standard SQLite avec identifiant inséré et nombre de modifications
     return { lastInsertRowId: 0, changes: 1 };
   },
 
@@ -596,9 +717,13 @@ export const db = {
     const s = sql.toUpperCase();
 
     // SELECT BY EMAIL FROM USER
+    // Simulation SQL : Recherche d'un utilisateur par son adresse e-mail
     if (s.includes('FROM USER WHERE EMAIL = ?') || s.includes('FROM UTILISATEURS WHERE EMAIL = ?')) {
+      // Extraction du paramètre e-mail depuis la liste des arguments de requête
       const [email] = params;
+      // Recherche de l'utilisateur dans le tableau des utilisateurs en mémoire
       const u = store.user.find((x) => x.email.toLowerCase() === String(email).toLowerCase());
+      // Si aucun utilisateur n'est trouvé, renvoi de null (résultat vide)
       if (!u) return null;
       return {
         ...u,
@@ -611,9 +736,13 @@ export const db = {
     }
 
     // SELECT BY ID FROM USER
+    // Simulation SQL : Recherche d'un utilisateur par son identifiant unique
     if (s.includes('FROM USER WHERE ID = ?') || s.includes('FROM UTILISATEURS WHERE ID = ?')) {
+      // Extraction de l'identifiant unique depuis les arguments de la requête
       const [id] = params;
+      // Recherche de l'utilisateur dans le tableau des utilisateurs en mémoire
       const u = store.user.find((x) => x.id === id);
+      // Si aucun utilisateur n'est trouvé, renvoi de null (résultat vide)
       if (!u) return null;
       return {
         ...u,
@@ -632,6 +761,7 @@ export const db = {
     }
 
     // SETTINGS
+    // Simulation SQL : Récupération des règles et paramètres de gamification
     if (s.includes('FROM SETTINGS')) {
       return store.settings as unknown as T;
     }
@@ -643,6 +773,7 @@ export const db = {
     const s = sql.toUpperCase();
 
     // CATEGORIES
+    // Simulation SQL : Récupération du catalogue de catégories avec alias
     if (s.includes('FROM CATEGORY') || s.includes('FROM CATEGORIES')) {
       return store.category.map((c) => ({
         ...c,
@@ -656,7 +787,9 @@ export const db = {
     }
 
     // USER CATEGORIES
+    // Simulation SQL : Récupération des catégories activées pour l'utilisateur
     if (s.includes('FROM USER_CATEGORY')) {
+      // Extraction de l'identifiant utilisateur pour filtrer les données associées
       const [userId] = params;
       const rows = store.user_category.filter(
         (uc) => (userId === undefined || uc.user_id === userId) && uc.enabled === 1
@@ -677,8 +810,10 @@ export const db = {
     }
 
     // PRODUCTS
+    // Simulation SQL : Récupération des produits enregistrés avec métadonnées
     if (s.includes('FROM PRODUCT') || s.includes('FROM PRODUITS')) {
       return store.product.map((p) => {
+      // Recherche de la catégorie correspondante dans le tableau en mémoire
         const cat = store.category.find((c) => c.id === p.category_id);
         return {
           ...p,
@@ -693,6 +828,7 @@ export const db = {
     }
 
     // BUDGET (Périodes personnalisées)
+    // Simulation SQL : Transformation des budgets mensuels en périodes calendaires précises
     if (s.includes('FROM BUDGET')) {
       // Transformation des month_budget en budget de période pour le Web avec bornes exactes
       return store.month_budget.map((mb) => {
@@ -713,8 +849,10 @@ export const db = {
     }
 
     // CATEGORY_BUDGET (Enveloppes allouées)
+    // Simulation SQL : Récupération des enveloppes allouées par catégorie
     if (s.includes('FROM CATEGORY_BUDGET')) {
       // Récupération des allocations filtrées par utilisateur si fourni
+      // Extraction de l'identifiant utilisateur pour filtrer les données associées
       const [userId] = params;
       const rows = store.category_budget.filter(
         (cb) => userId === undefined || cb.user_id === userId
@@ -723,11 +861,13 @@ export const db = {
     }
 
     // PURCHASES (Achats de produits détaillés)
+    // Simulation SQL : Récupération de l'historique des achats de produits
     if (s.includes('FROM PURCHASE')) {
       return store.purchase as unknown as T[];
     }
 
     // EXPENSES (Dépenses directes)
+    // Simulation SQL : Récupération de l'historique des dépenses directes
     if (s.includes('FROM EXPENSE')) {
       return store.expense as unknown as T[];
     }
