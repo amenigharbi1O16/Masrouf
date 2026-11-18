@@ -1,6 +1,31 @@
+/**
+ * FICHIER : src/components/SideDrawer.tsx
+ * IDENTIFIANT INVENTAIRE : FICHIER-051
+ * COMPOSANT : SideDrawer (Menu Tiroir Coulissant Universel avec Support RTL)
+ *
+ * RÔLE DU COMPOSANT :
+ * Composant de navigation latérale coulissante avec rideau translucide pour les profils Administrateur et Utilisateur :
+ * - Animation fluide d'entrée et de sortie (glisse depuis la gauche en FR/EN, depuis la droite en AR).
+ * - En-tête avec avatar, nom du profil, badge de rôle et feuille décorative Masrouf.
+ * - Liste des options de menu avec icônes IonIcons et état actif mis en valeur.
+ * - Pied de menu avec sélecteur de langue trilingue et bouton de déconnexion stylisé.
+ * - Adaptabilité totale aux petits et grands écrans avec défilement tactile au curseur.
+ *
+ * IMPACT DANS L'INTERFACE UTILISATEUR :
+ * Offre un accès rapide à toutes les rubriques de l'application sans encombrer la zone d'affichage principale.
+ */
+
+// ============================================================================
+// IMPORTS ET DÉPENDANCES TECHNIQUES DU TIROIR LATÉRAL
+// ============================================================================
+
+// Icônes vectorielles IonIcons pour les rubriques de navigation, avatars et déconnexion
 import { Ionicons } from '@expo/vector-icons';
+// Hooks de navigation et détection d'URL active d'Expo Router
 import { usePathname, useRouter } from 'expo-router';
+// React core, hooks d'effets, références d'animation et état local de montage
 import React, { useEffect, useRef, useState } from 'react';
+// Primitifs d'animation, modales plein écran, défilement et détection de plateforme
 import {
   Animated,
   Modal,
@@ -12,17 +37,32 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+// Gestion des zones de sécurité (notch, barre d'accueil iOS/Android)
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// Tokens visuels du thème Masrouf : vert forêt, blanc, menthe
 import { colors } from '@/constants/theme';
+// Contexte d'authentification pour accéder au profil utilisateur, rôle et déconnexion
 import { useAuth } from '@/utils/auth';
+// Constantes de langues disponibles et hook d'internationalisation bidirectionnel RTL/LTR
 import { LANGUES_DISPONIBLES, useTranslation } from '@/utils/i18n';
+// Contexte d'ouverture et fermeture du tiroir partagé dans l'arbre React
 import { useDrawer } from './DrawerContext';
+// Sélecteur de langue réutilisable intégré dans le pied du tiroir
 import { LanguageSelector } from './LanguageSelector';
 
-/** Interface décrivant chaque lien du menu du tiroir */
+// ============================================================================
+// INTERFACE DE CONFIGURATION DES LIENS DE NAVIGATION
+// ============================================================================
+
+/**
+ * Interface décrivant un élément individuel cliquable dans le tiroir de navigation.
+ */
 export interface DrawerItem {
+  // Libellé textuel affiché à l'utilisateur (ex: "Tableau de bord", "Utilisateurs")
   label: string;
+  // Nom de l'icône vectorielle IonIcons associée (ex: "grid-outline", "people-outline")
   icon: keyof typeof Ionicons.glyphMap;
+  // Chemin de redirection interne dans l'arborescence Expo Router (ex: "/(admin)/dashboard")
   href: string;
 }
 
@@ -67,9 +107,15 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
   const isShortScreen = height < 750;
   const isSmallScreen = width < 360;
 
-  // Hauteur et espacement adaptatifs des boutons de menu selon le nombre d'éléments et la hauteur d'écran
-  const itemMinHeight = isShortScreen || items.length >= 8 ? 42 : 46;
-  const itemGap = isShortScreen || items.length >= 8 ? 6 : 8;
+  // Hauteur et espacement adaptatifs des boutons de menu selon le nombre d'éléments, le rôle et la hauteur d'écran
+  // Pour l'utilisateur (!isAdmin), boutons légèrement plus hauts et plus espacés pour une lisibilité optimale
+  const itemMinHeight = !isAdmin
+    ? (isShortScreen ? 48 : 52)
+    : (isShortScreen || items.length >= 8 ? 42 : 46);
+  // Espacement vertical harmonieux entre les items
+  const itemGap = !isAdmin
+    ? (isShortScreen ? 7 : 9)
+    : (isShortScreen || items.length >= 8 ? 6 : 8);
   const menuMarginTop = isShortScreen ? 14 : 20;
 
   // Position hors-champ : à gauche (-drawerW) pour LTR, à droite (+drawerW) pour RTL
@@ -188,10 +234,10 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
             keyboardShouldPersistTaps="handled"
           >
             <View>
-              {/* En-tête : Titre de l'application et logo feuille */}
+              {/* En-tête : Titre de l'application et logo feuille (taille de police 26px pour l'utilisateur) */}
               <View style={[styles.brandRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <Text style={styles.brand}>{t('nom_app')}</Text>
-                <Ionicons name="leaf" size={24} color={colors.mint} />
+                <Text style={[styles.brand, !isAdmin && styles.userBrand]}>{t('nom_app')}</Text>
+                <Ionicons name="leaf" size={!isAdmin ? 26 : 24} color={colors.mint} />
               </View>
 
               {/* Profil : Avatar (bouclier pour admin), nom complet et badge de rôle clairement affiché */}
@@ -202,24 +248,37 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                   isShortScreen && { marginTop: 12 },
                 ]}
               >
-                <View style={[styles.avatarWrapper, isAdmin && styles.adminAvatarWrapper]}>
+                {/* Cadre de l'avatar avec dimension confortable pour l'utilisateur */}
+                <View
+                  style={[
+                    styles.avatarWrapper,
+                    isAdmin ? styles.adminAvatarWrapper : styles.userAvatarWrapper,
+                  ]}
+                >
                   <Ionicons
                     name={isAdmin ? 'shield-checkmark' : 'person-circle'}
-                    size={isAdmin ? 24 : 34}
+                    size={isAdmin ? 24 : 36}
                     color={colors.mint}
                   />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
+                  {/* Nom d'utilisateur (police rehaussée à 18px pour l'utilisateur régulier) */}
                   <Text
-                    style={[styles.name, { textAlign: isRTL ? 'right' : 'left' }]}
+                    style={[
+                      styles.name,
+                      !isAdmin && styles.userName,
+                      { textAlign: isRTL ? 'right' : 'left' },
+                    ]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
                     {user?.name || (isAdmin ? t('administrateur') : t('compte_personnel'))}
                   </Text>
+                  {/* Badge de rôle avec typographie et espacement améliorés pour l'utilisateur */}
                   <View
                     style={[
                       styles.roleBadge,
+                      !isAdmin && styles.userRoleBadge,
                       { alignSelf: isRTL ? 'flex-end' : 'flex-start' },
                       isAdmin && styles.adminRoleBadge,
                     ]}
@@ -227,6 +286,7 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                     <Text
                       style={[
                         styles.roleBadgeText,
+                        !isAdmin && styles.userRoleBadgeText,
                         isAdmin && styles.adminRoleBadgeText,
                       ]}
                       numberOfLines={1}
@@ -237,7 +297,7 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                 </View>
               </View>
 
-              {/* Liste de tous les boutons de navigation (8 boutons pour admin) affichés clairement */}
+              {/* Liste de tous les boutons de navigation affichés clairement */}
               <View style={{ gap: itemGap, marginTop: menuMarginTop }}>
                 {items.map((it) => {
                   const on = active(it.href);
@@ -261,16 +321,23 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                       ]}
                       accessibilityRole="button"
                     >
+                      {/* Icône du bouton de menu (24px pour l'utilisateur) */}
                       <Ionicons
                         name={it.icon}
-                        size={isShortScreen ? 20 : 22}
+                        size={!isAdmin ? (isShortScreen ? 22 : 24) : (isShortScreen ? 20 : 22)}
                         color={on ? colors.mint : colors.white}
                         style={{ opacity: on ? 1 : 0.85 }}
                       />
+                      {/* Libellé du menu : police légèrement augmentée pour lisibilité et clarté optimale */}
                       <Text
                         style={[
                           styles.itemText,
-                          { fontSize: isSmallScreen ? 13 : 14.5 },
+                          !isAdmin && styles.userItemText,
+                          {
+                            fontSize: !isAdmin
+                              ? (isSmallScreen ? 15 : 16.5)
+                              : (isSmallScreen ? 14 : 15.5),
+                          },
                           on && styles.itemTextActive,
                           { textAlign: isRTL ? 'right' : 'left' },
                         ]}
@@ -288,11 +355,18 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
 
             {/* Pied du tiroir : Sélecteur de langue et déconnexion */}
             <View style={[styles.footer, isShortScreen && { marginTop: 14, paddingTop: 8 }]}>
-              {/* Sélecteur rapide de langue */}
-              <Text style={[styles.langLabel, { textAlign: isRTL ? 'right' : 'left' }]}>
+              {/* Sélecteur rapide de langue (titre 12.5px pour l'utilisateur) */}
+              <Text
+                style={[
+                  styles.langLabel,
+                  !isAdmin && styles.userLangLabel,
+                  { textAlign: isRTL ? 'right' : 'left' },
+                ]}
+              >
                 {t('langue_label')}
               </Text>
-              <LanguageSelector variant="drawer" />
+              {/* Sélecteur de langue avec paramètre spécifique au tiroir utilisateur */}
+              <LanguageSelector variant="drawer" isUserDrawer={!isAdmin} />
 
               {/* Bouton de déconnexion stylisé et distinct */}
               <Pressable
@@ -302,21 +376,26 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                 }}
                 style={[
                   styles.logout,
+                  !isAdmin && styles.userLogout,
                   {
                     flexDirection: isRTL ? 'row-reverse' : 'row',
-                    minHeight: isShortScreen ? 38 : 42,
+                    minHeight: !isAdmin ? (isShortScreen ? 42 : 46) : (isShortScreen ? 38 : 42),
                     marginTop: isShortScreen ? 10 : 14,
                   },
                 ]}
                 accessibilityRole="button"
               >
+                {/* Icône de déconnexion */}
                 <Ionicons
                   name="log-out-outline"
-                  size={20}
+                  size={!isAdmin ? 22 : 20}
                   color={colors.white}
                   style={{ transform: [{ scaleX: isRTL ? -1 : 1 }] }}
                 />
-                <Text style={styles.logoutText}>{t('se_deconnecter')}</Text>
+                {/* Libellé de déconnexion (16px pour l'utilisateur vs 14.5px admin) */}
+                <Text style={[styles.logoutText, !isAdmin && styles.userLogoutText]}>
+                  {t('se_deconnecter')}
+                </Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -328,6 +407,7 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
 
 /** Styles graphiques du tiroir, typographie et dimensions */
 const styles = StyleSheet.create({
+  // Panneau principal coulissant vert forêt (#1B4332) occupant toute la hauteur d'écran
   drawer: {
     position: 'absolute',
     top: 0,
@@ -335,6 +415,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.forest,
     overflow: 'hidden',
   },
+  // Zone de défilement vertical avec support natif et curseur de souris pour le Web
   scrollView: {
     flex: 1,
     width: '100%',
@@ -345,23 +426,28 @@ const styles = StyleSheet.create({
         }
       : {}),
   },
+  // Conteneur interne extensible garantissant la séparation entre en-tête et pied
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
+  // Ligne de marque au sommet associant le titre "MASROUF" et la feuille verte
   brandRow: {
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 4,
   },
-  brand: { color: colors.white, fontSize: 24, fontWeight: '700' },
+  // Typographie du logo Masrouf (25px en standard, 26px pour l'utilisateur)
+  brand: { color: colors.white, fontSize: 25, fontWeight: '700' },
+  // Bloc profil regroupant l'avatar, le nom complet et le badge de rôle
   profile: {
     alignItems: 'center',
     gap: 12,
     marginTop: 18,
     paddingHorizontal: 4,
   },
+  // Cadre circulaire entourant l'avatar avec fond vert menthe translucide
   avatarWrapper: {
     width: 44,
     height: 44,
@@ -370,12 +456,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Cadre d'avatar spécifique administrateur avec bordure dorée/menthe
   adminAvatarWrapper: {
     backgroundColor: 'rgba(217, 240, 228, 0.22)',
     borderWidth: 1,
     borderColor: colors.mint,
   },
-  name: { color: colors.white, fontSize: 16, fontWeight: '600' },
+  // Nom de l'utilisateur connecté affiché en blanc bold
+  name: { color: colors.white, fontSize: 17, fontWeight: '600' },
+  // Badge rectangulaire stylisé sous le nom indiquant le rôle
   roleBadge: {
     marginTop: 4,
     paddingHorizontal: 8,
@@ -383,21 +472,25 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: 'rgba(217, 240, 228, 0.12)',
   },
+  // Variante renforcée du badge pour l'administrateur système
   adminRoleBadge: {
     backgroundColor: 'rgba(217, 240, 228, 0.24)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(217, 240, 228, 0.4)',
   },
+  // Typographie du badge de rôle en vert menthe
   roleBadgeText: {
     color: colors.mint,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
   },
+  // Texte blanc renforcé pour le rôle administrateur
   adminRoleBadgeText: {
     color: colors.white,
     fontWeight: '700',
   },
+  // Bouton de menu individuel avec espacement tactile confortable et coins arrondis
   item: {
     alignItems: 'center',
     gap: 12,
@@ -406,29 +499,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
+  // État actif du bouton de menu : fond translucide et liseré vertical menthe
   itemActive: {
     backgroundColor: 'rgba(217, 240, 228, 0.20)',
     borderLeftColor: colors.mint,
     borderRightColor: colors.mint,
   },
-  itemText: { color: colors.white, fontSize: 14.5, flex: 1, minWidth: 0 },
+  // Libellé textuel de menu (15.5px admin, rehaussé à 16.5px pour l'utilisateur)
+  itemText: { color: colors.white, fontSize: 15.5, flex: 1, minWidth: 0 },
+  // Mise en gras blanc de la rubrique actuellement consultée
   itemTextActive: {
     color: colors.white,
     fontWeight: '700',
   },
+  // Pied du tiroir séparé par un trait fin regroupant langue et déconnexion
   footer: {
     marginTop: 18,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(217, 240, 228, 0.25)',
   },
+  // Titre informatif au-dessus des boutons de sélection de langue
   langLabel: {
     color: colors.mint,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
     paddingHorizontal: 4,
   },
+  // Bouton de déconnexion stylisé en rouge corail translucide d'avertissement
   logout: {
     alignItems: 'center',
     gap: 12,
@@ -438,5 +537,49 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: 'rgba(220, 119, 112, 0.16)',
   },
-  logoutText: { color: colors.white, fontSize: 14.5, fontWeight: '600' },
+  // Libellé de déconnexion en blanc bold (16px pour l'utilisateur)
+  logoutText: { color: colors.white, fontSize: 15.5, fontWeight: '600' },
+  // Typographie, espacements et arrondis optimisés spécifiquement pour le tiroir utilisateur
+  userBrand: { fontSize: 26, fontWeight: '800' },
+  // Cadre d'avatar élargi à 48px pour le profil utilisateur
+  userAvatarWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(217, 240, 228, 0.16)',
+  },
+  // Nom d'utilisateur rehaussé à 18px pour une lisibilité optimale
+  userName: { fontSize: 18, fontWeight: '700' },
+  // Badge de rôle avec marges ajustées pour le profil utilisateur
+  userRoleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  // Texte de rôle rehaussé à 12.5px pour l'utilisateur
+  userRoleBadgeText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  // Police de menu rehaussée à 16.5px pour l'utilisateur
+  userItemText: {
+    fontSize: 16.5,
+    fontWeight: '500',
+  },
+  // Titre de sélecteur de langue rehaussé à 12.5px pour l'utilisateur
+  userLangLabel: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  // Bouton de déconnexion utilisateur avec dimensions généreuses
+  userLogout: {
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  // Texte de déconnexion utilisateur rehaussé à 16px
+  userLogoutText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });
