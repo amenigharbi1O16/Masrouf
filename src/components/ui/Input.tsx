@@ -39,15 +39,25 @@ import { useTranslation } from '@/utils/i18n';
  * Propriétés attendues par le composant Input.
  */
 interface Props {
+  /** Libellé flottant affiché en petit au-dessus de la valeur (ex: "Nom", "Email") */
   label: string;
+  /** Valeur textuelle courante contrôlée du champ de saisie */
   value: string;
+  /** Callback déclenché à chaque frappe clavier pour notifier le composant parent */
   onChangeText?: (t: string) => void;
+  /** Texte indicatif d'exemple affiché quand le champ est vide */
   placeholder?: string;
+  /** Masque les caractères saisis par des puces sécurisées pour les mots de passe */
   secure?: boolean;
+  /** Type de clavier virtuel mobile (numeric, email-address, decimal-pad, etc.) */
   keyboardType?: KeyboardTypeOptions;
+  /** Règle de mise en majuscule automatique (désactivée par défaut pour les emails) */
   autoCapitalize?: 'none' | 'sentences' | 'words';
+  /** Indique si le champ est modifiable ou figé en lecture seule avec opacité réduite */
   editable?: boolean;
+  /** Message d'erreur de validation affiché sous la boîte avec bordure corail */
   error?: string;
+  /** Note d'information discrète affichée sous la boîte si aucune erreur n'est présente */
   hint?: string;
 }
 
