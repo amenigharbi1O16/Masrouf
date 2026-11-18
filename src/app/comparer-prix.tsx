@@ -30,6 +30,7 @@
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
+import { View } from 'react-native';
 // Composants de cartes pour affichage synthétique et fiche produit
 import { InfoRow, ProductCard } from '@/components/Cards';
 // Composant de tracé vectoriel du graphique d'évolution des prix
@@ -97,6 +98,9 @@ export default function ComparePriceScreen() {
   const { db, me, selectedBudget, actions } = useStore();
   // Fonctions de traduction et sens de lecture
   const { t, isRTL } = useTranslation();
+
+  // Vérification de la présence d'une période sélectionnée avec budget alloué
+  const hasBudget = Boolean(selectedBudget && Number(selectedBudget.total) > 0);
 
   // Recherche de l'article dans le catalogue SQLite
   const product = db.products.find((p) => p.id === q.productId);
@@ -166,6 +170,9 @@ export default function ComparePriceScreen() {
    * Valide l'opération et bascule instantanément vers l'écran de félicitations.
    */
   const confirm = () => {
+    // Blocage strict : sauvegarde interdite sans période sélectionnée et budget alloué
+    if (!hasBudget) return;
+
     const values = {
       productId: product.id,
       price,
@@ -264,23 +271,30 @@ export default function ComparePriceScreen() {
       {/* Ligne récapitulative du montant total payé en caisse */}
       <InfoRow label={t('total_achat_label')} value={money(price)} />
 
-      {/* Ligne de simulation budgétaire : montre le nouveau total consommé dans l'enveloppe */}
-      {budget ? (
+      {/* Ligne de simulation budgétaire : montre le nouveau total consommé dans l'enveloppe avec pourcentage */}
+      {hasBudget && budget ? (
         <InfoRow
           label={`${categoryName(db, catId)} (${t('budget_apres_enregistrement')})`}
-          value={`${short(spentAfter)} / ${short(alloc)} DT`}
+          value={`${short(spentAfter)} / ${short(alloc)} DT${alloc > 0 ? ` (${((spentAfter / alloc) * 100).toFixed(0)}%)` : ''}`}
           tone={spentAfter > alloc && alloc > 0 ? 'danger' : undefined}
         />
       ) : (
-        <AlertBanner
-          tone="info"
-          title={t('aucun_budget_actif')}
-          detail={t('sauvegarde_sans_budget')}
-        />
+        <View style={{ gap: 8, marginVertical: 6 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('selectionner_periode_et_budget_dabord')}
+            detail={t('selectionner_periode_et_budget_detail')}
+          />
+          <Button
+            label={t('definir_periode_budget')}
+            variant="secondary"
+            onPress={() => router.push('/budget-mois')}
+          />
+        </View>
       )}
 
-      {/* Bouton vert forêt : confirmation finale et écriture dans SQLite */}
-      <Button label={t('confirmer_achat_btn')} onPress={confirm} />
+      {/* Bouton vert forêt : confirmation finale et écriture dans SQLite (désactivé si aucune période/budget) */}
+      <Button label={t('confirmer_achat_btn')} onPress={confirm} disabled={!hasBudget} />
 
       {/* Bouton secondaire clair : permet de retourner corriger le prix ou la quantité */}
       <Button
