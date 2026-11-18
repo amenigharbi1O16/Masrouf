@@ -1,3 +1,21 @@
+/**
+ * FICHIER : src/components/Cards.tsx
+ * IDENTIFIANT INVENTAIRE : FICHIER-042
+ * COMPOSANT : Cards (Collection des Cartes Métier de Masrouf)
+ *
+ * RÔLE DU FICHIER :
+ * Fournit les composants graphiques de cartes interactives réutilisées à travers l'application :
+ * - `BudgetCard` : Grande carte du tableau de bord affichant le restant à vivre, la jauge et la période.
+ * - `CategoryCard` : Carte de catégorie financière épurée affichant l'icône, le nom et le budget alloué.
+ * - `TransactionRow` : Ligne compacte de transaction récente (achat avec panier ou dépense directe).
+ * - `ExpenseCard` : Carte détaillée de dépense forfaitaire avec icône thématique et montant.
+ * - `ProductCard` : Carte de produit d'épicerie avec photo miniature, catégorie, unité et dernier prix.
+ * - `InfoRow` : Ligne clé/valeur pour récapitulatifs, fiches d'utilisateurs et écrans de confirmation.
+ *
+ * IMPACT DANS L'INTERFACE UTILISATEUR :
+ * Structure les données financières en blocs lisibles, aérés et cohérents avec la charte Masrouf.
+ */
+
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -80,14 +98,14 @@ export function BudgetCard({ available, spent, total, pct, range, over, onPress 
 export function CategoryCard({
   name,
   spent,
-  allocation,
+  allocation = 0,
   icon,
   onPress,
 }: {
   // Nom de la catégorie
   name: string;
-  // Montant consommé en DT
-  spent: number;
+  // Montant consommé en DT (conservé pour rétro-compatibilité)
+  spent?: number;
   // Montant total alloué en DT
   allocation: number;
   // Nom optionnel d'icône Ionicons spécifique
@@ -95,33 +113,37 @@ export function CategoryCard({
   // Callback de clic tactile optionnel
   onPress?: () => void;
 }) {
+  // Récupération des traductions et du sens de lecture
   const { isRTL } = useTranslation();
-  // Calcul du ratio de consommation pour déterminer la largeur de la jauge
-  const ratio = allocation > 0 ? Math.min(1, spent / allocation) : spent > 0 ? 1 : 0;
-  // Détecte si le montant dépensé dépasse le plafond prévu
-  const over = spent > allocation;
+
+  // Enveloppe allouée normalisée en nombre
+  const allocN = Math.round((Number(allocation) || 0) * 1000) / 1000;
+
   // Détermination de l'icône représentative : priorité à l'icône transmise, sinon résolution automatique selon le nom
   const iconName = icon ?? getCategoryIcon(name);
 
   return (
     // Carte tactile stylisée avec fond blanc et coins arrondis
-    <Pressable onPress={onPress} disabled={!onPress} style={[card, { padding: 16, gap: 10 }]}>
-      {/* Ligne supérieure avec icône, titre et montant */}
-      <View style={[styles.rowBetween, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+    <Pressable onPress={onPress} disabled={!onPress} style={[card, { padding: 16 }]}>
+      {/* Ligne avec icône et nom de la catégorie à gauche, et budget alloué à droite (sans pourcentage ni jauge) */}
+      <View style={[styles.rowBetween, { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' }]}>
         {/* Nom et icône représentative de la catégorie */}
-        <View style={[styles.iconTitle, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          {/* Icône Ionicons vectorielle personnalisée selon la catégorie (ex: restaurant, voiture, reçu) */}
-          <Ionicons name={iconName} size={22} color={colors.green} />
-          {/* Titre de la catégorie en vert forêt */}
-          <Text style={[styles.cardTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{name}</Text>
+        <View style={[styles.iconTitle, { flexDirection: isRTL ? 'row-reverse' : 'row', flex: 1, minWidth: 0 }]}>
+          {/* Icône Ionicons vectorielle personnalisée selon la catégorie en vert forêt */}
+          <Ionicons name={iconName} size={22} color={colors.forest} />
+          {/* Titre traduit de la catégorie en vert forêt */}
+          <Text
+            style={[styles.cardTitle, { textAlign: isRTL ? 'right' : 'left' }]}
+            numberOfLines={1}
+          >
+            {name}
+          </Text>
         </View>
-        {/* Montant dépensé vs montant alloué (coloré en rouge corail si dépassé) */}
-        <Text style={[styles.cardSub, over && { color: colors.coral }]}>{short(spent)} / {short(allocation)} DT</Text>
-      </View>
-      {/* Jauge fine visuelle de la catégorie */}
-      <View style={styles.trackLight}>
-        {/* Barre de progression verte ou corail */}
-        <View style={{ width: `${ratio * 100}%`, height: 6, borderRadius: 3, backgroundColor: over ? colors.coral : colors.green }} />
+
+        {/* Montant du budget alloué uniquement (sans pourcentage de consommation) */}
+        <Text style={[styles.cardSub, { color: colors.forest, fontWeight: '700' }]}>
+          {short(allocN)} DT
+        </Text>
       </View>
     </Pressable>
   );
@@ -355,25 +377,50 @@ export function InfoRow({ label, value, tone, plain = false }: {
 
 /** Feuilles de styles géométriques et typographiques */
 const styles = StyleSheet.create({
+  // Carte maîtresse de budget en vert forêt avec padding de 20px
   budget: { backgroundColor: colors.forest, borderRadius: radius.card, padding: 20, gap: 6 },
+  // Surtitre vert menthe discret
   budgetLabel: { color: colors.mint, fontSize: 11, fontWeight: '500' },
+  // Montant restant ou dépassé en grand format (34px)
   budgetAmount: { color: colors.white, fontSize: 34, lineHeight: 46, fontWeight: '600' },
+  // Ligne de rappel du montant total alloué
   budgetLine: { color: colors.mint, fontSize: 13 },
+  // Piste sombre de la jauge budgétaire
   track: { height: 7, borderRadius: 4, backgroundColor: colors.track, marginTop: 8, overflow: 'hidden' },
+  // Remplissage dynamique coloré de la jauge
   fill: { height: 7, borderRadius: 4 },
+  // Ligne de disposition flexible avec justification spatiale
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  // Montant consommé en blanc pur
   spent: { color: colors.white, fontSize: 13, fontWeight: '500' },
+  // Pourcentage consommé en vert menthe
   pct: { color: colors.mint, fontSize: 12 },
+  // Intervalle de dates en bas de carte
   range: { color: colors.mint, fontSize: 10, fontWeight: '500', marginTop: 8 },
+  // Conteneur regroupant l'icône vectorielle et le nom de catégorie
   iconTitle: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  // Titre principal de carte en vert forêt (14px, semi-bold)
   cardTitle: { fontSize: 14, lineHeight: 20, fontWeight: '600', color: colors.forest },
+  // Sous-titre gris ardoise de carte (12px)
   cardSub: { fontSize: 12, lineHeight: 17, fontWeight: '500', color: colors.muted },
+  // Piste claire de mini-jauge
   trackLight: { height: 6, borderRadius: 3, backgroundColor: colors.border },
+  // Ligne compacte de transaction récente avec hauteur minimale de 72px
   txn: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, minHeight: 72 },
+  // Médaillon carré vert menthe de 42x42 avec icône vectorielle
   tile: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.mint, alignItems: 'center', justifyContent: 'center' },
+  // Détail secondaire d'achat ou note de transaction
   txnDetail: { fontSize: 11, lineHeight: 16, color: colors.muted },
+  // Carte de dépense directe avec hauteur minimale de 80px
   expense: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, minHeight: 80 },
+  // Carte de produit d'épicerie avec vignette photo
   product: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, minHeight: 72 },
+  // Ligne clé/valeur encadrée dans une carte blanche
   info: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+  // Ligne clé/valeur épurée sans bordure
   infoPlain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, gap: 12 },
+  // Pourcentage de consommation de catégorie
+  categoryPctText: { fontSize: 11, fontWeight: '700' },
+  // Mention pour les catégories sans budget alloué
+  categoryNoBudget: { fontSize: 10.5, color: colors.muted, fontStyle: 'italic' },
 });
