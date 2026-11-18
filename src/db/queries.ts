@@ -21,16 +21,27 @@ import { db } from './database';
 
 export type Utilisateur = {
   id: number;
+  /** Nom complet de l'utilisateur affiché sur son profil et le tableau de bord */
   nom: string;
+  /** Adresse électronique unique servant d'identifiant de connexion */
   email: string;
+  /** Empreinte cryptographique salée du mot de passe (format sel:haché) */
   password_hash: string;
+  /** Sel cryptographique individuel pour le salage SHA-256 */
   salt: string;
+  /** Rôle de l'utilisateur : privilèges d'administration ('admin') ou usage standard ('user') */
   role: 'admin' | 'user';
+  /** Statut d'activation : 1 = compte autorisé, 0 = suspendu par l'administrateur */
   is_active: number;
+  /** Drapeau imposant le renouvellement du mot de passe à la prochaine connexion */
   must_change_password: number;
+  /** Indicateur d'achèvement de l'assistant de premier démarrage (1 = terminé) */
   onboarding_done: number;
+  /** Version de l'algorithme de hachage utilisée */
   hash_version: number;
+  /** Montant indicatif du budget mensuel de référence en Dinars Tunisiens */
   budget_mensuel: number;
+  /** Préférence de langue d'interface persistée ('fr', 'ar', 'en') */
   langue: string;
   created_at: string;
 };
@@ -39,23 +50,35 @@ export type Categorie = {
   id: number;
   nom: string;
   type: 'product' | 'expense';
+  /** Nom de l'icône vectorielle Ionicons représentant la catégorie */
   icone: string;
+  /** Pourcentage recommandé par défaut pour la répartition budgétaire */
   pourcentage_defaut: number;
+  /** Vaut 1 si la catégorie fait partie de la sélection recommandée de départ */
   est_defaut: number;
+  /** Visibilité de la catégorie : 1 = active, 0 = archivée/masquée */
   est_visible: number;
+  /** Vaut 1 pour les catégories protégées ne pouvant être supprimées */
   est_systeme: number;
+  /** Thématique de regroupement (ex: "Essentiel", "Logement", "Personnel") */
   theme: string;
 };
 
 export type Produit = {
   id: number;
   nom: string;
+  /** Marque ou fabricant du produit commercial */
   marque: string;
+  /** Unité de mesure physique normalisée (ex: "kg", "L", "pièce") */
   unite: string;
   categorie_id: number;
+  /** Libellé traduit de la catégorie de rattachement */
   categorie_nom: string;
+  /** Icône vectorielle de la catégorie associée */
   categorie_icone: string;
+  /** Identifiant de l'utilisateur ayant créé cet enregistrement */
   created_by: number;
+  /** Chemin du fichier local de la photo du produit */
   photo_uri: string;
 };
 
@@ -75,9 +98,13 @@ export type Achat = {
   magasin_nom: string;
   categorie_id: number | null;
   titre: string;
+  /** Prix calculé par unité de mesure (prix_total / quantite) */
   prix_unitaire: number;
+  /** Quantité achetée selon l'unité de mesure */
   quantite: number;
+  /** Montant total payé en Dinars Tunisiens (DT) */
   prix_total: number;
+  /** Date calendaire de l'achat au format ISO YYYY-MM-DD */
   date_achat: string;
   mois: string;
   notes: string;
@@ -85,21 +112,34 @@ export type Achat = {
 
 export type EnveloppeBudget = {
   categorie_id: number;
+  /** Libellé traduit de la catégorie de rattachement */
   categorie_nom: string;
+  /** Icône vectorielle de la catégorie associée */
   categorie_icone: string;
+  /** Montant financier alloué à cette enveloppe budgétaire en DT */
   montant_alloue: number;
+  /** Somme cumulée des dépenses engagées pour cette catégorie sur la période */
   montant_depense: number;
+  /** Solde restant disponible dans l'enveloppe (ou déficit si négatif) */
   montant_restant: number;
+  /** Part en pourcentage de l'enveloppe par rapport au budget global */
   pourcentage_alloue: number;
+  /** Taux de consommation réel de l'enveloppe (dépensé / alloué) en % */
   pourcentage_consomme: number;
 };
 
 export type PointsSettings = {
+  /** Points attribués pour chaque période budgétaire réussie sans dépassement */
   points_per_period: number;
+  /** Points bonus accordés lors de séries consécutives de mois réussis */
   points_streak_bonus: number;
+  /** Nombre de périodes successives requises pour débloquer le bonus de régularité */
   streak_length: number;
+  /** Seuil de points minimum pour le badge Débutant */
   seuil_debutant: number;
+  /** Seuil de points requis pour atteindre le niveau Économe */
   seuil_econome: number;
+  /** Seuil de points requis pour décrocher le niveau Expert */
   seuil_expert: number;
   green_until: number;
   orange_from: number;
@@ -107,10 +147,15 @@ export type PointsSettings = {
 };
 
 export type AdminGlobalStats = {
+  /** Nombre total de comptes inscrits dans le système */
   nbUtilisateurs: number;
+  /** Nombre d'utilisateurs dont le compte est actif */
   nbUtilisateursActifs: number;
+  /** Nombre de comptes suspendus par l'administration */
   nbSuspendus: number;
+  /** Nombre de catégories de type "produit" disponibles */
   nbCategoriesProduit: number;
+  /** Nombre de catégories de type "dépense" disponibles */
   nbCategoriesDepense: number;
 };
 
@@ -118,15 +163,20 @@ export type AdminGlobalStats = {
 export type CompteAdmin = {
   id: number;
   nom: string;
+  /** Adresse électronique unique servant d'identifiant de connexion */
   email: string;
+  /** Rôle de l'utilisateur : privilèges d'administration ('admin') ou usage standard ('user') */
   role: 'admin' | 'user';
+  /** Statut d'activation : 1 = compte autorisé, 0 = suspendu par l'administrateur */
   is_active: number;
+  /** Drapeau imposant le renouvellement du mot de passe à la prochaine connexion */
   must_change_password: number;
   created_at: string;
 };
 
 export type DepenseParCategorie = {
   categorie_nom: string;
+  /** Icône vectorielle de la catégorie associée */
   categorie_icone: string;
   total: number;
 };
@@ -591,8 +641,11 @@ export function countActiveAdmins(): number {
     magasin_id: number | null;
     categorie_id: number | null;
     titre?: string;
+  /** Prix calculé par unité de mesure (prix_total / quantite) */
     prix_unitaire: number;
+  /** Quantité achetée selon l'unité de mesure */
     quantite: number;
+  /** Montant total payé en Dinars Tunisiens (DT) */
     prix_total: number;
     mois: string;
     notes: string;
@@ -752,9 +805,12 @@ export function countActiveAdmins(): number {
    */
   export function insertProduit(data: {
     nom: string;
+  /** Marque ou fabricant du produit commercial */
     marque: string;
+  /** Unité de mesure physique normalisée (ex: "kg", "L", "pièce") */
     unite: string;
     categorie_id: number;
+  /** Identifiant de l'utilisateur ayant créé cet enregistrement */
     created_by: number;
     photo_uri?: string;
   }): number {
@@ -929,8 +985,10 @@ export function countActiveAdmins(): number {
     id: number,
     userId: number,
     data: {
+  /** Montant total payé en Dinars Tunisiens (DT) */
       prix_total: number;
       quantite: number;
+  /** Date calendaire de l'achat au format ISO YYYY-MM-DD */
       date_achat: string;
       magasin?: string;
       notes?: string;
@@ -1307,9 +1365,13 @@ export function countActiveAdmins(): number {
     // Enveloppes de CETTE période, pour CET utilisateur.
     const envelopes = db.getAllSync<{
       categorie_id: number;
+  /** Libellé traduit de la catégorie de rattachement */
       categorie_nom: string;
+  /** Icône vectorielle de la catégorie associée */
       categorie_icone: string;
+  /** Montant financier alloué à cette enveloppe budgétaire en DT */
       montant_alloue: number;
+  /** Part en pourcentage de l'enveloppe par rapport au budget global */
       pourcentage_alloue: number;
     }>(
       `SELECT
@@ -1832,13 +1894,17 @@ export function getTopProduitsParDepense(
 
 export type CategoriePeriodeStat = {
   categorie_id: number;
+  /** Libellé traduit de la catégorie de rattachement */
   categorie_nom: string;
+  /** Icône vectorielle de la catégorie associée */
   categorie_icone: string;
   type: 'product' | 'expense';
   total_millimes: number;
   total_dt: number;
   part_pourcentage: number;
+  /** Montant financier alloué à cette enveloppe budgétaire en DT */
   montant_alloue: number;
+  /** Taux de consommation réel de l'enveloppe (dépensé / alloué) en % */
   pourcentage_consomme: number;
   depense_precedente_dt: number;
   ecart_dt: number;
@@ -2010,6 +2076,7 @@ export type DepenseIndividuelle = {
   id: number;
   titre: string;
   magasin: string;
+  /** Date calendaire de l'achat au format ISO YYYY-MM-DD */
   date_achat: string;
   montant_dt: number;
   icone: string;
@@ -2087,6 +2154,7 @@ export function getTopProduitsPeriode(
 export type PointPrixProduit = {
   date: string;
   label: string;
+  /** Prix calculé par unité de mesure (prix_total / quantite) */
   prix_unitaire: number;
   magasin: string;
 };
