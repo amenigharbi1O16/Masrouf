@@ -176,11 +176,17 @@ export function translate(
 // ------------------------------------------------------------
 
 export interface LanguageContextType {
+  /** Code ISO de la langue actuellement active ('fr', 'ar', 'en') */
   langue: Langue;
+  /** Indicateur booléen vrai si la langue active s'écrit de droite à gauche (arabe) */
   isRTL: boolean;
+  /** Fonction asynchrone basculant la langue de l'application et propageant le changement */
   changerLangue: (nouvelleLangue: Langue) => Promise<void>;
+  /** Fonction de traduction d'une clé i18n avec interpolation dynamique de paramètres */
   t: (cle: string, params?: Record<string, string | number>) => string;
+  /** Traduit le libellé d'une catégorie financière dans la langue courante */
   traduireCategorie: (nom: string) => string;
+  /** Traduit le nom d'un palier de points (Débutant, Économe, Expert) */
   traduireNiveau: (niveau: string) => string;
 }
 
@@ -267,13 +273,16 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     [me, actions]
   );
 
+  // Calcul réactif de l'indicateur RTL : vrai uniquement si l'arabe est sélectionné
   const isRTL = langue === 'ar';
 
+  // Mémoïsation de l'objet de contexte pour éviter les rendus inutiles des consommateurs
   const value = useMemo<LanguageContextType>(
     () => ({
       langue,
       isRTL,
       changerLangue,
+  /** Fonction de traduction d'une clé i18n avec interpolation dynamique de paramètres */
       t: (cle: string, params?: Record<string, string | number>) => translate(cle, langue, params),
       traduireCategorie: (nom: string) => traduireNomCategorie(nom, langue),
       traduireNiveau: (niveau: string) => traduireNiveau(niveau, langue),
@@ -306,6 +315,7 @@ export function useTranslation(): LanguageContextType {
       appliquerDirectionLangue(nouvelleLangue);
       await setLanguePreLogin(nouvelleLangue);
     },
+  /** Fonction de traduction d'une clé i18n avec interpolation dynamique de paramètres */
     t: (cle: string, params?: Record<string, string | number>) => translate(cle, getModuleLangue(), params),
     traduireCategorie: (nom: string) => traduireNomCategorie(nom, getModuleLangue()),
     traduireNiveau: (niveau: string) => traduireNiveau(niveau, getModuleLangue()),
