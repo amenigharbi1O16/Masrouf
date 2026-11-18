@@ -721,5 +721,8 @@
   "budget_depasse_detail": "Exceeded by {montant} compared to your plan.",
   "aucun_budget_actif_detail": "No active budget today. Create one for any period of your choice.",
   "aucune_transaction_enregistree": "No transactions recorded",
-  "premiere_transaction_detail": "Add your first purchase or expense to see it appear here."
+  "premiere_transaction_detail": "Add your first purchase or expense to see it appear here.",
+  "selectionner_periode_et_budget_dabord": "Select a period and allocate a budget first.",
+  "selectionner_periode_et_budget_detail": "Recording a purchase or product requires an active period with an allocated budget.",
+  "definir_periode_budget": "Set a period and budget"
 }
