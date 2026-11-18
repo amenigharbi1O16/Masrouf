@@ -164,23 +164,30 @@ export function ExpenseForm({
     const catObj = cats.find((c) => c.id === categoryId);
     const name = catObj ? traduireCategorie(catObj.name) : t('categorie');
 
+    // Calcul précis du pourcentage de consommation prévisionnel (règle des millimes)
+    const predPct = alloc > 0 ? (spent / alloc) * 100 : 0;
+    const pctLabel = alloc > 0 ? ` (${predPct.toFixed(0)}%)` : '';
+
+    // Détermination visuelle de l'impact budgétaire projeté : alerte rouge si dépassement, bleue informative sinon
     impact =
       spent > alloc && alloc > 0
         ? {
+            // Bannière d'avertissement critique en rouge corail si l'enveloppe est dépassée
             tone: 'danger',
             title: t('depasserait_allocation', { cat: name }),
-            detail: t('sur_alloue_apres_sauvegarde', {
+            detail: `${t('sur_alloue_apres_sauvegarde', {
               spent: money(spent),
               alloc: money(alloc),
-            }),
+            })}${pctLabel}`,
           }
         : {
+            // Bannière informative bleue si la dépense s'inscrit dans les limites de l'enveloppe
             tone: 'info',
             title: t('apres_enregistrement', { cat: name }),
-            detail: t('sur_alloue_apres_sauvegarde', {
+            detail: `${t('sur_alloue_apres_sauvegarde', {
               spent: money(spent),
               alloc: money(alloc),
-            }),
+            })}${pctLabel}`,
           };
   }
 
@@ -206,7 +213,7 @@ export function ExpenseForm({
         />
       ) : null}
 
-      {/* Sélecteur de catégorie de dépense */}
+      {/* Sélecteur modal de catégorie de dépense avec libellé traduit (Alimentation, Factures, etc.) */}
       <SelectField
         label={t('categorie_depense')}
         value={categoryId}
@@ -217,7 +224,7 @@ export function ExpenseForm({
         onChange={setCategoryId}
       />
 
-      {/* Champ montant en DT */}
+      {/* Champ de saisie du montant en Dinars Tunisiens (clavier numérique décimal) */}
       <Input
         label={t('montant_dt_label')}
         value={amount}
@@ -229,7 +236,7 @@ export function ExpenseForm({
         placeholder="35.000"
       />
 
-      {/* Champ date de la dépense */}
+      {/* Champ de saisie de la date de dépense (format ISO YYYY-MM-DD) */}
       <Input
         label={t('date_label')}
         value={date}
