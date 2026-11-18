@@ -721,5 +721,8 @@
   "budget_depasse_detail": "تجاوز بمقدار {montant} مقارنة بتوقعاتك.",
   "aucun_budget_actif_detail": "لا يوجد ميزانية نشطة اليوم. أنشئ واحدة لأي فترة تختارها.",
   "aucune_transaction_enregistree": "لا توجد معاملات مسجلة",
-  "premiere_transaction_detail": "أضف أول شراء أو مصروف ليظهر هنا."
+  "premiere_transaction_detail": "أضف أول شراء أو مصروف ليظهر هنا.",
+  "selectionner_periode_et_budget_dabord": "يرجى تحديد فترة وتخصيص ميزانية لها أولاً.",
+  "selectionner_periode_et_budget_detail": "يتطلب تسجيل أي شراء أو منتج وجود فترة نشطة ذات ميزانية مخصصة.",
+  "definir_periode_budget": "تحديد الفترة والميزانية"
 }
