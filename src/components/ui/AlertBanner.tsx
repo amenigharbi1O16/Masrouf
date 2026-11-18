@@ -28,13 +28,18 @@ import { useTranslation } from '@/utils/i18n';
  */
 export type Tone = 'success' | 'warning' | 'danger' | 'info';
 
+/** Configuration visuelle par tonalité : couleur de fond, couleur de premier plan et icône associée */
 const TONES: Record<
   Tone,
   { bg: string; fg: string; icon: keyof typeof Ionicons.glyphMap }
 > = {
+  // Vert menthe et vert émeraude avec coche pour les confirmations et succès
   success: { bg: colors.mint, fg: colors.green, icon: 'checkmark-circle' },
+  // Vert menthe doux avec bulle d'information pour les notifications contextuelles
   info: { bg: colors.mint, fg: colors.green, icon: 'information-circle' },
+  // Fond doré ambré et texte brun foncé pour les avertissements et seuils d'alerte (80%)
   warning: { bg: colors.goldSoft, fg: '#8A5A12', icon: 'alert-circle' },
+  // Fond rose corail adouci et texte rouge sombre pour les erreurs critiques et dépassements
   danger: { bg: colors.coralSoft, fg: '#9B3B35', icon: 'warning' },
 };
 
@@ -42,8 +47,11 @@ const TONES: Record<
  * Propriétés du composant AlertBanner.
  */
 interface AlertBannerProps {
+  // Titre principal de l'alerte affiché en gras (ex: "Budget dépassé", "Opération réussie")
   title: string;
+  // Détail explicatif textuel optionnel (ex: montant exact du dépassement, conseil)
   detail?: string;
+  // Tonalité visuelle déterminant les couleurs et l'icône ('success' | 'warning' | 'danger' | 'info')
   tone?: Tone;
 }
 
@@ -55,10 +63,13 @@ export function AlertBanner({
   detail,
   tone = 'success',
 }: AlertBannerProps) {
+  // Extraction de la configuration chromatique et de l'icône selon la tonalité demandée
   const t = TONES[tone];
+  // Hook d'internationalisation pour adapter l'orientation en mode RTL (arabe)
   const { isRTL } = useTranslation();
 
   return (
+    // Boîte principale avec couleur de fond dynamique et inversion de flux selon RTL
     <View
       style={[
         styles.box,
@@ -69,13 +80,16 @@ export function AlertBanner({
       ]}
       accessibilityRole="alert"
     >
+      {/* Icône thématique vectorielle IonIcons de 22px */}
       <Ionicons
         name={t.icon}
         size={22}
         color={t.fg}
         style={{ marginTop: 1 }}
       />
+      {/* Conteneur textuel regroupant le titre et la description */}
       <View style={{ flex: 1 }}>
+        {/* Titre en gras héritant de la couleur de premier plan */}
         <Text
           style={[
             styles.title,
@@ -84,6 +98,7 @@ export function AlertBanner({
         >
           {title}
         </Text>
+        {/* Paragraphe descriptif affiché uniquement si fourni */}
         {detail ? (
           <Text
             style={[
@@ -99,17 +114,21 @@ export function AlertBanner({
   );
 }
 
+/** Styles graphiques de la bannière d'alerte */
 const styles = StyleSheet.create({
+  // Boîte avec espacement interne de 14px, coins arrondis de 16px et écartement de 10px
   box: {
     gap: 10,
     padding: 14,
     borderRadius: radius.card,
   },
+  // Typographie du titre (14px, semi-bold 600)
   title: {
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '600',
   },
+  // Typographie du texte de détail (12px, regular)
   detail: {
     fontSize: 12,
     lineHeight: 17,
