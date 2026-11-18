@@ -16,6 +16,7 @@
  * une note pédagogique et les boutons d'action d'enregistrement et d'annulation.
  */
 
+import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 // Composant d'information bicolore
@@ -37,11 +38,17 @@ import { useTranslation } from '@/utils/i18n';
  * Interface des valeurs transmises lors de la validation du formulaire.
  */
 export interface PurchaseValues {
+  /** Identifiant du produit sélectionné pour l'achat */
   productId: string;
+  /** Montant total payé en Dinars Tunisiens (DT) */
   price: number;
+  /** Quantité achetée selon l'unité choisie */
   quantity: number;
+  /** Unité de mesure physique (L, kg, g, pc, mL) */
   unit: string;
+  /** Enseigne ou magasin où l'achat a été effectué */
   store: string;
+  /** Date calendaire de la transaction au format ISO YYYY-MM-DD */
   date: string;
 }
 
@@ -50,16 +57,26 @@ export interface PurchaseValues {
  */
 interface Props {
   initial?: Partial<{
+  /** Identifiant du produit sélectionné pour l'achat */
     productId: string;
+  /** Montant total payé en Dinars Tunisiens (DT) */
     price: number;
+  /** Quantité achetée selon l'unité choisie */
     quantity: number;
+  /** Unité de mesure physique (L, kg, g, pc, mL) */
     unit: string;
+  /** Enseigne ou magasin où l'achat a été effectué */
     store: string;
+  /** Date calendaire de la transaction au format ISO YYYY-MM-DD */
     date: string;
   }>;
+  /** Verrouille le choix du produit en mode lecture seule (ex: depuis la fiche produit) */
   lockProduct?: boolean;
+  /** Callback de soumission transmettant les données validées au parent */
   onSubmit: (v: PurchaseValues) => void;
+  /** Callback d'annulation fermant le formulaire */
   onCancel: () => void;
+  /** Libellé textuel du bouton de validation (ex: "Enregistrer l'achat") */
   submitLabel: string;
 }
 
@@ -73,23 +90,35 @@ export function PurchaseForm({
   onCancel,
   submitLabel,
 }: Props) {
+  // Outil de routage Expo Router pour rediriger vers la définition de budget
+  const router = useRouter();
+  // Accès à la base locale SQLite, au profil utilisateur et au budget actif
   const { db, me, selectedBudget } = useStore();
+  // Traduction multilingue et orientation bidirectionnelle RTL
   const { t, isRTL } = useTranslation();
+
+  // Vérification stricte : une période doit être sélectionnée et un budget doit lui être alloué
+  const hasBudget = Boolean(selectedBudget && Number(selectedBudget.total) > 0);
 
   // Produits appartenant à l'utilisateur connecté
   const products = db.products.filter((p) => p.userId === me?.id);
 
   // États locaux des champs du formulaire
+  // État local de l'identifiant du produit sélectionné
   const [productId, setProductId] = useState(initial?.productId ?? '');
   const product = products.find((p) => p.id === productId);
 
+  // État local de la valeur textuelle du prix saisi
   const [price, setPrice] = useState(
     initial?.price !== undefined ? String(initial.price) : ''
   );
+  // État local de la quantité saisie (par défaut 1)
   const [quantity, setQuantity] = useState(
     initial?.quantity !== undefined ? String(initial.quantity) : '1'
   );
+  // État local de l'unité de mesure associée
   const [unit, setUnit] = useState(initial?.unit ?? product?.unit ?? 'L');
+  // État local du magasin ou de l'enseigne
   const [store, setStore] = useState(initial?.store ?? '');
 
   // Date par défaut rattachée à la période budgétaire sélectionnée
@@ -105,7 +134,9 @@ export function PurchaseForm({
     return today;
   }, [initial?.date, selectedBudget]);
 
+  // État local de la date d'achat
   const [date, setDate] = useState(defaultDate);
+  // État local du message d'erreur de validation
   const [error, setError] = useState('');
 
   // Détection si la date choisie est en dehors de la période budgétaire sélectionnée
@@ -132,6 +163,8 @@ export function PurchaseForm({
    * Validation et soumission des données saisies.
    */
   const submit = () => {
+    // Blocage strict : achat interdit sans période sélectionnée et budget alloué
+    if (!hasBudget) return setError(t('selectionner_periode_et_budget_dabord'));
     if (!productId) return setError(t('choisir_produit_erreur'));
     if (!Number.isFinite(p) || p < 0) return setError(t('entrer_prix_total_valide'));
     if (!Number.isFinite(q) || q <= 0) return setError(t('quantite_doit_etre_positive'));
@@ -149,6 +182,22 @@ export function PurchaseForm({
 
   return (
     <>
+      {/* Alerte bloquante si aucune période n'est sélectionnée ou aucun budget alloué */}
+      {!hasBudget && (
+        <View style={{ gap: 8, marginVertical: 6 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('selectionner_periode_et_budget_dabord')}
+            detail={t('selectionner_periode_et_budget_detail')}
+          />
+          <Button
+            label={t('definir_periode_budget')}
+            variant="secondary"
+            onPress={() => router.push('/budget-mois')}
+          />
+        </View>
+      )}
+
       {/* Bannière d'erreur en cas de validation non satisfaite */}
       {error ? (
         <AlertBanner
@@ -275,11 +324,11 @@ export function PurchaseForm({
         />
       ) : null}
 
-      {/* Bouton principal de soumission */}
+      {/* Bouton principal de soumission (bloqué si aucun produit ou aucun budget alloué) */}
       <Button
         label={submitLabel}
         onPress={submit}
-        disabled={products.length === 0}
+        disabled={products.length === 0 || !hasBudget}
       />
 
       {/* Bouton d'annulation */}
