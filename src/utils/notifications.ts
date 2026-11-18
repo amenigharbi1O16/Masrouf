@@ -16,6 +16,8 @@
 
 // Importation de la bibliothèque officielle Expo Notifications
 import * as Notifications from 'expo-notifications';
+// Détection de l'environnement d'exécution (Expo Go vs build autonome)
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 // Détection de la plateforme d'exécution (Android, iOS ou Web)
 import { Platform } from 'react-native';
 // Types métier TypeScript de l'application
@@ -70,6 +72,12 @@ export async function initNotificationChannels(): Promise<void> {
   // Marque immédiatement le canal comme tenté pour éviter les appels concurrents ou répétés
   channelInitAttempted = true;
 
+  // Détection Expo Go : passer la configuration du canal sous Expo Go pour éviter les avertissements et instabilités
+  const isExpoGo =
+    Constants.appOwnership === 'expo' ||
+    Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+  if (isExpoGo) return;
+
   try {
     // Enregistrement du canal Android haute importance avec son et badge
     await Notifications.setNotificationChannelAsync('masrouf_budget', {
@@ -97,8 +105,7 @@ export async function initNotificationChannels(): Promise<void> {
       bypassDnd: false,
     });
   } catch (err) {
-    // Journalisation d'une seule ligne courte sans la chaîne 'Channel creation error' pour Expo Go
-    console.warn('[Notifications] Android channel init notice (Expo Go or restricted mode):', err instanceof Error ? err.message : String(err));
+    // Protégé par try/catch sans polluer la console ni bloquer l'application
   }
 }
 
