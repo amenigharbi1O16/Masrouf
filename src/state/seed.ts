@@ -150,8 +150,11 @@ export async function buildSeed(): Promise<DB> {
   const expenses: Expense[] = [];
 
   return {
+    // Comptes utilisateurs de départ pré-hachés pour les tests et l'administration
     users,
+    // Référentiel complet des 16 catégories financières
     categories,
+    // Typologies de catégories : produits physiques avec prix unitaire vs dépenses forfaitaires
     categoryTypes: [
       {
         kind: 'product',
@@ -164,7 +167,9 @@ export async function buildSeed(): Promise<DB> {
         description: 'Everyday spending with no product attached.',
       },
     ],
+    // Clé de répartition budgétaire indicative par défaut
     defaultPercentages,
+    // Règles de calcul des points et des badges de gamification
     pointsRules: {
       periodReward: 100,
       streakLength: 3,
@@ -172,12 +177,19 @@ export async function buildSeed(): Promise<DB> {
       saverAt: 300,
       expertAt: 1000,
     },
+    // Paramètres système autorisant la création de nouveaux comptes
     settings: { allowRegistration: true },
+    // Liste des budgets initialisée vide (respect de la règle ZÉRO donnée en dur)
     budgets,
+    // Catalogue de produits initialisé vide
     products,
+    // Historique des achats initialisé vide
     purchases,
+    // Historique des dépenses initialisé vide
     expenses,
+    // Centre de notifications initialisé vierge
     notifications: [],
+    // Aucun utilisateur connecté par défaut au premier lancement
     sessionUserId: null,
   };
 }
