@@ -23,7 +23,9 @@ import { useTranslation } from '@/utils/i18n';
  * Interface d'une option de pastille.
  */
 interface ChipOption {
+  /** Valeur technique de filtrage associée à l'option */
   value: string;
+  /** Libellé textuel affiché dans la pastille */
   label: string;
 }
 
@@ -31,8 +33,11 @@ interface ChipOption {
  * Propriétés du composant Chips.
  */
 interface ChipsProps {
+  /** Liste de toutes les pastilles disponibles pour le choix */
   options: ChipOption[];
+  /** Valeur technique actuellement sélectionnée */
   value: string;
+  /** Callback notifiant le parent du choix d'une nouvelle pastille */
   onChange: (v: string) => void;
 }
 
@@ -69,23 +74,36 @@ export function Chips({ options, value, onChange }: ChipsProps) {
 }
 
 const styles = StyleSheet.create({
+  // Conteneur individuel de pastille avec forme pilule
   chip: {
+    // Marge interne latérale garantissant un espacement aéré du texte
     paddingHorizontal: 14,
+    // Hauteur standard de 36px adaptée aux cibles tactiles
     height: 36,
+    // Rayon de bordure semi-circulaire (moitié de 36px)
     borderRadius: 18,
+    // Fond blanc au repos
     backgroundColor: colors.white,
+    // Bordure fine de délimitation
     borderWidth: 1,
+    // Couleur de bordure grise discrète
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Style spécifique lorsque la pastille est active
   on: {
+    // Fond vert énergique indiquant la sélection active
     backgroundColor: colors.green,
     borderColor: colors.green,
   },
+  // Typographie du texte de la pastille
   text: {
+    // Taille de police 13px
     fontSize: 13,
+    // Graisse semi-grasse
     fontWeight: '600',
+    // Couleur vert forêt
     color: colors.forest,
   },
 });
