@@ -37,17 +37,29 @@ export type CategoryKind = 'product' | 'expense';
  * Entité Utilisateur stockée dans la table `users`.
  */
 export interface User {
+  /** Identifiant unique du profil utilisateur (ex: "u-ines") */
   id: string;
+  /** Nom complet de l'utilisateur affiché sur l'accueil */
   name: string;
+  /** Adresse électronique unique au format Gmail */
   email: string;
+  /** Empreinte SHA-256 salée du mot de passe */
   passwordHash: string;
+  /** Rôle d'accès : "user" (utilisateur standard) ou "admin" (administrateur) */
   role: Role;
+  /** Statut d'activation : true = compte actif, false = suspendu */
   active: boolean;
+  /** Vrai si l'utilisateur doit renouveler son mot de passe temporaire */
   mustChangePassword: boolean;
+  /** Vrai si l'utilisateur a terminé l'onboarding initial */
   onboarded: boolean;
+  /** Identifiants des catégories activées par l'utilisateur */
   categoryIds: string[];
+  /** Identifiants des périodes de budget réussies ayant déjà affiché l'écran félicitations */
   celebratedBudgetIds: string[];
+  /** Date de création du compte au format ISO */
   createdAt: string;
+  /** Préférence de langue d'interface optionnelle ("fr", "ar", "en") */
   langue?: string;
 }
 
@@ -56,8 +68,11 @@ export interface User {
  */
 export interface Category {
   id: string;
+  /** Nom de référence de la catégorie */
   name: string;
+  /** Nature de la catégorie : "product" ou "expense" */
   kind: CategoryKind;
+  /** Statut d'activation : true = compte actif, false = suspendu */
   active: boolean;
 }
 
@@ -79,10 +94,15 @@ export interface Budget {
 export interface Product {
   id: string;
   userId: string;
+  /** Nom commercial du produit (ex: "Lait demi-écrémé 1L") */
   name: string;
+  /** Marque du fabricant (ex: "Délice") */
   brand: string;
+  /** Identifiant de la catégorie de rattachement */
   categoryId: string;
+  /** Unité physique de référence pour le prix unitaire */
   unit: string;
+  /** Chemin URI local de la photo capturée pour le produit */
   photo?: string;
 }
 
@@ -96,6 +116,7 @@ export interface Purchase {
   price: number; // Montant total payé en DT
   quantity: number;
   unit: string;
+  /** Enseigne ou magasin où l'achat a eu lieu */
   store: string;
   date: string; // Format ISO : YYYY-MM-DD
 }
@@ -108,6 +129,7 @@ export interface Expense {
   userId: string;
   categoryId: string;
   amount: number; // Montant en DT
+  /** Observation textuelle libre sur la dépense */
   note: string;
   date: string; // Format ISO : YYYY-MM-DD
 }
@@ -116,6 +138,7 @@ export interface Expense {
  * Entité Métadonnées de Type de Catégorie.
  */
 export interface CategoryType {
+  /** Nature de la catégorie : "product" ou "expense" */
   kind: CategoryKind;
   label: string;
   description: string;
