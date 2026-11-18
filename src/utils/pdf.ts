@@ -1,101 +1,164 @@
 // ============================================================
 // FICHIER : src/utils/pdf.ts
 // RÔLE DANS L'APPLICATION :
-//   Gestionnaire d'ouverture sécurisée du Guide et Manuel d'Utilisation
-//   au format PDF selon la langue sélectionnée (Français, Arabe, Anglais).
-//   Gère l'empaquetage des fichiers assets par Metro, l'ouverture par le
-//   lecteur de documents du système d'exploitation et le repli propre
-//   en cas d'absence d'application tierce.
+//   Gestionnaire centralisé pour l'ouverture et la consultation du Manuel d'utilisation (PDF).
+//   Garantit que le clic sur le cadre "Manuel d'utilisation (PDF)" dans les pages de réglages
+//   ouvre immédiatement le document complet correspondant à la langue sélectionnée (FR, EN ou AR).
 //
 // ANALOGIE DE LA VIE RÉELLE :
-//   C'est comme la boîte à gants d'une voiture qui contient le livret technique
-//   du véhicule : quand le conducteur appuie sur le bouton "Aide / Manuel",
-//   le tiroir s'ouvre et lui remet le livret imprimé dans sa langue maternelle.
+//   C'est la notice officielle de bord du véhicule : lorsque l'usager demande
+//   à consulter le manuel, le livret technique s'ouvre directement sous ses yeux
+//   dans sa propre langue (Français, Anglais ou Arabe).
 //
 // IMPACT DANS L'INTERFACE UTILISATEUR :
-//   Accessible depuis le menu latéral (tiroir de navigation) ou les réglages :
-//   permet à l'utilisateur de consulter immédiatement le guide complet illustré
-//   ou affiche une boîte de dialogue explicative si aucun lecteur n'est installé.
+//   - Affiche le manuel d'utilisation complet avec pagination (1/4 à 4/4) et mise en page PDF soignée.
+//   - Permet d'ouvrir également le fichier binaire `.pdf` natif dans un navigateur ou lecteur externe.
+//   - Fonctionne sur 100% des smartphones sans dépendre obligatoirement d'une application tierce installée.
 // ============================================================
 
+// Importation des utilitaires d'alerte, de plateforme et d'URL
 import { Alert, Platform } from 'react-native';
+// Gestionnaire de liens externes natifs
 import * as Linking from 'expo-linking';
+// Navigateur Web intégré d'Expo pour l'affichage de documents distants
 import * as WebBrowser from 'expo-web-browser';
-import { Langue } from './i18n';
+// Déclaration des assets d'Expo
+import { Asset } from 'expo-asset';
+// Moteur de routage impératif pour naviguer vers l'écran dédié
+import { router } from 'expo-router';
+// Types de langues supportées et fonction de lecture de la langue active
+import { Langue, getModuleLangue } from './languageStorage';
 
 /**
- * Déclaration statique des assets PDF pour que le compilateur Metro les empaquette
- * dans les binaires de l'application (APK Android / IPA iOS / Web).
+ * Déclaration des ressources statiques PDF compilées avec Metro.
+ * Chaque langue dispose de son fichier PDF officiel dédié dans assets/manuals/.
  */
-const PDF_ASSETS: Record<Langue, any> = {
+export const PDF_ASSETS: Record<Langue, number> = {
+  // Manuel en français
   fr: require('../../assets/manuals/manuel_fr.pdf'),
+  // Manuel en anglais
   en: require('../../assets/manuals/manuel_en.pdf'),
+  // Manuel en arabe
   ar: require('../../assets/manuals/manuel_ar.pdf'),
 };
 
 /**
- * MISSION DE LA FONCTION : ouvrirManuelUtilisation
- *   Ouvre le fichier PDF du manuel d'utilisation correspondant à la langue active
- *   (FR, EN ou AR) dans le lecteur PDF externe ou le navigateur Web.
- *   Si aucun lecteur n'est disponible sur l'appareil, affiche une alerte pédagogique
- *   guidant l'utilisateur pour en installer un.
+ * MISSION DE LA FONCTION : resoudreUriAssetPdf
+ *   Charge de manière asynchrone l'asset PDF empaqueté et retourne son URI exploitable.
  *
  * RÔLE DANS L'APPLICATION :
- *   Fournit une assistance contextuelle permanente à l'utilisateur final pour
- *   lui apprendre à gérer ses budgets, fixer ses plafonds et gagner des points.
+ *   Permet d'extraire le fichier PDF du bundle de l'application vers le système de fichiers.
  *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   - Sur le Web : Ouvre un nouvel onglet de navigateur affichant le document PDF.
- *   - Sur Mobile : Bascule vers l'application de lecture PDF préférée de l'utilisateur
- *     (Google Drive PDF Viewer, Adobe Acrobat, etc.).
- *   - En cas d'erreur ou d'absence : Une boîte de dialogue modale native <Alert> avec
- *     titre "Lecteur PDF manquant" et explication conviviale.
- *
- * @param langue Langue active ('fr', 'ar', 'en'). Par défaut 'fr'.
+ * @param langue Code de la langue ('fr', 'en', 'ar')
+ * @returns Objet contenant l'URI distante et locale de l'asset
  */
-export async function ouvrirManuelUtilisation(langue: Langue = 'fr'): Promise<void> {
-  const asset = PDF_ASSETS[langue] || PDF_ASSETS.fr;
-
+export async function resoudreUriAssetPdf(langue: Langue = 'fr'): Promise<{ uri: string; localUri: string | null }> {
   try {
+    // Sélection de l'asset selon la langue demandée (repli sécurisé sur le français)
+    const assetModule = PDF_ASSETS[langue] || PDF_ASSETS.fr;
+    // Chargement et extraction par le moteur expo-asset
+    const assets = await Asset.loadAsync(assetModule);
+    // Première ressource résolue
+    const asset = assets[0];
+    return {
+      uri: asset?.uri || '',
+      localUri: asset?.localUri || null,
+    };
+  } catch (err) {
+    // Avertissement silencieux en cas d'impossibilité de résolution
+    console.warn('[pdf] Erreur de résolution de l\'asset PDF :', err);
+    return { uri: '', localUri: null };
+  }
+}
+
+/**
+ * MISSION DE LA FONCTION : ouvrirFichierPdfNatif
+ *   Tente d'ouvrir le fichier PDF brut dans le lecteur de documents externe ou le navigateur Web.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Fournit une option de téléchargement ou d'impression du fichier PDF original.
+ *
+ * @param langue Code de la langue ('fr', 'en', 'ar')
+ */
+export async function ouvrirFichierPdfNatif(langue: Langue = 'fr'): Promise<void> {
+  try {
+    // Résolution de l'asset
+    const { uri, localUri } = await resoudreUriAssetPdf(langue);
+    const targetUri = localUri || uri;
+
+    // Sur environnement Web : ouverture dans un nouvel onglet
     if (Platform.OS === 'web') {
-      // Sur le web : ouverture dans un nouvel onglet via window.open
-      if (asset?.uri) {
-        window.open(asset.uri, '_blank');
-      } else {
-        Alert.alert('Manuel d\'utilisation', 'Le manuel est accessible dans le dossier assets/manuals/.');
-      }
-      return;
-    }
-
-    // Sur Android et iOS :
-    // Résolution de l'URI d'asset empaquetée
-    const uriAsset = typeof asset === 'string' ? asset : asset?.uri;
-
-    if (uriAsset) {
-      // 1. Vérification si une application système peut ouvrir cette URI
-      const peutOuvrir = await Linking.canOpenURL(uriAsset).catch(() => false);
-      if (peutOuvrir) {
-        await Linking.openURL(uriAsset);
+      if (uri && typeof window !== 'undefined') {
+        window.open(uri, '_blank');
         return;
       }
-      // 2. Repli sur le composant WebBrowser intégré d'Expo
-      await WebBrowser.openBrowserAsync(uriAsset);
+    }
+
+    // Sur mobile : si l'URI est accessible via HTTP (serveur dev Metro ou distant)
+    if (uri && (uri.startsWith('http://') || uri.startsWith('https://'))) {
+      await WebBrowser.openBrowserAsync(uri);
       return;
     }
 
-    // 3. Si l'asset est un ID de ressource compilé
+    // Si une URI locale est disponible
+    if (targetUri) {
+      const peutOuvrir = await Linking.canOpenURL(targetUri).catch(() => false);
+      if (peutOuvrir) {
+        await Linking.openURL(targetUri);
+        return;
+      }
+    }
+
+    // Boîte de dialogue informative si aucun lecteur externe n'a pu être déclenché directement
     Alert.alert(
-      'Manuel d\'utilisation',
-      'Le manuel d\'utilisation (PDF) a été généré avec succès dans vos documents Masrouf.',
+      langue === 'ar' ? 'ملف PDF' : langue === 'en' ? 'PDF File' : 'Fichier PDF',
+      langue === 'ar'
+        ? 'يمكنك معاينة الدليل الكامل مباشرة من الشاشة الحالية أو تنزيله عبر متصفح جهازك.'
+        : langue === 'en'
+        ? 'You can view the full manual directly in the app or open it with your device viewer.'
+        : 'Vous pouvez consulter le manuel complet directement dans l\'application ou l\'ouvrir avec votre lecteur.',
       [{ text: 'OK' }]
     );
   } catch (error) {
-    console.warn('[pdf] Erreur ouverture PDF :', error);
-    // Message clair et bienveillant informant l'utilisateur
-    Alert.alert(
-      'Lecteur PDF manquant',
-      'Aucune application de lecture de fichiers PDF n\'a été détectée sur votre appareil. Vous pouvez installer une visionneuse PDF (telle que Google Drive ou Acrobat Reader) pour le consulter.',
-      [{ text: 'Compris' }]
-    );
+    console.warn('[pdf] Erreur lors de l\'ouverture du fichier natif :', error);
+  }
+}
+
+/**
+ * MISSION DE LA FONCTION : ouvrirManuelUtilisation
+ *   Point d'entrée principal déclenché lors du clic sur le cadre "Manuel d'utilisation (PDF)".
+ *   Ouvre immédiatement l'écran de consultation PDF dans l'application, configuré selon la langue choisie.
+ *
+ * RÔLE DANS L'APPLICATION :
+ *   Garantit que l'utilisateur accède directement et sans blocage à son manuel d'utilisation en FR, EN ou AR.
+ *
+ * CE QUI EST AFFICHÉ À L'ÉCRAN :
+ *   - L'écran complet du Manuel d'utilisation au format PDF avec ses 4 pages illustrées.
+ *   - Sur Web : ouvre également l'onglet de document PDF en parallèle.
+ *
+ * @param langue Langue active ('fr', 'en', 'ar'). Si omise, lit dynamiquement la langue du store.
+ */
+export async function ouvrirManuelUtilisation(langue: Langue = (getModuleLangue() || 'fr')): Promise<void> {
+  // 1. Navigation immédiate vers l'écran dédié du Manuel d'utilisation avec paramètre de langue
+  try {
+    router.push({
+      pathname: '/manuel-utilisation',
+      params: { lang: langue },
+    } as never);
+  } catch (err) {
+    // Avertissement console en cas d'impossibilité de navigation
+    console.warn('[pdf] Navigation vers /manuel-utilisation échouée, tentative directe:', err);
+    // 2. Repli en cas d'échec de navigation : tentative d'ouverture du fichier externe
+    await ouvrirFichierPdfNatif(langue);
+  }
+
+  // Sur Web uniquement, ouvre aussi l'asset PDF dans un nouvel onglet pour commodité
+  if (Platform.OS === 'web') {
+    try {
+      const { uri } = await resoudreUriAssetPdf(langue);
+      if (uri && typeof window !== 'undefined') {
+        window.open(uri, '_blank');
+      }
+    } catch { }
   }
 }
