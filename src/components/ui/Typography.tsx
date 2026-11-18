@@ -30,10 +30,13 @@ type TypographyProps = {
 
 /**
  * Surtitre décoratif ou indicateur d'étape.
+ * Apparaît au-dessus des titres de section pour contextualiser la période ou l'étape (ex: "NOVEMBRE 2026").
  */
 export const Eyebrow = ({ children, style }: TypographyProps) => {
+  // Détection du sens RTL pour aligner le texte à droite en arabe
   const { isRTL } = useTranslation();
   return (
+    // Texte 14px gris ardoise discret
     <Text
       style={[
         {
@@ -53,10 +56,13 @@ export const Eyebrow = ({ children, style }: TypographyProps) => {
 
 /**
  * Titre de section standard d'écran.
+ * Met en valeur les grands blocs de contenu (ex: "Vos catégories", "Transactions récentes").
  */
 export const SectionTitle = ({ children, style }: TypographyProps) => {
+  // Détection du sens RTL pour aligner le texte à droite en arabe
   const { isRTL } = useTranslation();
   return (
+    // Titre 18px semi-bold 600 en vert forêt (#102B27)
     <Text
       style={[
         {
@@ -77,10 +83,13 @@ export const SectionTitle = ({ children, style }: TypographyProps) => {
 
 /**
  * Corps de texte pour paragraphes et descriptions.
+ * Utilisé pour les explications de formulaires, consignes et détails de cartes.
  */
 export const Body = ({ children, style }: TypographyProps) => {
+  // Détection du sens RTL pour aligner le texte à droite en arabe
   const { isRTL } = useTranslation();
   return (
+    // Texte courant 14px regular avec interlignage confortable de 20px
     <Text
       style={[
         {
@@ -100,10 +109,13 @@ export const Body = ({ children, style }: TypographyProps) => {
 
 /**
  * Note explicative ou conseil discret de bas de formulaire.
+ * Donne une astuce d'utilisation ou une précision sans surcharger l'interface.
  */
 export const Hint = ({ children, style }: TypographyProps) => {
+  // Détection du sens RTL pour aligner le texte à droite en arabe
   const { isRTL } = useTranslation();
   return (
+    // Petit texte 12px discret avec interlignage fin de 17px
     <Text
       style={[
         {
