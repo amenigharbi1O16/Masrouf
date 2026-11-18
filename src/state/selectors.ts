@@ -166,19 +166,40 @@ export function userTxns(db: DB, userId: string): Txn[] {
  * @param end Date de fin ISO.
  * @param excludeId Identifiant d'une transaction à exclure des totaux.
  */
+/**
+ * Calcule la somme dépensée par catégorie entre deux dates données.
+ * Le paramètre optionnel `excludeId` permet d'ignorer la transaction en cours de modification.
+ * Utilise des calculs en millimes entiers pour garantir une exactitude mathématique absolue sans dérive décimale.
+ * @param db Instantané de la base.
+ * @param userId Identifiant de l'utilisateur.
+ * @param start Date de début ISO.
+ * @param end Date de fin ISO.
+ * @param excludeId Identifiant d'une transaction à exclure des totaux.
+ */
 export function spentByCategory(db: DB, userId: string, start: string, end: string, excludeId?: string): Record<string, number> {
+  // Dictionnaire de résultat cumulant les dépenses par identifiant de catégorie
   const out: Record<string, number> = {};
+  // Parcours chronologique de toutes les transactions réelles de l'utilisateur
   for (const t of userTxns(db, userId)) {
-    if (t.id === excludeId || !inRange(t.date, start, end)) continue;
-    out[t.categoryId] = (out[t.categoryId] ?? 0) + t.amount;
+    // Exclusion sécurisée de la transaction spécifiée et vérification stricte de l'intervalle de dates
+    if (!t || t.id === excludeId || !t.date || !inRange(t.date, start, end)) continue;
+    // Si la catégorie n'est pas renseignée, ignorer l'opération
+    if (!t.categoryId) continue;
+    // Conversion en millimes entiers (x1000) pour une addition monétaire rigoureusement exacte
+    const currentMillimes = Math.round((out[t.categoryId] ?? 0) * 1000);
+    const txnMillimes = Math.round(Number(t.amount || 0) * 1000);
+    // Enregistrement du montant cumulé reconverti en Dinars Tunisiens
+    out[t.categoryId] = (currentMillimes + txnMillimes) / 1000;
   }
   return out;
 }
 
 /**
  * Calcule le total général de dépenses à partir d'un dictionnaire de répartition par catégorie.
+ * Somme exécutée en millimes entiers pour éviter toute dérive d'arrondi décimal.
  */
-export const totalSpent = (byCat: Record<string, number>) => Object.values(byCat).reduce((a, b) => a + b, 0);
+export const totalSpent = (byCat: Record<string, number>) =>
+  Math.round(Object.values(byCat).reduce((a, b) => a + (Number(b) || 0) * 1000, 0)) / 1000;
 
 /** Statut visuel de santé budgétaire */
 export type BudgetStatus = 'healthy' | 'warning' | 'exceeded';
@@ -204,18 +225,63 @@ export interface BudgetSummary {
  * - Statut visuel : 'healthy' (<80%), 'warning' (80%-100%), 'exceeded' (>100%)
  */
 export function summarize(db: DB, userId: string, b: Budget): BudgetSummary {
+  // Calcul de la ventilation précise par catégorie
   const byCat = spentByCategory(db, userId, b.start, b.end);
+  // Somme totale consommée
   const spent = totalSpent(byCat);
-  const pct = b.total > 0 ? (spent / b.total) * 100 : 0;
-  const status: BudgetStatus = spent > b.total ? 'exceeded' : pct >= 80 ? 'warning' : 'healthy';
+  // Montant global alloué au budget
+  const total = Number(b.total) || 0;
+  // Pourcentage réel consommé : rapport strict de la consommation par rapport au budget total
+  const pct = total > 0 ? (spent / total) * 100 : 0;
+  // Détermination de l'état : rouge si dépassé, jaune si >= 80%, vert sinon
+  const status: BudgetStatus = spent > total ? 'exceeded' : pct >= 80 ? 'warning' : 'healthy';
   return {
     spent,
-    total: b.total,
-    left: Math.max(0, b.total - spent),
-    over: Math.max(0, spent - b.total),
+    total,
+    // Montant restant disponible, calculé en millimes entiers
+    left: Math.max(0, Math.round((total - spent) * 1000) / 1000),
+    // Montant du dépassement, calculé en millimes entiers
+    over: Math.max(0, Math.round((spent - total) * 1000) / 1000),
     pct,
     status,
     byCat,
+  };
+}
+
+/**
+ * MISSION DE LA FONCTION : categoryConsumptionStats
+ *   Calcule la consommation exacte et le pourcentage d'une catégorie par rapport à son budget alloué.
+ *   Assure une correspondance parfaite entre la consommation réelle et l'enveloppe allouée.
+ * @param spent Montant consommé en DT
+ * @param allocated Montant du budget alloué à cette catégorie en DT
+ */
+export function categoryConsumptionStats(spent: number, allocated: number): {
+  spent: number;
+  allocated: number;
+  pct: number;
+  left: number;
+  over: number;
+  isExceeded: boolean;
+  status: BudgetStatus;
+} {
+  // Consommation normalisée en millimes
+  const s = Math.round((Number(spent) || 0) * 1000) / 1000;
+  // Enveloppe allouée normalisée en millimes
+  const a = Math.round((Number(allocated) || 0) * 1000) / 1000;
+  // Pourcentage de consommation : rapport mathématique direct entre la consommation et l'enveloppe
+  const pct = a > 0 ? (s / a) * 100 : 0;
+  // Détection d'un dépassement de l'enveloppe
+  const isExceeded = s > a && a > 0;
+  // Statut visuel cohérent : 'exceeded' si >100%, 'warning' si >=80%, 'healthy' sinon
+  const status: BudgetStatus = isExceeded ? 'exceeded' : pct >= 80 ? 'warning' : 'healthy';
+  return {
+    spent: s,
+    allocated: a,
+    pct,
+    left: Math.max(0, Math.round((a - s) * 1000) / 1000),
+    over: Math.max(0, Math.round((s - a) * 1000) / 1000),
+    isExceeded,
+    status,
   };
 }
 
