@@ -77,21 +77,31 @@ export function Skeleton({
 
 /**
  * Écran plein de chargement silencieux lors du démarrage de l'application.
+ * Structure une disposition fantôme calquée sur l'écran d'accueil pour une transition fluide.
  */
 export function LoadingScreen() {
   return (
+    // Conteneur plein écran sur fond chaud (#F5F3ED)
     <View style={styles.wrap}>
+      {/* 1. Silhouette de l'en-tête de salutation (ex: "Bonjour, Ines") */}
       <Skeleton height={32} width={200} />
+      {/* 2. Silhouette de la grande carte de synthèse budgétaire BudgetCard (218px) */}
       <Skeleton height={218} radius={16} />
+      {/* 3. Silhouette de la bannière d'alerte ou de félicitations (76px) */}
       <Skeleton height={76} radius={16} />
+      {/* 4. Silhouette du titre de section "Vos catégories" (26px) */}
       <Skeleton height={26} width={160} />
+      {/* 5. Silhouette de la première carte d'enveloppe de catégorie (88px) */}
       <Skeleton height={88} radius={16} />
+      {/* 6. Silhouette de la deuxième carte d'enveloppe de catégorie (88px) */}
       <Skeleton height={88} radius={16} />
     </View>
   );
 }
 
+/** Styles graphiques de l'écran de chargement */
 const styles = StyleSheet.create({
+  // Conteneur racine occupant tout l'espace d'affichage avec rembourrage supérieur de 80px
   wrap: {
     flex: 1,
     backgroundColor: colors.warm,
