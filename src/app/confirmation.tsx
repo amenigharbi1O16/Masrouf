@@ -146,11 +146,11 @@ export default function ConfirmationScreen() {
         value={traduireCategorie(categoryName(db, categoryId))}
       />
 
-      {/* Ligne de consommation budgétaire : verte si sous le plafond, rouge si dépassement */}
+      {/* Ligne de consommation budgétaire : verte si sous le plafond, rouge si dépassement, avec pourcentage exact */}
       {budget ? (
         <InfoRow
           label={`${traduireCategorie(categoryName(db, categoryId))} (${t('budget')})`}
-          value={`${short(spent)} / ${short(alloc)} DT`}
+          value={`${short(spent)} / ${short(alloc)} DT${alloc > 0 ? ` (${((spent / alloc) * 100).toFixed(0)}%)` : ''}`}
           tone={spent > alloc && alloc > 0 ? 'danger' : 'good'}
         />
       ) : null}
