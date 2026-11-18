@@ -39,7 +39,7 @@ import { PriceChart } from '@/components/PriceChart';
 // Conteneur d'écran avec retour arrière et marges
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
-import { Button, EmptyState, Eyebrow } from '@/components/ui';
+import { AlertBanner, Button, EmptyState, Eyebrow } from '@/components/ui';
 // Constantes de thème officielles
 import { colors, radius } from '@/constants/theme';
 // Sélecteurs de calcul financier SQLite
@@ -70,10 +70,13 @@ export default function ProductDetailsScreen() {
   const router = useRouter();
   // Extraction de l'ID du produit depuis l'URL dynamique
   const { id } = useLocalSearchParams<{ id: string }>();
-  // Extraction des données de la base SQLite
-  const { db } = useStore();
+  // Extraction des données de la base SQLite et de la période active
+  const { db, selectedBudget } = useStore();
   // Fonctions de traduction et sens de lecture
   const { t, isRTL, langue, traduireCategorie } = useTranslation();
+
+  // Vérification de la présence d'une période sélectionnée avec budget alloué
+  const hasBudget = Boolean(selectedBudget && Number(selectedBudget.total) > 0);
 
   // Recherche du produit ciblé dans la table SQLite 'products'
   const product = db.products.find((p) => p.id === id);
@@ -271,15 +274,36 @@ export default function ProductDetailsScreen() {
         disabled={!last}
       />
 
-      {/* Bouton 2 (Vert forêt) : + Ajouter un achat pour ce produit */}
+      {/* Message explicatif clair si aucune période n'est sélectionnée ou aucun budget alloué */}
+      {!hasBudget && (
+        <View style={{ gap: 8, marginVertical: 6 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('selectionner_periode_et_budget_dabord')}
+            detail={t('selectionner_periode_et_budget_detail')}
+          />
+          <Button
+            label={t('definir_periode_budget')}
+            variant="secondary"
+            onPress={() => router.push('/budget-mois')}
+          />
+        </View>
+      )}
+
+      {/* Bouton 2 (Vert forêt) : + Ajouter un achat pour ce produit (bloqué si aucune période et budget alloué) */}
       <Button
         label={t('ajouter_un_achat')}
-        onPress={() =>
+        onPress={() => {
+          if (!hasBudget) {
+            router.push('/budget-mois');
+            return;
+          }
           router.push({
             pathname: '/nouvel-achat',
             params: { productId: product.id },
-          } as never)
-        }
+          } as never);
+        }}
+        disabled={!hasBudget}
       />
 
       {/* Bouton 3 (Menthe) : Modifier le produit */}
