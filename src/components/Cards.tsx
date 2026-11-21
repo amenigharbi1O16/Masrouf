@@ -99,22 +99,28 @@ export function CategoryCard({
   name,
   spent,
   allocation = 0,
+  plannedPct,
+  actualPct,
   icon,
   onPress,
 }: {
   // Nom de la catégorie
   name: string;
-  // Montant consommé en DT (conservé pour rétro-compatibilité)
+  // Montant consommé en DT (conservé pour calculs et affichage)
   spent?: number;
   // Montant total alloué en DT
   allocation: number;
+  // Pourcentage d'allocation prévisionnelle planifiée dans le budget total
+  plannedPct?: number;
+  // Pourcentage réel des dépenses (dépense catégorie / total des dépenses * 100)
+  actualPct?: number;
   // Nom optionnel d'icône Ionicons spécifique
   icon?: keyof typeof Ionicons.glyphMap;
   // Callback de clic tactile optionnel
   onPress?: () => void;
 }) {
   // Récupération des traductions et du sens de lecture
-  const { isRTL } = useTranslation();
+  const { isRTL, t } = useTranslation();
 
   // Enveloppe allouée normalisée en nombre
   const allocN = Math.round((Number(allocation) || 0) * 1000) / 1000;
@@ -122,10 +128,13 @@ export function CategoryCard({
   // Détermination de l'icône représentative : priorité à l'icône transmise, sinon résolution automatique selon le nom
   const iconName = icon ?? getCategoryIcon(name);
 
+  // Indicateur si des pourcentages de suivi prévisionnel vs réel sont fournis
+  const hasPercentages = plannedPct !== undefined || actualPct !== undefined;
+
   return (
     // Carte tactile stylisée avec fond blanc et coins arrondis
-    <Pressable onPress={onPress} disabled={!onPress} style={[card, { padding: 16 }]}>
-      {/* Ligne avec icône et nom de la catégorie à gauche, et budget alloué à droite (sans pourcentage ni jauge) */}
+    <Pressable onPress={onPress} disabled={!onPress} style={[card, { padding: 14 }]}>
+      {/* Ligne principale avec icône, nom de la catégorie et budget alloué */}
       <View style={[styles.rowBetween, { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' }]}>
         {/* Nom et icône représentative de la catégorie */}
         <View style={[styles.iconTitle, { flexDirection: isRTL ? 'row-reverse' : 'row', flex: 1, minWidth: 0 }]}>
@@ -140,11 +149,43 @@ export function CategoryCard({
           </Text>
         </View>
 
-        {/* Montant du budget alloué uniquement (sans pourcentage de consommation) */}
+        {/* Montant du budget alloué */}
         <Text style={[styles.cardSub, { color: colors.forest, fontWeight: '700' }]}>
           {short(allocN)} DT
         </Text>
       </View>
+
+      {/* Ligne comparative : Pourcentage prévu vs Pourcentage réel consommé */}
+      {hasPercentages && (
+        <View
+          style={{
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: 8,
+            paddingTop: 8,
+            borderTopWidth: 1,
+            borderTopColor: '#F0F4F8',
+          }}
+        >
+          {/* Pourcentage planifié dans l'enveloppe globale */}
+          <Text style={{ fontSize: 11, color: colors.gray, fontWeight: '600' }}>
+            {isRTL ? 'المخطط : ' : 'Prévu : '}{plannedPct ?? 0}%
+          </Text>
+
+          {/* Pourcentage réel consommé par rapport au total des dépenses */}
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '700',
+              color: (actualPct ?? 0) > (plannedPct ?? 100) && (plannedPct ?? 0) > 0 ? colors.coral : colors.forest,
+            }}
+          >
+            {isRTL ? 'الفعلي : ' : 'Réalisé : '}{actualPct ?? 0}%
+            {spent !== undefined ? ` (${short(spent)} DT)` : ''}
+          </Text>
+        </View>
+      )}
     </Pressable>
   );
 }

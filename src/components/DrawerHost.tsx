@@ -35,6 +35,6 @@ export function DrawerHost() {
   // Si aucun utilisateur n'est connecté, aucun tiroir n'est rendu
   if (!me) return null;
 
-  // Rendu conditionnel selon le rôle
-  return me.role === 'admin' ? <AdminDrawer /> : <AppDrawer />;
+  // Rendu conditionnel selon le rôle : Parent -> AdminDrawer, Enfant/Utilisateur -> AppDrawer
+  return (me.role === 'parent' || me.role === 'admin') ? <AdminDrawer /> : <AppDrawer />;
 }

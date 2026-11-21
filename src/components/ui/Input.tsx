@@ -59,6 +59,8 @@ interface Props {
   error?: string;
   /** Note d'information discrète affichée sous la boîte si aucune erreur n'est présente */
   hint?: string;
+  /** Active le focus automatique */
+  autoFocus?: boolean;
 }
 
 /**
@@ -82,6 +84,7 @@ export function Input({
   editable = true,
   error,
   hint,
+  autoFocus = false,
 }: Props) {
   // Détection du sens d'écriture actif (RTL pour l'arabe)
   const { isRTL } = useTranslation();
@@ -129,6 +132,7 @@ export function Input({
           autoCapitalize={autoCapitalize}
           autoCorrect={false}
           editable={editable}
+          autoFocus={autoFocus}
         />
       </View>
 

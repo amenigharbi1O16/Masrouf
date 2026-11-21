@@ -21,6 +21,8 @@
 
 // Icônes vectorielles IonIcons pour les rubriques de navigation, avatars et déconnexion
 import { Ionicons } from '@expo/vector-icons';
+// Logo officiel Masrouf vectoriel botanique
+import { MasroufLogo } from '@/components/MasroufLogo';
 // Hooks de navigation et détection d'URL active d'Expo Router
 import { usePathname, useRouter } from 'expo-router';
 // React core, hooks d'effets, références d'animation et état local de montage
@@ -236,8 +238,10 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
             <View>
               {/* En-tête : Titre de l'application et logo feuille (taille de police 26px pour l'utilisateur) */}
               <View style={[styles.brandRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                {/* Titre textuel de l'application */}
                 <Text style={[styles.brand, !isAdmin && styles.userBrand]}>{t('nom_app')}</Text>
-                <Ionicons name="leaf" size={!isAdmin ? 26 : 24} color={colors.mint} />
+                {/* Logo officiel Masrouf vectoriel en variante menthe */}
+                <MasroufLogo size={!isAdmin ? 28 : 24} variant="mint" />
               </View>
 
               {/* Profil : Avatar (bouclier pour admin), nom complet et badge de rôle clairement affiché */}

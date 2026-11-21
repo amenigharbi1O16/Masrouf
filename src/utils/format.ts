@@ -196,6 +196,11 @@ export const money = (n: number, decimals = 3) => `${dt(n, decimals)} DT`;
 export const formatDT = (n: number, decimals = 3) => `${dt(n, decimals)} DT`;
 
 /**
+ * Alias officiel pour le formatage monétaire tunisien TND.
+ */
+export const formatTND = (n: number, decimals = 3) => `${dt(n, decimals)} DT`;
+
+/**
  * Formatage compact : omet les décimales si le montant est entier (ex: 320 -> "320"),
  * sinon conserve les 3 décimales (ex: 14.5 -> "14.500").
  */

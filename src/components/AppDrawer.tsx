@@ -18,16 +18,25 @@
  */
 
 import React from 'react';
+// Magasin global pour accéder au rôle de l'utilisateur connecté
+import { useStore } from '@/state/store';
 // Système d'internationalisation
 import { useTranslation } from '@/utils/i18n';
 // Composant générique de tiroir latéral et interface d'élément
 import { DrawerItem, SideDrawer } from './SideDrawer';
 
 /**
- * Tiroir de navigation pour l'utilisateur régulier.
+ * Tiroir de navigation pour l'utilisateur régulier et l'enfant.
  */
 export function AppDrawer() {
   const { t } = useTranslation();
+  const { me } = useStore();
+
+  // Si c'est un compte enfant, badge "Compte Enfant", sinon "Compte Personnel"
+  const isChild = me?.role === 'child';
+  const subtitle = isChild
+    ? (t('compte_enfant') || 'Compte Enfant')
+    : (t('compte_personnel') || 'Compte Personnel');
 
   // Liste des destinations utilisateur avec libellés traduits et icônes
   const items: DrawerItem[] = [
@@ -58,12 +67,12 @@ export function AppDrawer() {
       href: '/points',
     },
     {
-      // Destination vers la page des réglages (le manuel d'utilisation PDF y est exclusivement accessible)
+      // Destination vers la page des réglages
       label: t('reglages'),
       icon: 'settings-outline',
       href: '/(tabs)/reglages',
     },
   ];
 
-  return <SideDrawer items={items} subtitle={t('compte_personnel')} />;
+  return <SideDrawer items={items} subtitle={subtitle} />;
 }

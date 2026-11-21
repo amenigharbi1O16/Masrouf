@@ -169,13 +169,9 @@ export function AppHeader({ title, back, onBack, plain }: Props) {
             )}
           </Pressable>
 
-          {/* Bouton profil & réglages */}
+          {/* Bouton profil & réglages - dirige vers les réglages universels */}
           <Pressable
-            onPress={() =>
-              router.navigate(
-                (isAdmin ? '/(admin)/reglages' : '/(tabs)/reglages') as never
-              )
-            }
+            onPress={() => router.navigate('/(tabs)/reglages' as never)}
             hitSlop={8}
             style={styles.slot}
             accessibilityRole="button"

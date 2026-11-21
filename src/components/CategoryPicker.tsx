@@ -41,6 +41,8 @@ interface CategoryPickerProps {
   categories: Category[];
   selected: string[];
   onToggle: (id: string) => void;
+  onEditCategory?: (category: Category) => void;
+  onDeleteCategory?: (id: string) => void;
 }
 
 /**
@@ -53,7 +55,13 @@ interface CategoryPickerProps {
  * CE QUI EST AFFICHÉ À L'ÉCRAN :
  * La liste ordonnée des catégories avec détection d'appui tactile et inversion RTL en langue arabe.
  */
-export function CategoryPicker({ categories, selected, onToggle }: CategoryPickerProps) {
+export function CategoryPicker({
+  categories,
+  selected,
+  onToggle,
+  onEditCategory,
+  onDeleteCategory,
+}: CategoryPickerProps) {
   // Fonctions de traduction et sens d'écriture
   const { t, isRTL, traduireCategorie } = useTranslation();
 
@@ -144,19 +152,75 @@ export function CategoryPicker({ categories, selected, onToggle }: CategoryPicke
                   <Ionicons
                     name={getCategoryIcon(c.name, c.kind)}
                     size={20}
-                    color={on ? colors.forest : colors.muted}
+                    color={c.color || (on ? colors.forest : colors.muted)}
                   />
                   {/* Libellé traduit de la catégorie */}
-                  <Text
-                    style={[
-                      styles.name,
-                      { textAlign: isRTL ? 'right' : 'left' },
-                      on && styles.nameSelected,
-                    ]}
-                  >
-                    {labelNom}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.name,
+                        { textAlign: isRTL ? 'right' : 'left' },
+                        on && styles.nameSelected,
+                      ]}
+                    >
+                      {labelNom}
+                    </Text>
+                    {c.description ? (
+                      <Text
+                        style={[
+                          styles.description,
+                          { textAlign: isRTL ? 'right' : 'left' },
+                        ]}
+                      >
+                        {c.description}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {/* Badge personnalisée */}
+                  {c.isCustom && (
+                    <View style={styles.customBadge}>
+                      <Text style={styles.customBadgeText}>Perso</Text>
+                    </View>
+                  )}
                 </View>
+
+                {/* Actions d'édition / suppression pour catégories personnalisées */}
+                {c.isCustom && (onEditCategory || onDeleteCategory) && (
+                  <View
+                    style={{
+                      flexDirection: isRTL ? 'row-reverse' : 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      marginHorizontal: 4,
+                    }}
+                  >
+                    {onEditCategory && (
+                      <Pressable
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          onEditCategory(c);
+                        }}
+                        hitSlop={8}
+                        style={styles.actionIconBtn}
+                      >
+                        <Ionicons name="pencil-outline" size={16} color={colors.forest} />
+                      </Pressable>
+                    )}
+                    {onDeleteCategory && (
+                      <Pressable
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          onDeleteCategory(c.id);
+                        }}
+                        hitSlop={8}
+                        style={styles.actionIconBtn}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#E11D48" />
+                      </Pressable>
+                    )}
+                  </View>
+                )}
 
                 {/* Bouton d'action avec icône vectorielle Ionicons : affiche une coche vectorielle + 'Sélectionné' ou 'Choisir' sans aucun emoji */}
                 <View
@@ -267,5 +331,26 @@ const styles = StyleSheet.create({
   stateSelected: {
     color: colors.forest,
     fontWeight: '700',
+  },
+  description: {
+    fontSize: 12,
+    color: colors.gray,
+    marginTop: 2,
+  },
+  customBadge: {
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  customBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1565C0',
+  },
+  actionIconBtn: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#F8FAFC',
   },
 });

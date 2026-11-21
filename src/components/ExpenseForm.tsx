@@ -15,12 +15,17 @@
  * (bleue si dans l'enveloppe, rouge si dépassement), et les boutons d'action.
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // Sélecteur déroulant modal
 import { SelectField } from './SelectField';
 // Composants atomiques d'interface utilisateur
 import { AlertBanner, Button, Hint, Input } from './ui';
+// Modal de saisie vocale
+import { VoiceTransactionModal } from './VoiceTransactionModal';
+// Palette de couleurs Masrouf
+import { colors } from '@/constants/theme';
 // Sélecteurs de calcul financier SQLite (budget en cours, dépenses par catégorie)
 import { currentBudget, spentByCategory } from '@/state/selectors';
 // Magasin d'état global SQLite
@@ -123,6 +128,7 @@ export function ExpenseForm({
   const [amount, setAmount] = useState(
     initial?.amount !== undefined ? String(initial.amount) : ''
   );
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   // Date par défaut rattachée à la période budgétaire de référence
   const defaultDate = useMemo(() => {
@@ -204,6 +210,16 @@ export function ExpenseForm({
 
   return (
     <>
+      {/* Bouton de saisie vocale rapide */}
+      <TouchableOpacity
+        style={styles.voiceBtn}
+        onPress={() => setVoiceOpen(true)}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="mic" size={18} color={colors.white} />
+        <Text style={styles.voiceBtnText}>Saisie vocale intelligente (FR / عربي)</Text>
+      </TouchableOpacity>
+
       {/* Bannière d'erreur en cas de données non conformes */}
       {error ? (
         <AlertBanner
@@ -305,6 +321,31 @@ export function ExpenseForm({
         variant="secondary"
         onPress={onCancel}
       />
+
+      {/* Modal de saisie vocale intelligente */}
+      <VoiceTransactionModal
+        visible={voiceOpen}
+        onClose={() => setVoiceOpen(false)}
+      />
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  voiceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#1E88E5',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  voiceBtnText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+});
