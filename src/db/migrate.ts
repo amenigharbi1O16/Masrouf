@@ -497,4 +497,67 @@ export function migrateDatabase(db: SQLiteDatabase): void {
   migrerPrixTotal(db);
   migrerNomPhoto(db);
   creerVuesPrixTotal(db);
+
+  // --- MIGRATION SYSTÈME FAMILIAL & CATÉGORIES SUR MESURE (MASROUF FAMILLE) ---
+  ajouterColonne(db, `ALTER TABLE user ADD COLUMN parent_id TEXT;`);
+  ajouterColonne(db, `ALTER TABLE user ADD COLUMN family_id TEXT;`);
+  ajouterColonne(db, `ALTER TABLE user ADD COLUMN account_type TEXT DEFAULT 'personal';`);
+  ajouterColonne(db, `ALTER TABLE user ADD COLUMN balance REAL NOT NULL DEFAULT 0;`);
+  ajouterColonne(db, `ALTER TABLE user ADD COLUMN allocated_total REAL NOT NULL DEFAULT 0;`);
+  ajouterColonne(db, `ALTER TABLE user ADD COLUMN family_name TEXT;`);
+
+  ajouterColonne(db, `ALTER TABLE category ADD COLUMN user_id TEXT;`);
+  ajouterColonne(db, `ALTER TABLE category ADD COLUMN description TEXT;`);
+  ajouterColonne(db, `ALTER TABLE category ADD COLUMN color TEXT;`);
+  ajouterColonne(db, `ALTER TABLE category ADD COLUMN is_custom INTEGER DEFAULT 0;`);
+  ajouterColonne(db, `ALTER TABLE category ADD COLUMN scope TEXT DEFAULT 'personal';`);
+
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS family_fund (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT NOT NULL,
+      balance REAL NOT NULL DEFAULT 0,
+      total_contributions REAL NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS family_allocation (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT NOT NULL,
+      child_id TEXT NOT NULL,
+      child_name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      note TEXT,
+      date TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS money_request (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT NOT NULL,
+      child_id TEXT NOT NULL,
+      child_name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      date TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      responded_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS family_budget (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      total REAL NOT NULL DEFAULT 0,
+      allocations TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Migration automatique des rôles 'admin' vers 'parent'
+    UPDATE user SET role = 'parent' WHERE role = 'admin';
+    -- Suppression totale de la suspension : tous les comptes sont actifs
+    UPDATE user SET is_active = 1;
+  `);
 }

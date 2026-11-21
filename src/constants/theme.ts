@@ -13,16 +13,29 @@
 //   - muted (#61746D)  : Vert grisé doux, sous-titres, libellés secondaires et contours.
 // ============================================================
 
-/** Palette de couleurs centrale */
+/** Palette de couleurs centrale avec charte botanique Masrouf */
 export const colors = {
-  // Vert forêt profond institutionnel : arrière-plans de cartes de synthèse et texte principal
-  forest: '#102B27',
-  // Vert émeraude sombre : couleur d'accent primaire et boutons d'action
-  green: '#1C5143',
-  // Vert menthe douce : badges, sélections actives et pastilles
-  mint: '#D9F0E4',
-  // Fond crème chaud naturel : arrière-plan par défaut de toutes les vues
-  warm: '#F5F3ED',
+  // Vert forêt profond institutionnel : titre Masrouf, vagues sombres, boutons (#112B28)
+  forest: '#112B28',
+  // Vert profond botanique : texte secondaire, logo (#2E7D43)
+  deepGreen: '#2E7D43',
+  // Vert moyen botanique : dégradé du logo (#5FA867)
+  mediumGreen: '#5FA867',
+  // Vert clair botanique : logo, soulignement incurvé, vagues (#A8D5A0)
+  lightGreen: '#A8D5A0',
+  // Menthe douce : seconde vague, logo sur fond sombre (#D9EEDD)
+  mint: '#D9EEDD',
+  // Vert très pâle : branches botaniques décoratives (#E8F2E0)
+  veryPaleGreen: '#E8F2E0',
+  // Fond crème chaud plein écran (#FBFAF6)
+  cream: '#FBFAF6',
+  // Gris-vert : sélecteur de langue non sélectionné (#5C6F6A)
+  greyGreen: '#5C6F6A',
+
+  // Vert émeraude sombre compatible
+  green: '#2E7D43',
+  // Fond crème chaud naturel
+  warm: '#FBFAF6',
   // Blanc pur albâtre : fond des cartes et texte contrasté sur fond sombre
   white: '#FFFFFF',
   // Doré éclatant : alertes de vigilance budgétaire (80%-99%) et étoiles
@@ -39,6 +52,8 @@ export const colors = {
   goldSoft: '#FBEFD9',
   // Teinte corail adoucie pour les fonds de cartes d'alerte critique
   coralSoft: '#F8E1DF',
+  // Gris neutre ardoise
+  gray: '#64748B',
 } as const;
 
 /** Échelle d'espacements harmonieux en pixels (multiples de 4 et 8) */
@@ -82,6 +97,83 @@ export const type = {
   // 12px medium : petits libellés, dates et métadonnées secondaires
   label: { fontSize: 12, fontWeight: '500' as const },
 };
+
+/** Tailles de police standardisées de Masrouf */
+export const fontSizes = {
+  // Titre d'écran principal (26px)
+  title: 26,
+  // Sous-titre ou titre de section (18px)
+  subtitle: 18,
+  // Corps de texte ordinaire (14px)
+  body: 14,
+  // Légende, date et métadonnée secondaire (12px)
+  caption: 12,
+} as const;
+
+/** Style standard réutilisable pour toutes les cartes de l'application */
+export const cardStyle = {
+  // Fond blanc officiel albâtre
+  backgroundColor: colors.white,
+  // Arrondi standard des cartes (16px)
+  borderRadius: radius.card,
+  // Marge intérieure standard (16px)
+  padding: space.lg,
+  // Bordure fine neutre
+  borderWidth: 1,
+  // Couleur institutionnelle de bordure
+  borderColor: colors.border,
+} as const;
+
+/** Styles standards pour les boutons interactifs */
+export const buttonStyle = {
+  // Bouton d'action principal vert forêt
+  primary: {
+    backgroundColor: colors.forest,
+    borderRadius: radius.control,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  // Bouton d'action secondaire menthe douce
+  secondary: {
+    backgroundColor: colors.mint,
+    borderRadius: radius.control,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  // Bouton destructif rouge corail
+  danger: {
+    backgroundColor: colors.coral,
+    borderRadius: radius.control,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+} as const;
+
+/** Style standard pour les champs de formulaire textuels */
+export const inputStyle = {
+  // Fond blanc pour lisibilité optimale
+  backgroundColor: colors.white,
+  // Rayon d'arrondi des contrôles (16px)
+  borderRadius: radius.control,
+  // Bordure fine
+  borderWidth: 1,
+  // Couleur de bordure neutre
+  borderColor: colors.border,
+  // Marge intérieure horizontale
+  paddingHorizontal: space.lg,
+  // Marge intérieure verticale
+  paddingVertical: 12,
+  // Taille de police confortable
+  fontSize: 15,
+  // Couleur de texte sombre
+  color: colors.forest,
+} as const;
 
 // ------------------------------------------------------------
 // ALIAS ET COMPATIBILITÉ AVEC LES ANCIENNES VERSIONS

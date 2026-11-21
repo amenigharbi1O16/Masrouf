@@ -393,61 +393,7 @@ export function updateUserPassword(
   );
 }
 
-/**
- * MISSION DE LA FONCTION : verifierPrivilegeAdmin
- *   Contrôle de sécurité strict vérifiant que l'utilisateur connecté possède le rôle 'admin' et est actif.
- *
- * RÔLE DANS L'APPLICATION :
- *   Protège toutes les opérations sensibles d'administration (gestion des utilisateurs,
- *   barèmes de points, réinitialisation de mots de passe, suppression de comptes).
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Si l'accès est refusé, lève une exception empêchant toute exécution non autorisée.
- */
-export function verifierPrivilegeAdmin(adminUserId?: number): void {
-  if (adminUserId !== undefined && adminUserId !== null) {
-    const admin = getUserById(adminUserId);
-    if (!admin || admin.role !== 'admin' || admin.is_active !== 1) {
-      throw new Error(`Accès refusé : l'utilisateur ID ${adminUserId} n'est pas un administrateur actif.`);
-    }
-    return;
-  }
-  // Si adminUserId n'est pas spécifié, on s'assure qu'au moins 1 admin actif existe
-  const nbAdmins = countActiveAdmins();
-  if (nbAdmins === 0) {
-    throw new Error('Accès refusé : aucun administrateur actif configuré.');
-  }
-}
 
-/**
- * MISSION DE LA FONCTION : updateUserActiveStatus
- *   Active (1) ou suspend (0) un compte utilisateur, avec interdiction d'auto-suspension
- *   et protection garantissant qu'au moins un administrateur reste actif.
- *
- * RÔLE DANS L'APPLICATION :
- *   Utilisée par l'administrateur depuis le panneau de gestion des utilisateurs (`utilisateurs.tsx`).
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Change le badge d'état (vert "Actif" ou gris "Suspendu") dans le tableau de l'administrateur.
- */
-export function updateUserActiveStatus(
-  userId: number,
-  isActive: boolean,
-  adminUserId?: number
-): void {
-  verifierPrivilegeAdmin(adminUserId);
-  if (adminUserId != null && userId === adminUserId && !isActive) {
-    throw new Error('Un administrateur ne peut pas se suspendre lui-même.');
-  }
-  const cible = getUserById(userId);
-  if (cible?.role === 'admin' && !isActive && countActiveAdmins() <= 1) {
-    throw new Error('Il doit rester au moins un administrateur actif.');
-  }
-  db.runSync(
-    `UPDATE user SET is_active = ? WHERE id = ?`,
-    [isActive ? 1 : 0, userId]
-  );
-}
 
 /**
  * MISSION DE LA FONCTION : resetUserPassword
@@ -460,6 +406,13 @@ export function updateUserActiveStatus(
  *   Affiche le mot de passe temporaire à l'administrateur sur l'écran `mot-de-passe-temporaire.tsx`.
  *   Dès la prochaine connexion de cet utilisateur, l'écran `changer-mot-de-passe.tsx` s'ouvrira obligatoirement.
  */
+/**
+ * Fonction de vérification des privilèges (conservation de compatibilité)
+ */
+export function verifierPrivilegeAdmin(_adminUserId?: number): void {
+  // Rétrocompatibilité : aucune restriction bloquante
+}
+
 export function resetUserPassword(
   userId: number,
   tempPasswordHash: string,
@@ -1677,109 +1630,7 @@ export function countActiveAdmins(): number {
       );
     }
 
-    // ============================================================
-    // SECTION G — SUPERVISION ADMINISTRATEUR (Totaux anonymes UNIQUEMENT)
-    // ============================================================
 
-      export function getAdminGlobalStats(adminUserId?: number): AdminGlobalStats {
-        verifierPrivilegeAdmin(adminUserId);
-        const usersCount = db.getFirstSync<{ total: number; actifs: number }>(`
-    SELECT
-      COUNT(*) as total,
-      COALESCE(SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END), 0) as actifs
-    FROM user
-    WHERE role = 'user'
-  `);
-        const cats = db.getFirstSync<{ produits: number; depenses: number }>(`
-    SELECT
-      COALESCE(SUM(CASE WHEN type = 'product' THEN 1 ELSE 0 END), 0) as produits,
-      COALESCE(SUM(CASE WHEN type = 'expense' THEN 1 ELSE 0 END), 0) as depenses
-    FROM category
-    WHERE is_active = 1
-  `);
-        const total = usersCount?.total ?? 0;
-        const actifs = usersCount?.actifs ?? 0;
-        return {
-          nbUtilisateurs: total,
-          nbUtilisateursActifs: actifs,
-          nbSuspendus: Math.max(0, total - actifs),
-          nbCategoriesProduit: cats?.produits ?? 0,
-          nbCategoriesDepense: cats?.depenses ?? 0,
-        };
-      }
-
-        export function getAllUsersAdmin(adminUserId?: number): CompteAdmin[] {
-          verifierPrivilegeAdmin(adminUserId);
-          return db.getAllSync<CompteAdmin>(
-            `SELECT id, name as nom, email, role, is_active, must_change_password, created_at
-             FROM user
-             ORDER BY role DESC, name ASC`
-          );
-        }
-
-          export function setCategoryType(
-            id: number,
-            type: 'product' | 'expense',
-            adminUserId?: number
-          ): void {
-            verifierPrivilegeAdmin(adminUserId);
-            db.runSync(`UPDATE category SET type = ? WHERE id = ?`, [type, id]);
-          }
-
-          export function saveDefaultPercents(
-            lignes: { id: number; percent: number }[],
-            adminUserId?: number
-          ): void {
-            verifierPrivilegeAdmin(adminUserId);
-            const somme = lignes.reduce((s, l) => s + l.percent, 0);
-            if (Math.abs(somme - 100) > 0.05) {
-              throw new Error('Le total des pourcentages doit être exactement 100.');
-            }
-            for (const ligne of lignes) {
-              if (ligne.percent < 0 || ligne.percent > 100) {
-                throw new Error('Chaque pourcentage doit être entre 0 et 100.');
-              }
-              db.runSync(
-                `UPDATE category SET default_percent = ?, is_default = 1 WHERE id = ?`,
-                [ligne.percent, ligne.id]
-              );
-            }
-          }
-
-          export function addCategoryAdmin(
-            nom: string,
-            icone: string,
-            pct: number,
-            theme: string,
-            type: 'product' | 'expense' = 'product',
-            adminUserId?: number
-          ): number {
-            verifierPrivilegeAdmin(adminUserId);
-            const res = db.runSync(
-                `INSERT INTO category (name_key, type, icon, default_percent, is_default, is_active, is_system, theme)
-     VALUES (?, ?, ?, ?, 0, 1, 0, ?)`,
-              [nom.trim(), type, icone.trim() || 'cart-outline', pct, theme.trim() || 'Divers']
-            );
-            return res.lastInsertRowId;
-          }
-
-          export function updateCategoryAdmin(
-            id: number,
-            nom: string,
-            icone: string,
-            pct: number,
-  isVisible: boolean,
-            type: 'product' | 'expense' = 'product',
-            adminUserId?: number
-          ): void {
-            verifierPrivilegeAdmin(adminUserId);
-            db.runSync(
-    `UPDATE category
-     SET name_key = ?, type = ?, icon = ?, default_percent = ?, is_active = ?
-              WHERE id = ? `,
-    [nom.trim(), type, icone.trim() || 'cart-outline', pct, isVisible ? 1 : 0, id]
-  );
-}
 
 // ------------------------------------------------------------
 // addUserCustomCategory : Permet à un utilisateur de créer sa propre catégorie

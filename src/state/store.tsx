@@ -40,6 +40,7 @@ import {
 // Importation de la fonction de récupération de langue pré-connexion depuis le module dédié languageStorage (évite le cycle de dépendances)
 import { getLanguePreLogin } from '@/utils/languageStorage';
 import { getExactMonthBounds, todayISO, uid } from '@/utils/format';
+import { colors } from '@/constants/theme';
 import { buildSeed } from './seed';
 import {
   evaluateBudgetAlerts,
@@ -50,23 +51,54 @@ import {
 } from '@/utils/notifications';
 import {
   loadDBFromSQLite,
+  sqliteAddAllocation,
   sqliteAddCategory,
   sqliteAddExpense,
+  sqliteAddMoneyRequest,
   sqliteAddProduct,
   sqliteAddPurchase,
   sqliteAddUser,
+  sqliteDeleteAllocation,
+  sqliteDeleteCategory,
+  sqliteDeleteExpense,
+  sqliteDeletePurchase,
   sqliteMarkAllNotificationsRead,
   sqliteMarkNotificationRead,
   sqliteSaveBudget,
+  sqliteSaveFamilyBudget,
+  sqliteSaveFamilyFund,
   sqliteSaveNotification,
   sqliteSetUserCategories,
+  sqliteUpdateAllocation,
   sqliteUpdateCategory,
   sqliteUpdateExpense,
+  sqliteUpdateMoneyRequest,
   sqliteUpdateProduct,
   sqliteUpdatePurchase,
   sqliteUpdateUser,
 } from './sqlite-bridge';
-import type { AppSettings, Budget, Category, CategoryKind, CategoryType, DB, Expense, InAppNotification, PointsRules, Product, Purchase, Result, User } from './types';
+import type {
+  AccountType,
+  AppSettings,
+  Budget,
+  Category,
+  CategoryKind,
+  CategoryType,
+  DB,
+  Expense,
+  FamilyBudget,
+  FamilyFund,
+  InAppNotification,
+  MoneyAllocation,
+  MoneyRequest,
+  ParsedVoiceTransaction,
+  PointsRules,
+  Product,
+  Purchase,
+  Result,
+  Role,
+  User,
+} from './types';
 
 /** Clé de stockage AsyncStorage pour le miroir d'état */
 const KEY = 'masrouf.db.v1';
@@ -77,12 +109,28 @@ const KEY = 'masrouf.db.v1';
 export interface Actions {
   // --- Authentification & Profil ---
   login(email: string, password: string): Promise<Result>;
-  register(name: string, email: string, password: string): Promise<Result>;
+  register(name: string, email: string, password: string, accountType?: AccountType, familyName?: string): Promise<Result>;
   logout(): void;
   changePassword(current: string, next: string): Promise<Result>;
   updateProfile(name: string): void;
   completeOnboarding(categoryIds: string[]): void;
   setUserCategories(categoryIds: string[]): void;
+
+  // --- Système Familial & Comptes Enfants ---
+  createChild(name: string, email: string, password: string): Promise<Result & { initialPassword?: string }>;
+  addFamilyFunds(amount: number, note?: string): Result;
+  allocateMoney(childId: string, amount: number, note?: string): Result;
+  requestMoney(amount: number, reason: string): Result;
+  respondToMoneyRequest(requestId: string, approve: boolean): Result;
+  saveFamilyBudget(b: Omit<FamilyBudget, 'parentId' | 'id' | 'createdAt'> & { id?: string }): string;
+
+  // --- Catégories Personnalisées ---
+  addCustomCategory(name: string, kind: CategoryKind, options?: { description?: string; color?: string; icon?: string; scope?: 'personal' | 'family' }): Result & { data?: Category };
+  updateCustomCategory(id: string, patch: Partial<Pick<Category, 'name' | 'active' | 'description' | 'color' | 'icon'>>): Result;
+  deleteCustomCategory(id: string): Result;
+
+  // --- Transactions Vocales Intelligentes ---
+  applyVoiceTransaction(t: ParsedVoiceTransaction): Promise<Result>;
 
   // --- Période Centrale de Budget ---
   setSelectedBudgetId(id: string | null): void;
@@ -93,8 +141,12 @@ export interface Actions {
   updateProduct(id: string, patch: Partial<Omit<Product, 'id' | 'userId'>>): void;
   addPurchase(p: Omit<Purchase, 'id' | 'userId'>): string;
   updatePurchase(id: string, patch: Partial<Omit<Purchase, 'id' | 'userId'>>): void;
+  deletePurchase(id: string): Result;
   addExpense(e: Omit<Expense, 'id' | 'userId'>): string;
   updateExpense(id: string, patch: Partial<Omit<Expense, 'id' | 'userId'>>): void;
+  deleteExpense(id: string): Result;
+  updateAllocation(id: string, patch: { amount?: number; note?: string; date?: string; childId?: string }): Result;
+  deleteAllocation(id: string): Result;
   markCelebrated(budgetId: string): void;
 
   // --- Notifications Réelles & In-App ---
@@ -102,8 +154,8 @@ export interface Actions {
   markAllNotificationsRead(): void;
   addNotification(n: Omit<InAppNotification, 'id' | 'createdAt'>): string;
 
-  // --- Administration système & Paramétrage ---
-  setUserActive(id: string, active: boolean): void;
+  // --- Administration familiale & Réinitialisation enfant ---
+  resetChildPassword(childId: string, newPassword?: string): Promise<Result<{ password: string }>>;
   issueTemporaryPassword(id: string): Promise<string>;
   addCategory(name: string, kind: CategoryKind): Result;
   updateCategory(id: string, patch: Partial<Pick<Category, 'name' | 'active'>>): void;
@@ -314,7 +366,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       update((d) => ({ ...d, users: d.users.map((u) => (u.id === id ? { ...u, ...patch } : u)) }));
     };
 
-    return {
+    const act: Actions = {
       // 1. Connexion utilisateur
       async login(email, password) {
         // Accès à l'état physique de la base de données
@@ -353,8 +405,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // Rejet si le mot de passe ne correspond à aucun format valide
         if (!isMatch) return { ok: false, error: 'Incorrect password. Please try again.' };
 
-        // Contrôle de l'activation du compte (les comptes de test sont toujours considérés actifs)
-        if (!u.active && !isTestAccount) return { ok: false, error: 'This account is suspended. Contact an administrator.' };
+        // Règle Masrouf : Aucun compte n'est jamais bloqué ou suspendu (accès toujours rétabli)
 
         // Si l'utilisateur a choisi une langue sur la page de connexion ou d'inscription,
         // on l'applique et on la synchronise immédiatement avec son compte dans SQLite et le store
@@ -389,7 +440,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
 
       // 2. Inscription d'un nouvel utilisateur avec politique stricte Gmail et mot de passe fort
-      async register(name, email, password) {
+      async register(name, email, password, accountType = 'personal', familyName) {
         const d = dbRef.current!;
         if (!d.settings.allowRegistration) return { ok: false, error: 'Registration is currently closed.' };
         if (!name.trim()) return { ok: false, error: 'Please enter your full name.' };
@@ -421,50 +472,45 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           userLang = (await getLanguePreLogin()) || 'fr';
         } catch { }
 
+        const isFamily = accountType === 'family';
+        // Attribution du rôle selon le choix du compte : parent pour famille, user pour individuel
+        const role: Role = isFamily ? 'parent' : 'user';
+
         const user: User = {
           id: uid(),
           name: name.trim(),
           email: email.trim(),
           passwordHash: await hashPassword(password),
-          role: 'user',
+          role,
           active: true,
           mustChangePassword: false,
-          onboarded: false,
+          onboarded: false, // Tout nouvel inscrit (y compris le parent) doit réaliser son onboarding de catégories
           categoryIds: [],
           celebratedBudgetIds: [],
           createdAt: todayISO(),
           langue: userLang,
+          accountType: isFamily ? 'family' : 'personal',
+          familyName: isFamily ? (familyName || `Famille ${name.trim().split(' ')[0]}`) : undefined,
+          balance: 0,
+          allocatedTotal: 0,
         };
 
         // Persistance physique immédiate dans SQLite
         const insertedId = sqliteAddUser(user);
         const savedUser: User = { ...user, id: insertedId };
 
-        // Création des notifications pour les administrateurs (inscription d'un nouvel utilisateur)
-        const adminUsers = d.users.filter((u) => u.role === 'admin');
-        const adminNotifs: InAppNotification[] = adminUsers.map((adm) => ({
-          id: uid(),
-          userId: adm.id,
-          type: 'user_registered',
-          title: 'Nouvel utilisateur inscrit',
-          body: `Un nouveau compte "${savedUser.name}" (${savedUser.email}) a été créé et peut maintenant se connecter.`,
-          periodLabel: '',
-          periodId: '',
-          amountSpent: 0,
-          budgetTotal: 0,
-          actionRecommended: 'Consulter la liste des utilisateurs pour gérer les accès et rôles.',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        }));
-        adminNotifs.forEach((n) => sqliteSaveNotification(n));
-
-        // Envoi de la notification réelle sur le smartphone de l'administrateur (sonnerie, bannière flottante et badge +1)
-        if (adminNotifs.length > 0) {
-          sendPhoneNotification({
-            title: adminNotifs[0].title,
-            body: adminNotifs[0].body,
-            data: { type: 'user_registered', newUserId: savedUser.id, newUserEmail: savedUser.email },
-          }).catch(() => {});
+        // Si c'est un compte famille (Parent), initialiser sa réserve financière familiale
+        let newFamilyFunds: FamilyFund[] = [];
+        if (isFamily) {
+          const fund: FamilyFund = {
+            id: uid(),
+            parentId: savedUser.id,
+            balance: 0,
+            totalContributions: 0,
+            updatedAt: todayISO(),
+          };
+          sqliteSaveFamilyFund(fund);
+          newFamilyFunds = [fund];
         }
 
         // Création de la notification de bienvenue pour le nouvel utilisateur
@@ -473,12 +519,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           userId: savedUser.id,
           type: 'system',
           title: 'Bienvenue sur Masrouf',
-          body: 'Votre compte est créé avec succès. Vous pouvez maintenant définir vos budgets et suivre vos dépenses quotidiennes.',
+          body: isFamily
+            ? 'Bienvenue dans votre espace famille. Commencez par sélectionner vos catégories de dépenses familiales.'
+            : 'Votre compte est créé avec succès. Vous pouvez maintenant définir vos budgets et suivre vos dépenses quotidiennes.',
           periodLabel: '',
           periodId: '',
           amountSpent: 0,
           budgetTotal: 0,
-          actionRecommended: 'Configurez votre premier budget mensuel pour commencer.',
+          actionRecommended: isFamily ? 'Finalisez le choix de vos catégories familiales.' : 'Configurez votre premier budget mensuel pour commencer.',
           isRead: false,
           createdAt: new Date().toISOString(),
         };
@@ -489,16 +537,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           title: welcomeNotif.title,
           body: welcomeNotif.body,
           data: { type: 'system', userId: savedUser.id },
-        }).catch(() => {});
-
-        const newNotifs = [...adminNotifs, welcomeNotif];
+        }).catch(() => { });
 
         // Mise à jour de l'état : on n'affecte PAS sessionUserId afin de rediriger vers /login
         update((s) => ({
           ...s,
           users: [...s.users, savedUser],
           sessionUserId: null,
-          notifications: [...(s.notifications || []), ...newNotifs],
+          notifications: [...(s.notifications || []), welcomeNotif],
+          familyFunds: [...(s.familyFunds || []), ...newFamilyFunds],
         }));
         return { ok: true, user: savedUser };
       },
@@ -689,17 +736,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       // 11. Enregistrement d'un achat au détail avec magasin et prix unitaire
       addPurchase(p) {
+        const currentUserId = meId();
         const candidateId = uid();
-        const purchaseCandidate: Purchase = { ...p, id: candidateId, userId: meId() };
+        const purchaseCandidate: Purchase = { ...p, id: candidateId, userId: currentUserId };
         const insertedId = sqliteAddPurchase(purchaseCandidate);
         const finalId = insertedId || candidateId;
         const purchase: Purchase = { ...purchaseCandidate, id: finalId };
+
+        // Si l'utilisateur connecté est un compte enfant, débiter son solde personnel
+        const dUser = dbRef.current?.users.find((u) => u.id === currentUserId);
+        if (dUser && dUser.role === 'child') {
+          const newBal = (dUser.balance || 0) - purchase.price;
+          patchUser(currentUserId, { balance: newBal });
+          sqliteUpdateUser(currentUserId, { balance: newBal });
+        }
+
         update((d) => ({ ...d, purchases: [...d.purchases, purchase] }));
         // Évaluation automatique des seuils de notification (80%, 100%)
         setTimeout(() => {
           const d = dbRef.current;
           if (!d) return;
-          const currentUserId = meId();
           const targetBudget = d.budgets.find(
             (b) => b.userId === currentUserId && b.start <= purchase.date && purchase.date <= b.end
           );
@@ -729,23 +785,111 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               }));
             },
           });
+
+          // Alerte parentale si la dépense provient d'un compte enfant
+          const currentUserObj = d.users.find((u) => u.id === currentUserId);
+          if (currentUserObj?.role === 'child' && currentUserObj.parentId) {
+            evaluateBudgetAlerts({
+              userId: currentUserObj.parentId,
+              budget: targetBudget,
+              spent: pSpent + eSpent,
+              existingNotifications: d.notifications || [],
+              onTriggerNotification: (n) => {
+                const parentNotifItem: InAppNotification = {
+                  ...n,
+                  id: uid(),
+                  userId: currentUserObj.parentId!,
+                  title: `[Alerte Enfant] ${currentUserObj.name}`,
+                  body: `Votre enfant ${currentUserObj.name} a atteint un seuil budgétaire. ${n.body}`,
+                  createdAt: new Date().toISOString(),
+                };
+                sqliteSaveNotification(parentNotifItem);
+                update((st) => ({
+                  ...st,
+                  notifications: [parentNotifItem, ...(st.notifications || [])],
+                }));
+              },
+            });
+          }
         }, 50);
         return finalId;
       },
 
       // 12. Modification d'un achat existant
+      // Fonction de modification d'un achat de produit : met à jour le ticket dans SQLite et dans le store
       updatePurchase(id, patch) {
+        // Récupération de l'état actuel de la base
+        const d = dbRef.current;
+        // Recherche de l'ancien achat pour ajuster le solde si compte enfant
+        const oldPurchase = d?.purchases.find((p) => p.id === id);
+        // Si le prix est modifié et qu'il appartient à un enfant
+        if (oldPurchase && patch.price !== undefined) {
+          // Calcul de la différence de prix
+          const diff = oldPurchase.price - patch.price;
+          // Recherche du propriétaire
+          const owner = d?.users.find((u) => u.id === oldPurchase.userId);
+          // Si le propriétaire est un enfant et que le montant a changé
+          if (owner && owner.role === 'child' && diff !== 0) {
+            // Nouveau solde ajusté
+            const newBal = (owner.balance || 0) + diff;
+            // Mise à jour en mémoire
+            patchUser(owner.id, { balance: newBal });
+            // Sauvegarde dans SQLite
+            sqliteUpdateUser(owner.id, { balance: newBal });
+          }
+        }
+        // Enregistrement des modifications dans SQLite
         sqliteUpdatePurchase(id, patch);
-        update((d) => ({ ...d, purchases: d.purchases.map((p) => (p.id === id ? { ...p, ...patch } : p)) }));
+        // Mise à jour de l'achat correspondant dans le tableau purchases du store
+        update((st) => ({ ...st, purchases: st.purchases.map((p) => (p.id === id ? { ...p, ...patch } : p)) }));
+      },
+
+      // 12b. Suppression d'un achat
+      // Fonction de suppression définitive d'un achat : retire la ligne de SQLite et du store
+      deletePurchase(id) {
+        // Récupération de l'état actuel de la base
+        const d = dbRef.current;
+        // Recherche de l'achat à supprimer
+        const oldPurchase = d?.purchases.find((p) => p.id === id);
+        // Si l'achat appartenait à un enfant, restituer le montant sur son solde
+        if (oldPurchase) {
+          // Recherche du propriétaire
+          const owner = d?.users.find((u) => u.id === oldPurchase.userId);
+          // Si compte enfant
+          if (owner && owner.role === 'child') {
+            // Recrédit du montant dépensé
+            const newBal = (owner.balance || 0) + oldPurchase.price;
+            // Mise à jour en mémoire
+            patchUser(owner.id, { balance: newBal });
+            // Sauvegarde dans SQLite
+            sqliteUpdateUser(owner.id, { balance: newBal });
+          }
+        }
+        // Suppression de la ligne d'achat dans la table purchases de SQLite
+        sqliteDeletePurchase(id);
+        // Retrait de l'achat dans la liste mémoire du store Zustand
+        update((st) => ({ ...st, purchases: st.purchases.filter((p) => p.id !== id) }));
+        // Retour d'un résultat positif
+        return { ok: true };
       },
 
       // 13. Enregistrement d'une dépense forfaitaire directe
       addExpense(e) {
+        const currentUserId = meId();
         const candidateId = uid();
-        const expenseCandidate: Expense = { ...e, id: candidateId, userId: meId() };
+        const expenseCandidate: Expense = { ...e, id: candidateId, userId: currentUserId };
         const insertedId = sqliteAddExpense(expenseCandidate);
         const finalId = insertedId || candidateId;
         const expense: Expense = { ...expenseCandidate, id: finalId };
+
+        // Si l'utilisateur connecté est un compte enfant, débiter son solde personnel
+        const dUser = dbRef.current?.users.find((u) => u.id === currentUserId);
+        if (dUser && dUser.role === 'child') {
+          const newBal = (dUser.balance || 0) - expense.amount;
+          patchUser(currentUserId, { balance: newBal });
+          sqliteUpdateUser(currentUserId, { balance: newBal });
+        }
+
         update((d) => ({ ...d, expenses: [...d.expenses, expense] }));
         // Évaluation automatique des seuils de notification (80%, 100%)
         setTimeout(() => {
@@ -781,14 +925,92 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               }));
             },
           });
+
+          // Alerte parentale si la dépense provient d'un compte enfant
+          const currentUserObj = d.users.find((u) => u.id === currentUserId);
+          if (currentUserObj?.role === 'child' && currentUserObj.parentId) {
+            evaluateBudgetAlerts({
+              userId: currentUserObj.parentId,
+              budget: targetBudget,
+              spent: pSpent + eSpent,
+              existingNotifications: d.notifications || [],
+              onTriggerNotification: (n) => {
+                const parentNotifItem: InAppNotification = {
+                  ...n,
+                  id: uid(),
+                  userId: currentUserObj.parentId!,
+                  title: `[Alerte Enfant] ${currentUserObj.name}`,
+                  body: `Votre enfant ${currentUserObj.name} a atteint un seuil budgétaire. ${n.body}`,
+                  createdAt: new Date().toISOString(),
+                };
+                sqliteSaveNotification(parentNotifItem);
+                update((st) => ({
+                  ...st,
+                  notifications: [parentNotifItem, ...(st.notifications || [])],
+                }));
+              },
+            });
+          }
         }, 50);
         return finalId;
       },
 
       // 14. Modification d'une dépense directe
+      // Fonction de modification d'une dépense : met à jour la dépense dans SQLite et dans le store
       updateExpense(id, patch) {
+        // Récupération de l'état actuel de la base
+        const d = dbRef.current;
+        // Recherche de l'ancienne dépense pour réajuster le solde si compte enfant
+        const oldExpense = d?.expenses.find((e) => e.id === id);
+        // Si le montant est modifié et qu'il appartient à un enfant
+        if (oldExpense && patch.amount !== undefined) {
+          // Calcul de la différence
+          const diff = oldExpense.amount - patch.amount;
+          // Recherche du propriétaire
+          const owner = d?.users.find((u) => u.id === oldExpense.userId);
+          // Si compte enfant et montant modifié
+          if (owner && owner.role === 'child' && diff !== 0) {
+            // Nouveau solde ajusté
+            const newBal = (owner.balance || 0) + diff;
+            // Mise à jour en mémoire
+            patchUser(owner.id, { balance: newBal });
+            // Sauvegarde dans SQLite
+            sqliteUpdateUser(owner.id, { balance: newBal });
+          }
+        }
+        // Enregistrement des modifications dans SQLite
         sqliteUpdateExpense(id, patch);
-        update((d) => ({ ...d, expenses: d.expenses.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
+        // Mise à jour de la dépense dans la liste mémoire du store Zustand
+        update((st) => ({ ...st, expenses: st.expenses.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
+      },
+
+      // 14b. Suppression d'une dépense directe
+      // Fonction de suppression d'une dépense : supprime la ligne de SQLite et du store
+      deleteExpense(id) {
+        // Récupération de l'état actuel de la base
+        const d = dbRef.current;
+        // Recherche de la dépense à supprimer
+        const oldExpense = d?.expenses.find((e) => e.id === id);
+        // Si la dépense appartenait à un enfant, restituer le montant sur son solde
+        if (oldExpense) {
+          // Recherche du propriétaire
+          const owner = d?.users.find((u) => u.id === oldExpense.userId);
+          // Si compte enfant
+          if (owner && owner.role === 'child') {
+            // Recrédit du montant dépensé
+            const newBal = (owner.balance || 0) + oldExpense.amount;
+            // Mise à jour en mémoire
+            patchUser(owner.id, { balance: newBal });
+            // Sauvegarde dans SQLite
+            sqliteUpdateUser(owner.id, { balance: newBal });
+          }
+        }
+        // Suppression de la dépense dans la table expenses de SQLite
+        sqliteDeleteExpense(id);
+        // Retrait de la dépense de la liste mémoire du store Zustand
+        update((st) => ({ ...st, expenses: st.expenses.filter((e) => e.id !== id) }));
+        // Retour d'un résultat positif
+        return { ok: true };
       },
 
       // 15. Marquage d'un budget célébré (animation de félicitations unique)
@@ -843,9 +1065,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return id;
       },
 
-      // 20. Administration : Activer / désactiver un compte utilisateur
-      setUserActive(id, active) {
-        patchUser(id, { active });
+      // 20. Administration familiale : Réinitialiser le mot de passe d'un enfant
+      async resetChildPassword(childId, newPassword) {
+        const pw = newPassword && newPassword.trim().length >= 6 ? newPassword.trim() : randomTemporaryPassword();
+        const nextHash = await hashPassword(pw);
+        sqliteUpdateUser(childId, { passwordHash: nextHash, mustChangePassword: true });
+        patchUser(childId, { passwordHash: nextHash, mustChangePassword: true });
+        return { ok: true, data: { password: pw } };
       },
 
       // 21. Administration : Émission d'un mot de passe temporaire
@@ -871,6 +1097,907 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const newCat: Category = { ...catCandidate, id: finalId };
         update((s) => ({ ...s, categories: [...s.categories, newCat] }));
         return { ok: true };
+      },
+
+      // 22b. Catégories personnalisées (pour utilisateur normal ET parent)
+      addCustomCategory(name, kind, options) {
+        const d = dbRef.current!;
+        const currentUserId = meId();
+        const n = name.trim();
+        if (!n) return { ok: false, error: 'Veuillez saisir un nom de catégorie.' };
+        const scope = options?.scope || 'personal';
+
+        // Vérifier doublon dans le catalogue
+        const duplicate = d.categories.some(
+          (c) => c.name.toLowerCase() === n.toLowerCase() && (c.userId === currentUserId || !c.userId)
+        );
+        if (duplicate) {
+          return { ok: false, error: 'Cette catégorie existe déjà dans votre catalogue.' };
+        }
+
+        const candidateId = uid();
+        const catCandidate: Category = {
+          id: candidateId,
+          name: n,
+          kind,
+          active: true,
+          userId: currentUserId,
+          description: options?.description,
+          color: options?.color,
+          icon: options?.icon,
+          isCustom: true,
+          scope,
+          createdAt: todayISO(),
+        };
+        const insertedId = sqliteAddCategory(catCandidate);
+        const finalId = insertedId || candidateId;
+        const newCat: Category = { ...catCandidate, id: finalId };
+
+        // Ajouter automatiquement aux catégories suivies de l'utilisateur
+        const me = d.users.find((u) => u.id === currentUserId);
+        const updatedCategoryIds = me ? Array.from(new Set([...me.categoryIds, finalId])) : [finalId];
+        sqliteSetUserCategories(currentUserId, updatedCategoryIds);
+        patchUser(currentUserId, { categoryIds: updatedCategoryIds });
+
+        update((s) => ({
+          ...s,
+          categories: [...s.categories, newCat],
+        }));
+        return { ok: true, data: newCat };
+      },
+
+      updateCustomCategory(id, patch) {
+        const d = dbRef.current!;
+        const target = d.categories.find((c) => c.id === id);
+        if (!target) return { ok: false, error: 'Catégorie non trouvée.' };
+        sqliteUpdateCategory(id, patch);
+        update((s) => ({
+          ...s,
+          categories: s.categories.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+        }));
+        return { ok: true };
+      },
+
+      deleteCustomCategory(id) {
+        const d = dbRef.current!;
+        const target = d.categories.find((c) => c.id === id);
+        if (!target) return { ok: false, error: 'Catégorie non trouvée.' };
+        if (!target.isCustom) {
+          return { ok: false, error: 'Les catégories par défaut du système sont protégées et ne peuvent pas être supprimées.' };
+        }
+
+        // Vérifier si elle est utilisée par des achats ou des dépenses
+        const usedInPurchases = d.purchases.some((p) => {
+          const prod = d.products.find((pr) => pr.id === p.productId);
+          return prod?.categoryId === id;
+        });
+        const usedInExpenses = d.expenses.some((e) => e.categoryId === id);
+        if (usedInPurchases || usedInExpenses) {
+          return { ok: false, error: 'Impossible de supprimer cette catégorie car elle est déjà utilisée par des transactions enregistrées.' };
+        }
+
+        const success = sqliteDeleteCategory(id);
+        if (!success) {
+          return { ok: false, error: 'Échec de la suppression dans la base SQLite.' };
+        }
+
+        update((s) => ({
+          ...s,
+          categories: s.categories.filter((c) => c.id !== id),
+          users: s.users.map((u) => ({
+            ...u,
+            categoryIds: u.categoryIds.filter((cid) => cid !== id),
+          })),
+        }));
+        return { ok: true };
+      },
+
+      // --- Système Familial : Gestion des Enfants ---
+      async createChild(name, email, password) {
+        const d = dbRef.current!;
+        const currentUserId = meId();
+        const parent = d.users.find((u) => u.id === currentUserId);
+        // Vérification que l'utilisateur est bien un parent ou administrateur
+        if (!parent || (parent.role !== 'admin' && parent.role !== 'parent')) {
+          return { ok: false, error: 'Seul un parent administrateur peut créer un compte enfant.' };
+        }
+
+        const cleanEmail = email.trim().toLowerCase();
+        if (d.users.some((u) => u.email.toLowerCase() === cleanEmail)) {
+          return { ok: false, error: 'Cet identifiant email existe déjà dans le système.' };
+        }
+
+        const pwHash = await hashPassword(password);
+        const childUser: User = {
+          id: uid(),
+          name: name.trim(),
+          email: cleanEmail,
+          passwordHash: pwHash,
+          role: 'child',
+          active: true,
+          mustChangePassword: false,
+          // L'enfant doit passer par l'onboarding de sélection de catégories à sa première connexion
+          onboarded: false,
+          // Catégories initiales vides pour permettre le choix libre lors de l'onboarding
+          categoryIds: [],
+          celebratedBudgetIds: [],
+          createdAt: todayISO(),
+          langue: parent.langue || 'fr',
+          parentId: parent.id,
+          familyId: parent.familyId || `fam-${parent.id}`,
+          accountType: 'child',
+          balance: 0,
+          allocatedTotal: 0,
+          familyName: parent.familyName,
+        };
+
+        const insertedId = sqliteAddUser(childUser);
+        const savedChild: User = { ...childUser, id: insertedId || childUser.id };
+        sqliteSetUserCategories(savedChild.id, savedChild.categoryIds);
+
+        update((s) => ({
+          ...s,
+          users: [...s.users, savedChild],
+        }));
+
+        return { ok: true, user: savedChild, initialPassword: password };
+      },
+
+      // --- Finances Familiales : Réserve et Allocations ---
+      addFamilyFunds(amount, note) {
+        const d = dbRef.current!;
+        const currentUserId = meId();
+        const parent = d.users.find((u) => u.id === currentUserId);
+        // Vérification que l'utilisateur est bien un parent ou administrateur
+        if (!parent || (parent.role !== 'admin' && parent.role !== 'parent')) {
+          return { ok: false, error: 'Action réservée au parent administrateur.' };
+        }
+        if (amount <= 0) return { ok: false, error: 'Le montant doit être supérieur à zéro.' };
+
+        let fund = d.familyFunds.find((f) => f.parentId === parent.id);
+        const now = todayISO();
+        if (!fund) {
+          fund = {
+            id: uid(),
+            parentId: parent.id,
+            balance: amount,
+            totalContributions: amount,
+            updatedAt: now,
+          };
+        } else {
+          fund = {
+            ...fund,
+            balance: fund.balance + amount,
+            totalContributions: fund.totalContributions + amount,
+            updatedAt: now,
+          };
+        }
+        sqliteSaveFamilyFund(fund);
+
+        update((s) => ({
+          ...s,
+          familyFunds: [fund!, ...s.familyFunds.filter((f) => f.id !== fund!.id)],
+        }));
+        return { ok: true };
+      },
+
+      // 21. Allocation d'argent d'un parent vers un compte enfant
+      allocateMoney(childId, amount, note) {
+        // Récupération de l'instantané de la base SQLite
+        const d = dbRef.current!;
+        // Récupération de l'identifiant du parent connecté
+        const currentUserId = meId();
+        // Recherche de l'utilisateur parent dans la base
+        const parent = d.users.find((u) => u.id === currentUserId);
+        // Vérification de sécurité que l'utilisateur est bien un parent
+        if (!parent || (parent.role !== 'admin' && parent.role !== 'parent')) {
+          // Erreur si non autorisé
+          return { ok: false, error: 'Action réservée au parent administrateur.' };
+        }
+        // Vérification du montant strictement positif
+        if (amount <= 0) return { ok: false, error: 'Le montant doit être supérieur à zéro.' };
+
+        // Recherche du compte enfant destinataire rattaché à la famille
+        const child = d.users.find((u) => u.id === childId && u.role === 'child');
+        // Erreur si l'enfant n'est pas trouvé
+        if (!child) return { ok: false, error: 'Enfant introuvable dans votre famille.' };
+
+        // Résolution de la catégorie « Enfant » (ex: id: 'children' ou libellé 'Enfants')
+        let catEnfant = d.categories.find(
+          (c) =>
+            c.id === 'children' ||
+            c.name.toLowerCase() === 'enfants' ||
+            c.name.toLowerCase() === 'children' ||
+            c.name.toLowerCase() === 'enfant'
+        );
+        // Si absente, création automatique de la catégorie Enfants
+        if (!catEnfant) {
+          // Création de l'entité catégorie Enfants
+          catEnfant = {
+            id: 'children',
+            name: 'Enfants',
+            kind: 'expense',
+            active: true,
+            color: colors.forest,
+            icon: 'people-outline',
+          };
+          // Persistance de la catégorie dans SQLite
+          sqliteAddCategory(catEnfant);
+        }
+
+        // Récupération ou initialisation de la réserve familiale
+        let fund = d.familyFunds.find((f) => f.parentId === parent.id);
+        // Initialisation si inexistante
+        if (!fund) {
+          fund = { id: uid(), parentId: parent.id, balance: 0, totalContributions: 0, updatedAt: todayISO() };
+        }
+
+        // Décrémentation du solde de la réserve familiale
+        const newFundBalance = Math.max(0, fund.balance - amount);
+        // Mise à jour de l'objet réserve
+        fund = { ...fund, balance: newFundBalance, updatedAt: todayISO() };
+        // Persistance dans SQLite
+        sqliteSaveFamilyFund(fund);
+
+        // Incrémentation du solde disponible et du total alloué pour l'enfant
+        const newChildBalance = (child.balance || 0) + amount;
+        // Nouveau montant cumulé alloué
+        const newChildAllocated = (child.allocatedTotal || 0) + amount;
+        // Mise à jour en mémoire du profil de l'enfant
+        patchUser(child.id, { balance: newChildBalance, allocatedTotal: newChildAllocated });
+        // Sauvegarde durable du profil de l'enfant dans SQLite
+        sqliteUpdateUser(child.id, { balance: newChildBalance, allocatedTotal: newChildAllocated });
+
+        // Calcul des bornes du mois en cours pour le budget personnel de l'enfant
+        const dateNow = new Date();
+        // Date de début de mois (ex: 2026-11-01)
+        const currentMonthStart = `${dateNow.getFullYear()}-${String(dateNow.getMonth() + 1).padStart(2, '0')}-01`;
+        // Dernier jour du mois
+        const lastDayOfMonth = new Date(dateNow.getFullYear(), dateNow.getMonth() + 1, 0).getDate();
+        // Date de fin de mois (ex: 2026-11-30)
+        const currentMonthEnd = `${dateNow.getFullYear()}-${String(dateNow.getMonth() + 1).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
+        // Recherche du budget actif de l'enfant pour le mois en cours
+        const existingChildBudget = d.budgets.find(
+          (b) => b.userId === child.id && b.start === currentMonthStart
+        );
+
+        // Tableau mis à jour des budgets
+        let updatedBudgets = d.budgets;
+        // Si le budget enfant existe déjà pour le mois
+        if (existingChildBudget) {
+          // Nouveau total budgétaire cumulé
+          const updatedChildTotal = (existingChildBudget.total || 0) + amount;
+          // Mise à jour dans SQLite via sqliteSaveBudget
+          sqliteSaveBudget({ ...existingChildBudget, total: updatedChildTotal });
+          // Mise à jour de la liste locale
+          updatedBudgets = d.budgets.map((b) =>
+            b.id === existingChildBudget.id ? { ...b, total: updatedChildTotal } : b
+          );
+        } else {
+          // Création d'un nouveau budget mensuel officiel pour l'enfant
+          const newChildBudget: Budget = {
+            id: uid(),
+            userId: child.id,
+            start: currentMonthStart,
+            end: currentMonthEnd,
+            total: amount,
+            allocations: {},
+          };
+          // Insertion dans SQLite via sqliteSaveBudget
+          sqliteSaveBudget(newChildBudget);
+          // Ajout à la liste locale des budgets
+          updatedBudgets = [...d.budgets, newChildBudget];
+        }
+
+        // Création de l'enregistrement d'allocation familiale
+        const alloc: MoneyAllocation = {
+          // Identifiant unique
+          id: uid(),
+          // Identifiant du parent
+          parentId: parent.id,
+          // Identifiant de l'enfant
+          childId: child.id,
+          // Nom de l'enfant
+          childName: child.name,
+          // Montant alloué
+          amount,
+          // Note descriptive optionnelle
+          note: note || undefined,
+          // Date du jour
+          date: todayISO(),
+          // Catégorie « Enfant »
+          categoryId: catEnfant.id,
+          // Nom traduit de la catégorie
+          categoryName: 'Enfants',
+          // Horodatage ISO
+          createdAt: new Date().toISOString(),
+        };
+        // Persistance de l'allocation dans SQLite
+        sqliteAddAllocation(alloc);
+
+        // Enregistrement d'une dépense parent classée dans la catégorie « Enfant »
+        const parentExpense: Expense = {
+          // Identifiant unique
+          id: uid(),
+          // Rattaché au compte parent
+          userId: parent.id,
+          // Catégorie « Enfant »
+          categoryId: catEnfant.id,
+          // Montant déduit du budget parent
+          amount,
+          // Date de l'opération
+          date: todayISO(),
+          // Note détaillée précisant l'enfant destinataire
+          note: note
+            ? `Allocation argent de poche pour ${child.name} (${note})`
+            : `Allocation argent de poche pour ${child.name}`,
+        };
+        // Sauvegarde de la dépense parent dans SQLite
+        sqliteAddExpense(parentExpense);
+
+        // Notification envoyée sur le compte de l'enfant
+        const childNotif: InAppNotification = {
+          id: uid(),
+          userId: child.id,
+          type: 'system',
+          title: 'Argent de poche reçu !',
+          body: `Votre parent vous a alloué ${amount.toFixed(3)} DT${note ? ` (${note})` : ''}.`,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        };
+        // Persistance de la notification
+        sqliteSaveNotification(childNotif);
+
+        // Mise à jour atomique de l'état global Zustand
+        update((s) => ({
+          ...s,
+          // Réserve mise à jour
+          familyFunds: [fund!, ...s.familyFunds.filter((f) => f.id !== fund!.id)],
+          // Allocations mises à jour
+          allocations: [alloc, ...(s.allocations || [])],
+          // Dépenses parent mises à jour incluant la catégorie Enfant
+          expenses: [parentExpense, ...(s.expenses || [])],
+          // Budgets mis à jour avec le budget alloué à l'enfant
+          budgets: updatedBudgets,
+          // Notifications mises à jour
+          notifications: [childNotif, ...(s.notifications || [])],
+        }));
+
+        // Succès de l'opération
+        return { ok: true };
+      },
+
+      // 21b. Modification atomique d'une allocation / don d'argent vers un enfant
+      // Fonction de modification d'une allocation : met à jour le montant, le motif, la date, l'enfant destinataire,
+      // la réserve, le solde de l'enfant et la dépense parent liée en une seule transaction cohérente
+      updateAllocation(id, patch) {
+        // Récupération de l'état actuel de la base
+        const d = dbRef.current!;
+        // Recherche de l'allocation existante par son identifiant
+        const targetAlloc = (d.allocations || []).find((a) => a.id === id);
+        // Si introuvable, retour d'une erreur
+        if (!targetAlloc) return { ok: false, error: 'Allocation introuvable.' };
+
+        // Ancien montant de l'allocation
+        const oldAmount = targetAlloc.amount;
+        // Nouveau montant après modification (ou ancien par défaut)
+        const newAmount = patch.amount !== undefined ? patch.amount : oldAmount;
+        // Ancien identifiant de l'enfant bénéficiaire
+        const oldChildId = targetAlloc.childId;
+        // Nouvel identifiant de l'enfant bénéficiaire
+        const newChildId = patch.childId || oldChildId;
+        // Nouvelle note ou motif
+        const newNote = patch.note !== undefined ? patch.note : targetAlloc.note;
+        // Nouvelle date
+        const newDate = patch.date || targetAlloc.date;
+
+        // Recherche du nouvel enfant dans la liste des utilisateurs
+        const targetChild = d.users.find((u) => u.id === newChildId);
+        // Nom du nouvel enfant
+        const childName = targetChild?.name || targetAlloc.childName;
+
+        // 1. Mise à jour du solde de la réserve familiale selon la différence de montant
+        let fund = d.familyFunds.find((f) => f.parentId === targetAlloc.parentId);
+        // Si la réserve existe
+        if (fund) {
+          // Différence entre nouveau et ancien montant
+          const diff = newAmount - oldAmount;
+          // Nouveau solde de la réserve
+          const updatedBalance = Math.max(0, fund.balance - diff);
+          // Nouvel objet de réserve mis à jour
+          fund = { ...fund, balance: updatedBalance, updatedAt: todayISO() };
+          // Sauvegarde dans SQLite
+          sqliteSaveFamilyFund(fund);
+        }
+
+        // 2. Mise à jour du solde et budget de l'enfant
+        // Si le don reste pour le même enfant
+        if (oldChildId === newChildId) {
+          // Différence de montant
+          const diff = newAmount - oldAmount;
+          // Si l'enfant existe
+          if (targetChild) {
+            // Nouveau solde de l'enfant
+            const updatedBalance = Math.max(0, (targetChild.balance || 0) + diff);
+            // Nouveau cumul alloué
+            const updatedAllocated = Math.max(0, (targetChild.allocatedTotal || 0) + diff);
+            // Mise à jour locale du profil enfant
+            patchUser(targetChild.id, { balance: updatedBalance, allocatedTotal: updatedAllocated });
+            // Mise à jour dans SQLite
+            sqliteUpdateUser(targetChild.id, { balance: updatedBalance, allocatedTotal: updatedAllocated });
+          }
+        } else {
+          // Si l'enfant a changé : annulation sur l'ancien enfant
+          const oldChild = d.users.find((u) => u.id === oldChildId);
+          // Si l'ancien enfant existe
+          if (oldChild) {
+            // Décrémentation du solde de l'ancien enfant
+            const updatedOldBalance = Math.max(0, (oldChild.balance || 0) - oldAmount);
+            // Décrémentation du cumul alloué de l'ancien enfant
+            const updatedOldAllocated = Math.max(0, (oldChild.allocatedTotal || 0) - oldAmount);
+            // Mise à jour locale de l'ancien enfant
+            patchUser(oldChild.id, { balance: updatedOldBalance, allocatedTotal: updatedOldAllocated });
+            // Mise à jour SQLite de l'ancien enfant
+            sqliteUpdateUser(oldChild.id, { balance: updatedOldBalance, allocatedTotal: updatedOldAllocated });
+          }
+          // Crédit sur le nouvel enfant
+          if (targetChild) {
+            // Incrémentation du solde du nouvel enfant
+            const updatedNewBalance = (targetChild.balance || 0) + newAmount;
+            // Incrémentation du cumul alloué du nouvel enfant
+            const updatedNewAllocated = (targetChild.allocatedTotal || 0) + newAmount;
+            // Mise à jour locale du nouvel enfant
+            patchUser(targetChild.id, { balance: updatedNewBalance, allocatedTotal: updatedNewAllocated });
+            // Mise à jour SQLite du nouvel enfant
+            sqliteUpdateUser(targetChild.id, { balance: updatedNewBalance, allocatedTotal: updatedNewAllocated });
+          }
+        }
+
+        // 3. Mise à jour de la dépense parent sous la catégorie Enfant
+        const matchingExpense = d.expenses.find(
+          (e) =>
+            e.userId === targetAlloc.parentId &&
+            (e.categoryId === 'children' || e.categoryId === targetAlloc.categoryId) &&
+            (e.amount === oldAmount || (e.note && e.note.includes(targetAlloc.childName)))
+        );
+        // Liste des dépenses mise à jour
+        let updatedExpenses = d.expenses;
+        // Si la dépense parent correspondante est trouvée
+        if (matchingExpense) {
+          // Nouveau libellé de la dépense parent
+          const updatedExpenseNote = newNote
+            ? `Allocation argent de poche pour ${childName} (${newNote})`
+            : `Allocation argent de poche pour ${childName}`;
+          // Mise à jour dans SQLite de la dépense parent
+          sqliteUpdateExpense(matchingExpense.id, {
+            amount: newAmount,
+            date: newDate,
+            note: updatedExpenseNote,
+          });
+          // Mise à jour du tableau des dépenses en mémoire
+          updatedExpenses = d.expenses.map((e) =>
+            e.id === matchingExpense.id
+              ? { ...e, amount: newAmount, date: newDate, note: updatedExpenseNote }
+              : e
+          );
+        }
+
+        // 4. Mise à jour de l'objet allocation
+        const updatedAlloc: MoneyAllocation = {
+          ...targetAlloc,
+          amount: newAmount,
+          childId: newChildId,
+          childName,
+          note: newNote,
+          date: newDate,
+        };
+        // Sauvegarde de l'allocation modifiée dans SQLite
+        sqliteUpdateAllocation(id, {
+          amount: newAmount,
+          childId: newChildId,
+          childName,
+          note: newNote,
+          date: newDate,
+        });
+
+        // Mise à jour globale de l'état Zustand
+        update((s) => ({
+          ...s,
+          // Réserve mise à jour
+          familyFunds: fund ? [fund, ...s.familyFunds.filter((f) => f.id !== fund!.id)] : s.familyFunds,
+          // Liste des allocations mise à jour
+          allocations: (s.allocations || []).map((a) => (a.id === id ? updatedAlloc : a)),
+          // Dépenses mises à jour sans doublon
+          expenses: updatedExpenses,
+        }));
+
+        // Retour du succès
+        return { ok: true };
+      },
+
+      // 21c. Suppression d'une allocation d'argent vers un enfant
+      // Fonction de suppression d'une allocation : rembourse la réserve, déduit le solde de l'enfant
+      // et supprime la dépense parent correspondante dans SQLite sans laisser de trace
+      deleteAllocation(id) {
+        // Récupération de l'état actuel de la base
+        const d = dbRef.current!;
+        // Recherche de l'allocation à supprimer
+        const targetAlloc = (d.allocations || []).find((a) => a.id === id);
+        // Si introuvable, retour d'une erreur
+        if (!targetAlloc) return { ok: false, error: 'Allocation introuvable.' };
+
+        // 1. Rembourser la réserve familiale du montant alloué
+        let fund = d.familyFunds.find((f) => f.parentId === targetAlloc.parentId);
+        // Si la réserve existe
+        if (fund) {
+          // Remboursement du solde
+          const updatedBalance = fund.balance + targetAlloc.amount;
+          // Mise à jour de l'objet réserve
+          fund = { ...fund, balance: updatedBalance, updatedAt: todayISO() };
+          // Sauvegarde dans SQLite
+          sqliteSaveFamilyFund(fund);
+        }
+
+        // 2. Déduire le solde et le cumul de l'enfant bénéficiaire
+        const child = d.users.find((u) => u.id === targetAlloc.childId);
+        // Si l'enfant existe
+        if (child) {
+          // Nouveau solde ajusté
+          const updatedBalance = Math.max(0, (child.balance || 0) - targetAlloc.amount);
+          // Nouveau cumul alloué ajusté
+          const updatedAllocated = Math.max(0, (child.allocatedTotal || 0) - targetAlloc.amount);
+          // Mise à jour locale du profil enfant
+          patchUser(child.id, { balance: updatedBalance, allocatedTotal: updatedAllocated });
+          // Mise à jour dans SQLite
+          sqliteUpdateUser(child.id, { balance: updatedBalance, allocatedTotal: updatedAllocated });
+        }
+
+        // 3. Supprimer la dépense parent liée dans la catégorie Enfant
+        const matchingExpense = d.expenses.find(
+          (e) =>
+            e.userId === targetAlloc.parentId &&
+            (e.categoryId === 'children' || e.categoryId === targetAlloc.categoryId) &&
+            (e.amount === targetAlloc.amount || (e.note && e.note.includes(targetAlloc.childName)))
+        );
+        // Si trouvée, suppression dans SQLite
+        if (matchingExpense) {
+          // Suppression physique de la dépense dans SQLite
+          sqliteDeleteExpense(matchingExpense.id);
+        }
+
+        // 4. Suppression de la ligne d'allocation dans SQLite
+        sqliteDeleteAllocation(id);
+
+        // Mise à jour globale de l'état Zustand
+        update((s) => ({
+          ...s,
+          // Réserve mise à jour
+          familyFunds: fund ? [fund, ...s.familyFunds.filter((f) => f.id !== fund!.id)] : s.familyFunds,
+          // Allocation retirée de la liste
+          allocations: (s.allocations || []).filter((a) => a.id !== id),
+          // Dépense parent retirée
+          expenses: matchingExpense
+            ? s.expenses.filter((e) => e.id !== matchingExpense.id)
+            : s.expenses,
+        }));
+
+        // Succès de la suppression
+        return { ok: true };
+      },
+
+      requestMoney(amount, reason) {
+        const d = dbRef.current!;
+        const currentUserId = meId();
+        const child = d.users.find((u) => u.id === currentUserId);
+        if (!child || child.role !== 'child') {
+          return { ok: false, error: 'Action réservée aux comptes enfants.' };
+        }
+        if (!child.parentId) {
+          return { ok: false, error: 'Aucun parent associé à ce compte enfant.' };
+        }
+        if (amount <= 0) return { ok: false, error: 'Le montant doit être supérieur à zéro.' };
+        if (!reason.trim()) return { ok: false, error: 'Veuillez préciser le motif de votre demande.' };
+
+        const req: MoneyRequest = {
+          id: uid(),
+          parentId: child.parentId,
+          childId: child.id,
+          childName: child.name,
+          amount,
+          reason: reason.trim(),
+          status: 'pending',
+          date: todayISO(),
+          createdAt: new Date().toISOString(),
+        };
+        sqliteAddMoneyRequest(req);
+
+        const parentNotif: InAppNotification = {
+          id: uid(),
+          userId: child.parentId,
+          type: 'system',
+          title: `Demande d'argent : ${child.name}`,
+          body: `${child.name} demande ${amount.toFixed(3)} DT pour : "${reason.trim()}".`,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        };
+        sqliteSaveNotification(parentNotif);
+
+        update((s) => ({
+          ...s,
+          moneyRequests: [req, ...(s.moneyRequests || [])],
+          notifications: [parentNotif, ...(s.notifications || [])],
+        }));
+
+        return { ok: true };
+      },
+
+      respondToMoneyRequest(requestId, approve) {
+        const d = dbRef.current!;
+        const currentUserId = meId();
+        const parent = d.users.find((u) => u.id === currentUserId);
+        // Vérification que l'utilisateur est bien un parent ou administrateur
+        if (!parent || (parent.role !== 'admin' && parent.role !== 'parent')) {
+          return { ok: false, error: 'Action réservée au parent administrateur.' };
+        }
+
+        const req = d.moneyRequests.find((r) => r.id === requestId);
+        if (!req) return { ok: false, error: 'Demande introuvable.' };
+        if (req.status !== 'pending') return { ok: false, error: 'Cette demande a déjà été traitée.' };
+
+        const now = new Date().toISOString();
+        if (approve) {
+          // Exécuter l'allocation unique
+          act.allocateMoney(req.childId, req.amount, `Demande approuvée : ${req.reason}`);
+          sqliteUpdateMoneyRequest(requestId, 'approved', now);
+          update((s) => ({
+            ...s,
+            moneyRequests: s.moneyRequests.map((r) => (r.id === requestId ? { ...r, status: 'approved', respondedAt: now } : r)),
+          }));
+        } else {
+          // Rejet sans transfert
+          sqliteUpdateMoneyRequest(requestId, 'rejected', now);
+          const childNotif: InAppNotification = {
+            id: uid(),
+            userId: req.childId,
+            type: 'system',
+            title: 'Demande refusée',
+            body: `Votre demande de ${req.amount.toFixed(3)} DT pour "${req.reason}" n'a pas été acceptée.`,
+            isRead: false,
+            createdAt: now,
+          };
+          sqliteSaveNotification(childNotif);
+          update((s) => ({
+            ...s,
+            moneyRequests: s.moneyRequests.map((r) => (r.id === requestId ? { ...r, status: 'rejected', respondedAt: now } : r)),
+            notifications: [childNotif, ...(s.notifications || [])],
+          }));
+        }
+        return { ok: true };
+      },
+
+      // 22. Enregistrement ou mise à jour du Budget du mois pour le foyer
+      // Fonction de sauvegarde du Budget du mois : enregistre le budget global unique du foyer et met à jour le parent et les enfants
+      saveFamilyBudget(b) {
+        // Récupération de l'état mémoire actuel de la base
+        const d = dbRef.current!;
+        // Récupération de l'identifiant du parent connecté
+        const currentUserId = meId();
+        // Recherche de l'utilisateur parent
+        const parent = d.users.find((u) => u.id === currentUserId);
+        // Identifiant du parent
+        const parentId = parent?.id || currentUserId;
+        // Identifiant du budget ou nouvel identifiant unique
+        const candidateId = b.id || uid();
+
+        // Enregistrement de l'entité budget familial
+        const budget: FamilyBudget = {
+          ...b,
+          id: candidateId,
+          parentId,
+          total: b.total,
+          totalBudget: b.total,
+          createdAt: todayISO(),
+        };
+        // Persistance dans SQLite
+        sqliteSaveFamilyBudget(budget);
+
+        // Synchronisation du budget du mois pour le compte parent (Budget global unique du foyer)
+        const existingParentBudget = d.budgets.find((bg) => bg.userId === parentId && bg.start === b.start);
+        // Identifiant existant ou nouveau
+        const parentBudgetId = existingParentBudget?.id || uid();
+        // Objet budget parent reflétant fidèlement le Budget du mois global
+        const parentBudget: Budget = {
+          id: parentBudgetId,
+          userId: parentId,
+          start: b.start,
+          end: b.end,
+          total: b.total,
+          allocations: existingParentBudget?.allocations || {},
+        };
+        // Sauvegarde dans SQLite
+        sqliteSaveBudget(parentBudget);
+
+        // Synchronisation du budget alloué pour chaque enfant rattaché
+        const updatedBudgets = [
+          parentBudget,
+          ...d.budgets.filter((bg) => bg.id !== parentBudgetId && bg.userId !== parentId),
+        ];
+
+        // Parcours de chaque allocation d'enfant
+        for (const [childId, allocAmount] of Object.entries(b.allocations || {})) {
+          // Montant numérique alloué à l'enfant
+          const numAlloc = Number(allocAmount) || 0;
+          // Recherche du budget existant de l'enfant
+          const existingChildBudget = d.budgets.find((bg) => bg.userId === childId && bg.start === b.start);
+          // Identifiant du budget enfant
+          const childBudgetId = existingChildBudget?.id || uid();
+          // Objet budget enfant
+          const childBudget: Budget = {
+            id: childBudgetId,
+            userId: childId,
+            start: b.start,
+            end: b.end,
+            total: numAlloc,
+            allocations: existingChildBudget?.allocations || {},
+          };
+          // Sauvegarde dans SQLite
+          sqliteSaveBudget(childBudget);
+          // Ajout à la liste des budgets
+          updatedBudgets.push(childBudget);
+        }
+
+        // Mise à jour de l'état mémoire global
+        update((s) => ({
+          ...s,
+          budgets: updatedBudgets,
+          familyBudgets: [budget, ...(s.familyBudgets || []).filter((x) => x.id !== candidateId)],
+        }));
+        // Retourne l'identifiant du budget
+        return candidateId;
+      },
+
+      // --- Traitement des Transactions Vocales Intelligentes ---
+      // Fonction de traitement d'une transaction vocale analysée et validée
+      async applyVoiceTransaction(v: ParsedVoiceTransaction): Promise<Result> {
+        // Identifiant de l'utilisateur connecté
+        const currentUserId = meId();
+        // Recherche de l'utilisateur en cours
+        const currentUser = dbRef.current?.users.find((u) => u.id === currentUserId);
+        // Sécurité si utilisateur non connecté
+        if (!currentUser) return { ok: false, error: 'Utilisateur non connecté.' };
+
+        // Résolution de la catégorie : vérification d'existence ou création automatique (Exigence 4)
+        let resolvedCategoryId = v.categoryId;
+        // Recherche de la catégorie correspondante dans la base
+        let targetCat = dbRef.current?.categories.find(
+          (c) => c.id === v.categoryId || (v.categoryName && c.name.toLowerCase() === v.categoryName.toLowerCase())
+        );
+        // Si aucune catégorie correspondante n'existe et qu'un nom est fourni, la créer automatiquement
+        if (!targetCat && v.categoryName) {
+          // Nouvel identifiant unique de catégorie
+          const newCatId = uid();
+          // Objet catégorie à insérer
+          const createdCat: Category = {
+            id: newCatId,
+            name: v.categoryName.trim(),
+            kind: v.type === 'purchase' ? 'product' : 'expense',
+            active: true,
+            color: colors.forest,
+            icon: v.type === 'purchase' ? 'basket-outline' : 'receipt-outline',
+          };
+          // Persistance de la nouvelle catégorie dans SQLite
+          sqliteAddCategory(createdCat);
+          // Mise à jour synchrone de la liste en mémoire
+          update((st) => ({ ...st, categories: [...st.categories, createdCat] }));
+          targetCat = createdCat;
+        }
+        if (targetCat) {
+          resolvedCategoryId = targetCat.id;
+          // Si l'utilisateur connecté ne suit pas encore cette catégorie, l'ajouter à sa sélection
+          if (currentUser && !currentUser.categoryIds.includes(targetCat.id)) {
+            const updatedCatIds = [...currentUser.categoryIds, targetCat.id];
+            patchUser(currentUser.id, { categoryIds: updatedCatIds });
+            sqliteSetUserCategories(currentUser.id, updatedCatIds);
+          }
+        }
+
+        // Cas 1 : Don ou allocation d'argent à un enfant
+        if (v.type === 'allocation') {
+          // Seul un compte parent ou admin peut effectuer une allocation familiale
+          if (currentUser.role !== 'admin' && currentUser.role !== 'parent') {
+            // Si utilisateur normal : enregistrement sous forme de dépense directe catégorie Enfants
+            return {
+              ok: true,
+              data: act.addExpense({
+                categoryId: resolvedCategoryId || 'children',
+                amount: v.amount,
+                note: v.title || v.label || "Dépense pour l'enfant",
+                date: v.date || todayISO(),
+              }),
+            };
+          }
+          // Enfant destinataire
+          const recipientId = v.recipientChildId || v.childId;
+          // Sécurité si aucun enfant sélectionné
+          if (!recipientId) {
+            return { ok: false, error: 'Enfant destinataire non sélectionné.' };
+          }
+          // Exécution de l'allocation d'argent
+          return act.allocateMoney(recipientId, v.amount, v.title || v.label);
+        }
+
+        // Cas 2 : Achat ou produit acheté en magasin
+        if (v.type === 'purchase') {
+          // Création ou référencement du produit dans le catalogue
+          const productId = act.addProduct({
+            name: v.title || v.label || 'Achat vocal',
+            brand: '',
+            categoryId: resolvedCategoryId || 'food',
+            unit: v.unit || 'pièce',
+          });
+          // Ajout du ticket d'achat avec prix, quantité, unité et magasin
+          act.addPurchase({
+            productId,
+            price: v.amount,
+            quantity: v.quantity || 1,
+            unit: v.unit || 'pièce',
+            store: v.store || 'Commerce',
+            date: v.date || todayISO(),
+          });
+          // Succès
+          return { ok: true };
+        }
+
+        // Cas 3 : Dépense directe de service ou charge
+        if (v.type === 'expense') {
+          // Ajout de la dépense directe
+          act.addExpense({
+            categoryId: resolvedCategoryId || 'transport',
+            amount: v.amount,
+            note: v.title || v.label || 'Dépense vocale',
+            date: v.date || todayISO(),
+          });
+          // Succès
+          return { ok: true };
+        }
+
+        // Cas 4 : Don / Donation caritative (Exigence 10)
+        if (v.type === 'donation') {
+          // Recherche ou création de la catégorie Dons & Charité
+          let catDon = dbRef.current?.categories.find(
+            (c) =>
+              c.id === 'donations' ||
+              c.name.toLowerCase().includes('don') ||
+              c.name.includes('تبرع') ||
+              c.name.includes('صدقة')
+          );
+          // Si absente, création automatique de la catégorie Dons
+          if (!catDon) {
+            const newCat: Category = {
+              id: 'donations',
+              name: 'Dons & Charité',
+              kind: 'expense',
+              active: true,
+              color: '#10B981',
+              icon: 'heart-outline',
+            };
+            sqliteAddCategory(newCat);
+            update((st) => ({ ...st, categories: [...st.categories, newCat] }));
+            catDon = newCat;
+          }
+          // Enregistrement de la dépense de don
+          act.addExpense({
+            categoryId: catDon.id,
+            amount: v.amount,
+            note: v.title || v.label || 'Donation / صدقة',
+            date: v.date || todayISO(),
+          });
+          return { ok: true };
+        }
+
+        // Cas d'erreur si type inconnu
+        return { ok: false, error: 'Type de transaction vocale non reconnu.' };
       },
 
       // 23. Administration : Modification d'une catégorie
@@ -906,6 +2033,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }
       },
     };
+
+    return act;
   }, [update]);
 
   // Notifications de l'utilisateur connecté
@@ -960,6 +2089,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       expenses: [],
       notifications: [],
       sessionUserId: null,
+      familyFunds: [],
+      allocations: [],
+      moneyRequests: [],
+      familyBudgets: [],
     } as DB);
 
     return {

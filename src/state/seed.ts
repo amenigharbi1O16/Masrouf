@@ -29,6 +29,7 @@ import type {
   Expense,
   Product,
   Purchase,
+  Role,
   User,
 } from './types';
 
@@ -92,7 +93,7 @@ export async function buildSeed(): Promise<DB> {
     name: string,
     email: string,
     pw: string,
-    role: 'user' | 'admin',
+    role: Role,
     active = true,
     extra: Partial<User> = {}
   ): Promise<User> => ({
@@ -101,9 +102,9 @@ export async function buildSeed(): Promise<DB> {
     email,
     passwordHash: await hashPassword(pw),
     role,
-    active,
+    active: true, // Aucun compte n'est jamais suspendu
     mustChangePassword: false,
-    onboarded: role === 'admin',
+    onboarded: role === 'parent' || role === 'admin',
     categoryIds: [],
     celebratedBudgetIds: [],
     createdAt: today,
@@ -111,8 +112,10 @@ export async function buildSeed(): Promise<DB> {
   });
 
   // Profils de test essentiels pour la connexion au format strict Gmail (name@gmail.com)
-  // 1. Profil Administrateur (admin@gmail.com / Admin2026)
-  const admin = await mk('u-admin', 'Administrator', 'admin@gmail.com', 'Admin2026', 'admin', true, {
+  // 1. Profil Parent (admin@gmail.com / Admin2026)
+  const admin = await mk('u-admin', 'Parent / Administrateur', 'admin@gmail.com', 'Admin2026', 'parent', true, {
+    accountType: 'family',
+    familyName: 'Famille Ben Ali',
     onboarded: true,
   });
 
@@ -191,5 +194,10 @@ export async function buildSeed(): Promise<DB> {
     notifications: [],
     // Aucun utilisateur connecté par défaut au premier lancement
     sessionUserId: null,
+    // Système familial initialisé
+    familyFunds: [],
+    allocations: [],
+    moneyRequests: [],
+    familyBudgets: [],
   };
 }

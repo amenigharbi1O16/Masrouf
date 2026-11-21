@@ -22,9 +22,21 @@
  */
 
 /**
- * Rôles d'utilisateurs supportés par Masrouf.
+ * Rôles d'utilisateurs supportés par Masrouf :
+ * - 'parent' : Parent gestionnaire de l'espace familial et de son budget personnel.
+ * - 'child' : Enfant avec compte indépendant rattaché à son parent (budget alloué).
+ * - 'user' : Utilisateur individuel standard.
+ * - 'admin' : Alias de rétro-compatibilité pour parent.
  */
-export type Role = 'user' | 'admin';
+export type Role = 'parent' | 'child' | 'user' | 'admin';
+
+/**
+ * Type de compte sélectionné à l'inscription :
+ * - 'personal' : Compte individuel standard.
+ * - 'family' : Compte famille (Parent).
+ * - 'child' : Compte enfant rattaché à un parent.
+ */
+export type AccountType = 'personal' | 'family' | 'child';
 
 /**
  * Nature fondamentale d'une catégorie :
@@ -34,18 +46,18 @@ export type Role = 'user' | 'admin';
 export type CategoryKind = 'product' | 'expense';
 
 /**
- * Entité Utilisateur stockée dans la table `users`.
+ * Entité Utilisateur stockée dans la table `users` / `user`.
  */
 export interface User {
-  /** Identifiant unique du profil utilisateur (ex: "u-ines") */
+  /** Identifiant unique du profil utilisateur (ex: "u-ines", "u-admin", "c-salma") */
   id: string;
   /** Nom complet de l'utilisateur affiché sur l'accueil */
   name: string;
-  /** Adresse électronique unique au format Gmail */
+  /** Adresse électronique unique servant d'identifiant */
   email: string;
   /** Empreinte SHA-256 salée du mot de passe */
   passwordHash: string;
-  /** Rôle d'accès : "user" (utilisateur standard) ou "admin" (administrateur) */
+  /** Rôle d'accès : "user" | "admin" | "child" */
   role: Role;
   /** Statut d'activation : true = compte actif, false = suspendu */
   active: boolean;
@@ -61,10 +73,24 @@ export interface User {
   createdAt: string;
   /** Préférence de langue d'interface optionnelle ("fr", "ar", "en") */
   langue?: string;
+
+  // --- Propriétés d'architecture familiale ---
+  /** Type de compte explicite */
+  accountType?: AccountType;
+  /** Identifiant du parent si l'utilisateur est un enfant */
+  parentId?: string;
+  /** Identifiant de la cellule familiale */
+  familyId?: string;
+  /** Solde personnel disponible en Dinars Tunisiens (spécifique aux enfants) */
+  balance?: number;
+  /** Montant cumulé total des allocations reçues (pour les enfants) */
+  allocatedTotal?: number;
+  /** Nom de la famille ou nom de foyer (ex: "Famille Ben Ali") */
+  familyName?: string;
 }
 
 /**
- * Entité Catégorie stockée dans la table `categories`.
+ * Entité Catégorie stockée dans la table `categories` / `category`.
  */
 export interface Category {
   id: string;
@@ -74,6 +100,22 @@ export interface Category {
   kind: CategoryKind;
   /** Statut d'activation : true = compte actif, false = suspendu */
   active: boolean;
+
+  // --- Champs pour les catégories personnalisées ---
+  /** Identifiant du créateur (NULL / undefined pour les catégories système de base) */
+  userId?: string;
+  /** Description pédagogique ou note explicative */
+  description?: string;
+  /** Couleur hexadécimale associée dans l'interface */
+  color?: string;
+  /** Nom de l'icône Ionicons associée */
+  icon?: string;
+  /** Indique si la catégorie a été créée sur mesure par l'utilisateur ou le parent */
+  isCustom?: boolean;
+  /** Portée de la catégorie : "personal" pour l'espace personnel, "family" pour l'espace famille */
+  scope?: 'personal' | 'family';
+  /** Date de création ISO */
+  createdAt?: string;
 }
 
 /**
@@ -181,6 +223,93 @@ export interface InAppNotification {
 }
 
 /**
+ * Entité Réserve Financière Familiale stockée dans SQLite.
+ */
+export interface FamilyFund {
+  id: string;
+  parentId: string;
+  balance: number;
+  totalContributions: number;
+  totalAdded?: number;
+  totalAllocated?: number;
+  updatedAt: string;
+}
+
+/**
+ * Entité Don d'argent / Allocation d'argent d'un parent vers un enfant.
+ */
+export interface MoneyAllocation {
+  id: string;
+  parentId: string;
+  childId: string;
+  childName: string;
+  amount: number;
+  note?: string;
+  date: string;
+  categoryId?: string;
+  categoryName?: string;
+  createdAt: string;
+}
+
+/**
+ * Entité Demande d'Argent soumise par un enfant à son parent tuteur.
+ */
+export interface MoneyRequest {
+  id: string;
+  parentId: string;
+  childId: string;
+  childName: string;
+  amount: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  date: string;
+  createdAt: string;
+  respondedAt?: string;
+}
+
+/**
+ * Entité Période de Budget Familial géré par le parent dans son Espace Famille.
+ */
+export interface FamilyBudget {
+  id: string;
+  parentId: string;
+  start: string;
+  end: string;
+  month?: string;
+  total: number;
+  totalBudget?: number;
+  allocations: Record<string, number>;
+  createdAt: string;
+}
+
+/**
+ * Résultat de l'analyse sémantique d'une commande vocale de transaction.
+ */
+export interface ParsedVoiceTransaction {
+  type: 'purchase' | 'expense' | 'allocation' | 'donation';
+  title: string;
+  label?: string;
+  amount: number;
+  categoryId: string;
+  categoryName?: string;
+  date: string;
+  recipientChildId?: string;
+  childId?: string;
+  recipientName?: string;
+  childName?: string;
+  confidence?: number;
+  rawText: string;
+  store?: string;
+  quantity?: number;
+  unit?: string;
+  isUncertainCategory?: boolean;
+  needsChildSelection?: boolean;
+  needsClarification?: boolean;
+  clarificationReason?: string;
+  detectedLanguage?: 'ar' | 'fr' | 'en';
+}
+
+/**
  * Schéma complet de l'état mémoire en miroir de la base SQLite locale.
  */
 export interface DB {
@@ -196,16 +325,24 @@ export interface DB {
   expenses: Expense[];
   notifications: InAppNotification[];
   sessionUserId: string | null;
+
+  // --- Données du Système Familial ---
+  familyFunds: FamilyFund[];
+  allocations: MoneyAllocation[];
+  moneyRequests: MoneyRequest[];
+  familyBudgets: FamilyBudget[];
 }
 
 /**
  * Type de retour universel des opérations d'écriture et d'authentification.
  */
-export interface Result {
+export interface Result<T = any> {
   // Indique si l'opération a réussi
   ok: boolean;
   // Message explicatif en cas d'échec
   error?: string;
   // Profil utilisateur renvoyé en cas de connexion réussie
   user?: User;
+  // Données associées au résultat
+  data?: T;
 }

@@ -18,7 +18,24 @@
 // ============================================================
 
 import { db, initDatabase } from '@/db/database';
-import type { AppSettings, Budget, Category, CategoryType, DB, Expense, InAppNotification, PointsRules, Product, Purchase, User } from './types';
+import type {
+  AppSettings,
+  Budget,
+  Category,
+  CategoryType,
+  DB,
+  Expense,
+  FamilyBudget,
+  FamilyFund,
+  InAppNotification,
+  MoneyAllocation,
+  MoneyRequest,
+  PointsRules,
+  Product,
+  Purchase,
+  Role,
+  User,
+} from './types';
 import { hashPassword } from '@/utils/security';
 import { getExactMonthBounds, todayISO, uid } from '@/utils/format';
 
@@ -47,14 +64,14 @@ export async function loadDBFromSQLite(): Promise<DB> {
   // ------------------------------------------------------------
   // ÉTAPE 1 : Chargement des catégories depuis la table SQLite `category`
   // ------------------------------------------------------------
-  let catRows = db.getAllSync<{
-    id: number;
-    name_key: string;
-    type: string;
-    icon: string;
-    default_percent: number;
-    is_active: number;
-  }>('SELECT id, name_key, type, icon, default_percent, is_active FROM category');
+  let catRows: any[] = [];
+  try {
+    catRows = db.getAllSync(
+      'SELECT id, name_key, type, icon, default_percent, is_active, user_id, description, color, is_custom, scope, created_at FROM category'
+    );
+  } catch {
+    catRows = db.getAllSync('SELECT id, name_key, type, icon, default_percent, is_active FROM category');
+  }
 
   // Si la table category est vierge (premier lancement), injection des catégories par défaut
   if (catRows.length === 0) {
@@ -84,37 +101,47 @@ export async function loadDBFromSQLite(): Promise<DB> {
       );
     }
 
-    catRows = db.getAllSync('SELECT id, name_key, type, icon, default_percent, is_active FROM category');
+    try {
+      catRows = db.getAllSync(
+        'SELECT id, name_key, type, icon, default_percent, is_active, user_id, description, color, is_custom, scope, created_at FROM category'
+      );
+    } catch {
+      catRows = db.getAllSync('SELECT id, name_key, type, icon, default_percent, is_active FROM category');
+    }
   }
 
   // Transformation des enregistrements SQLite en objets Category du store
-  const categories: Category[] = catRows.map((r) => ({
+  const categories: Category[] = catRows.map((r: any) => ({
     id: String(r.id),
     name: r.name_key,
     kind: r.type as 'product' | 'expense',
     active: r.is_active === 1,
+    userId: r.user_id ? String(r.user_id) : undefined,
+    description: r.description || undefined,
+    color: r.color || undefined,
+    isCustom: r.is_custom === 1,
+    scope: (r.scope as 'personal' | 'family') || 'personal',
+    createdAt: r.created_at || undefined,
   }));
 
   // Dictionnaire des pourcentages par défaut par identifiant de catégorie
   const defaultPercentages = Object.fromEntries(
-    catRows.map((r) => [String(r.id), r.default_percent || 0])
+    catRows.map((r: any) => [String(r.id), r.default_percent || 0])
   );
 
   // ------------------------------------------------------------
   // ÉTAPE 2 : Chargement des utilisateurs depuis la table `user`
   // ------------------------------------------------------------
-  let userRows = db.getAllSync<{
-    id: number;
-    name: string;
-    email: string;
-    password_hash: string;
-    role: string;
-    is_active: number;
-    must_change_password: number;
-    onboarding_done: number;
-    created_at: string;
-    langue: string;
-  }>('SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user');
+  let userRows: any[] = [];
+  try {
+    userRows = db.getAllSync(
+      'SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue, parent_id, family_id, account_type, balance, allocated_total, family_name FROM user'
+    );
+  } catch {
+    userRows = db.getAllSync(
+      'SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user'
+    );
+  }
 
   // Suppression stricte et définitive de tous les comptes avec .tn de la base SQLite
   try {
@@ -122,33 +149,62 @@ export async function loadDBFromSQLite(): Promise<DB> {
   } catch { }
 
   // Relecture après migration
-  userRows = db.getAllSync('SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user');
+  try {
+    userRows = db.getAllSync(
+      'SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue, parent_id, family_id, account_type, balance, allocated_total, family_name FROM user'
+    );
+  } catch {
+    userRows = db.getAllSync(
+      'SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user'
+    );
+  }
 
   // Vérification de la présence de chacun des 3 comptes de test essentiels
-  const hasAdmin = userRows.some((u) => u.email.toLowerCase() === 'admin@gmail.com');
-  const hasInes = userRows.some((u) => u.email.toLowerCase() === 'ines.benali@gmail.com');
-  const hasUser = userRows.some((u) => u.email.toLowerCase() === 'user@gmail.com');
+  const hasAdmin = userRows.some((u: any) => u.email.toLowerCase() === 'admin@gmail.com');
+  const hasInes = userRows.some((u: any) => u.email.toLowerCase() === 'ines.benali@gmail.com');
+  const hasUser = userRows.some((u: any) => u.email.toLowerCase() === 'user@gmail.com');
 
   const adminPw = await hashPassword('Admin2026');
   const userPw = await hashPassword('Masrouf2026');
 
   if (!hasAdmin) {
-    db.runSync(
-      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done) VALUES (?, ?, ?, ?, 1, 0, 1)',
-      ['Administrator', 'admin@gmail.com', adminPw, 'admin']
-    );
+    try {
+      db.runSync(
+        'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, account_type, family_name) VALUES (?, ?, ?, ?, 1, 0, 1, ?, ?)',
+        ['Administrator', 'admin@gmail.com', adminPw, 'admin', 'family', 'Famille Ben Ali']
+      );
+    } catch {
+      db.runSync(
+        'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done) VALUES (?, ?, ?, ?, 1, 0, 1)',
+        ['Administrator', 'admin@gmail.com', adminPw, 'admin']
+      );
+    }
   }
   if (!hasInes) {
-    db.runSync(
-      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, budget_mensuel) VALUES (?, ?, ?, ?, 1, 0, 1, 1200)',
-      ['Ines Ben Ali', 'ines.benali@gmail.com', userPw, 'user']
-    );
+    try {
+      db.runSync(
+        'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, budget_mensuel, account_type) VALUES (?, ?, ?, ?, 1, 0, 1, 1200, ?)',
+        ['Ines Ben Ali', 'ines.benali@gmail.com', userPw, 'user', 'personal']
+      );
+    } catch {
+      db.runSync(
+        'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, budget_mensuel) VALUES (?, ?, ?, ?, 1, 0, 1, 1200)',
+        ['Ines Ben Ali', 'ines.benali@gmail.com', userPw, 'user']
+      );
+    }
   }
   if (!hasUser) {
-    db.runSync(
-      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, budget_mensuel) VALUES (?, ?, ?, ?, 1, 0, 1, 1200)',
-      ['Utilisateur Test', 'user@gmail.com', userPw, 'user']
-    );
+    try {
+      db.runSync(
+        'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, budget_mensuel, account_type) VALUES (?, ?, ?, ?, 1, 0, 1, 1200, ?)',
+        ['Utilisateur Test', 'user@gmail.com', userPw, 'user', 'personal']
+      );
+    } catch {
+      db.runSync(
+        'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, budget_mensuel) VALUES (?, ?, ?, ?, 1, 0, 1, 1200)',
+        ['Utilisateur Test', 'user@gmail.com', userPw, 'user']
+      );
+    }
   }
 
   // Déverrouillage automatique et activation garantie de tous les comptes de démonstration
@@ -157,22 +213,31 @@ export async function loadDBFromSQLite(): Promise<DB> {
   );
 
   // Rechargement des enregistrements à jour
-  userRows = db.getAllSync('SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user');
+  try {
+    userRows = db.getAllSync(
+      'SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue, parent_id, family_id, account_type, balance, allocated_total, family_name FROM user'
+    );
+  } catch {
+    userRows = db.getAllSync(
+      'SELECT id, name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue FROM user'
+    );
+  }
 
   // Transformation des profils utilisateurs et récupération de leurs catégories choisies
-  const users: User[] = userRows.map((u) => {
+  const users: User[] = userRows.map((u: any) => {
     const isTestAccount = ['admin@gmail.com', 'ines.benali@gmail.com', 'user@gmail.com'].includes(u.email.toLowerCase());
     const uCatRows = db.getAllSync<{ category_id: number }>(
       'SELECT category_id FROM user_category WHERE user_id = ? AND enabled = 1',
       [u.id]
     );
+    const role: Role = u.role === 'admin' ? 'admin' : u.role === 'child' ? 'child' : 'user';
+    const isFamily = role === 'admin' || u.account_type === 'family';
     return {
       id: String(u.id),
       name: u.name,
       email: u.email,
       passwordHash: u.password_hash,
-      role: (u.role === 'admin' ? 'admin' : 'user'),
-      // Les comptes de test sont toujours actifs, ont terminé l'onboarding et ne sont jamais bloqués
+      role,
       active: isTestAccount ? true : u.is_active === 1,
       mustChangePassword: isTestAccount ? false : u.must_change_password === 1,
       onboarded: isTestAccount ? true : u.onboarding_done === 1,
@@ -180,6 +245,12 @@ export async function loadDBFromSQLite(): Promise<DB> {
       celebratedBudgetIds: [],
       createdAt: u.created_at || todayISO(),
       langue: u.langue || 'fr',
+      parentId: u.parent_id ? String(u.parent_id) : undefined,
+      familyId: u.family_id ? String(u.family_id) : (isFamily ? `fam-${u.id}` : undefined),
+      accountType: u.account_type || (role === 'admin' ? 'family' : role === 'child' ? 'child' : 'personal'),
+      balance: Number(u.balance) || 0,
+      allocatedTotal: Number(u.allocated_total) || 0,
+      familyName: u.family_name || (isFamily ? 'Famille Ben Ali' : undefined),
     };
   });
 
@@ -416,6 +487,101 @@ export async function loadDBFromSQLite(): Promise<DB> {
     }));
   } catch { }
 
+  // ------------------------------------------------------------
+  // ÉTAPE 9 : Chargement du système familial (fonds, allocations, demandes, budgets)
+  // ------------------------------------------------------------
+  let familyFunds: FamilyFund[] = [];
+  try {
+    const fundRows = db.getAllSync<{
+      id: string;
+      parent_id: string;
+      balance: number;
+      total_contributions: number;
+      updated_at: string;
+    }>('SELECT * FROM family_fund');
+    familyFunds = fundRows.map((f) => ({
+      id: String(f.id),
+      parentId: String(f.parent_id),
+      balance: Number(f.balance) || 0,
+      totalContributions: Number(f.total_contributions) || 0,
+      updatedAt: f.updated_at || todayISO(),
+    }));
+  } catch { }
+
+  let allocations: MoneyAllocation[] = [];
+  try {
+    const allocRows = db.getAllSync<{
+      id: string;
+      parent_id: string;
+      child_id: string;
+      child_name: string;
+      amount: number;
+      note?: string;
+      date: string;
+      created_at: string;
+    }>('SELECT * FROM family_allocation ORDER BY created_at DESC');
+    allocations = allocRows.map((a) => ({
+      id: String(a.id),
+      parentId: String(a.parent_id),
+      childId: String(a.child_id),
+      childName: a.child_name,
+      amount: Number(a.amount) || 0,
+      note: a.note || undefined,
+      date: a.date || todayISO(),
+      createdAt: a.created_at || todayISO(),
+    }));
+  } catch { }
+
+  let moneyRequests: MoneyRequest[] = [];
+  try {
+    const reqRows = db.getAllSync<{
+      id: string;
+      parent_id: string;
+      child_id: string;
+      child_name: string;
+      amount: number;
+      reason: string;
+      status: string;
+      date: string;
+      created_at: string;
+      responded_at?: string;
+    }>('SELECT * FROM money_request ORDER BY created_at DESC');
+    moneyRequests = reqRows.map((r) => ({
+      id: String(r.id),
+      parentId: String(r.parent_id),
+      childId: String(r.child_id),
+      childName: r.child_name,
+      amount: Number(r.amount) || 0,
+      reason: r.reason,
+      status: (r.status as 'pending' | 'approved' | 'rejected') || 'pending',
+      date: r.date || todayISO(),
+      createdAt: r.created_at || todayISO(),
+      respondedAt: r.responded_at || undefined,
+    }));
+  } catch { }
+
+  let familyBudgets: FamilyBudget[] = [];
+  try {
+    const fbRows = db.getAllSync<{
+      id: string;
+      parent_id: string;
+      start_date: string;
+      end_date: string;
+      total: number;
+      allocations: string;
+      created_at: string;
+    }>('SELECT * FROM family_budget');
+    familyBudgets = fbRows.map((b) => ({
+      id: String(b.id),
+      parentId: String(b.parent_id),
+      start: b.start_date,
+      end: b.end_date,
+      total: Number(b.total) || 0,
+      allocations: b.allocations ? JSON.parse(b.allocations) : {},
+      createdAt: b.created_at || todayISO(),
+    }));
+  } catch { }
+
   return {
     users,
     categories,
@@ -429,6 +595,10 @@ export async function loadDBFromSQLite(): Promise<DB> {
     expenses,
     notifications,
     sessionUserId: null,
+    familyFunds,
+    allocations,
+    moneyRequests,
+    familyBudgets,
   };
 }
 
@@ -443,26 +613,53 @@ export async function loadDBFromSQLite(): Promise<DB> {
 export function sqliteAddUser(user: User): string {
   try {
     const res = db.runSync(
-      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [user.name, user.email, user.passwordHash, user.role, user.active ? 1 : 0, user.mustChangePassword ? 1 : 0, user.onboarded ? 1 : 0, user.createdAt, user.langue || 'fr']
+      'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue, parent_id, family_id, account_type, balance, allocated_total, family_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        user.name,
+        user.email,
+        user.passwordHash,
+        user.role,
+        user.active ? 1 : 0,
+        user.mustChangePassword ? 1 : 0,
+        user.onboarded ? 1 : 0,
+        user.createdAt,
+        user.langue || 'fr',
+        user.parentId || null,
+        user.familyId || null,
+        user.accountType || (user.role === 'admin' ? 'family' : user.role === 'child' ? 'child' : 'personal'),
+        user.balance || 0,
+        user.allocatedTotal || 0,
+        user.familyName || null,
+      ]
     );
     return String(res.lastInsertRowId);
   } catch (e) {
-    console.warn('sqliteAddUser error:', e);
-    return user.id;
+    try {
+      const res = db.runSync(
+        'INSERT INTO user (name, email, password_hash, role, is_active, must_change_password, onboarding_done, created_at, langue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [user.name, user.email, user.passwordHash, user.role, user.active ? 1 : 0, user.mustChangePassword ? 1 : 0, user.onboarded ? 1 : 0, user.createdAt, user.langue || 'fr']
+      );
+      return String(res.lastInsertRowId);
+    } catch (err) {
+      console.warn('sqliteAddUser error:', err);
+      return user.id;
+    }
   }
 }
 
 /**
  * Met à jour les champs d'un utilisateur existant dans la table SQLite `user`.
  * @param id Identifiant numérique ou chaîne de l'utilisateur.
- * @param patch Modifications partielles (nom, mot de passe, statut actif, onboarding, langue).
+ * @param patch Modifications partielles (nom, mot de passe, statut actif, onboarding, langue, solde, etc.).
  */
 export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
   try {
     const numId = Number(id);
     if (patch.name !== undefined) {
       db.runSync('UPDATE user SET name = ? WHERE id = ?', [patch.name, numId]);
+    }
+    if (patch.email !== undefined) {
+      db.runSync('UPDATE user SET email = ? WHERE id = ?', [patch.email, numId]);
     }
     if (patch.passwordHash !== undefined) {
       db.runSync('UPDATE user SET password_hash = ? WHERE id = ?', [patch.passwordHash, numId]);
@@ -478,6 +675,21 @@ export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
     }
     if (patch.langue !== undefined) {
       db.runSync('UPDATE user SET langue = ? WHERE id = ?', [patch.langue, numId]);
+    }
+    if (patch.balance !== undefined) {
+      try {
+        db.runSync('UPDATE user SET balance = ? WHERE id = ?', [patch.balance, numId]);
+      } catch { }
+    }
+    if (patch.allocatedTotal !== undefined) {
+      try {
+        db.runSync('UPDATE user SET allocated_total = ? WHERE id = ?', [patch.allocatedTotal, numId]);
+      } catch { }
+    }
+    if (patch.familyName !== undefined) {
+      try {
+        db.runSync('UPDATE user SET family_name = ? WHERE id = ?', [patch.familyName, numId]);
+      } catch { }
     }
   } catch (e) {
     console.warn('sqliteUpdateUser error:', e);
@@ -734,7 +946,7 @@ export function sqliteAddExpense(expense: Expense): string {
 /**
  * Met à jour une dépense existante dans la table `expense`.
  * @param id Identifiant de la dépense.
- * @param patch Données modifiées (montant, note, date).
+ * @param patch Données modifiées (montant, note, date, catégorie).
  */
 export function sqliteUpdateExpense(id: string, patch: Partial<Expense>): void {
   try {
@@ -745,6 +957,10 @@ export function sqliteUpdateExpense(id: string, patch: Partial<Expense>): void {
     if (patch.note !== undefined) {
       db.runSync('UPDATE expense SET label = ? WHERE id = ?', [patch.note, numId]);
     }
+    if (patch.categoryId !== undefined) {
+      const numCat = Number(patch.categoryId) || null;
+      db.runSync('UPDATE expense SET category_id = ? WHERE id = ?', [numCat, numId]);
+    }
     if (patch.date !== undefined) {
       db.runSync('UPDATE expense SET date = ?, month = ? WHERE id = ?', [patch.date, patch.date.substring(0, 7), numId]);
     }
@@ -754,28 +970,75 @@ export function sqliteUpdateExpense(id: string, patch: Partial<Expense>): void {
 }
 
 /**
- * Insère une nouvelle catégorie créée par l'administrateur dans `category`.
- * @param cat Nouvelle catégorie avec nom, type ('product' ou 'expense') et statut actif.
+ * Supprime une dépense physique de la table `expense`.
+ * @param id Identifiant de la dépense à supprimer.
+ */
+export function sqliteDeleteExpense(id: string): boolean {
+  try {
+    const numId = Number(id);
+    db.runSync('DELETE FROM expense WHERE id = ?', [numId]);
+    return true;
+  } catch (e) {
+    console.warn('sqliteDeleteExpense error:', e);
+    return false;
+  }
+}
+
+/**
+ * Supprime un achat de produit de la table `purchase`.
+ * @param id Identifiant de l'achat à supprimer.
+ */
+export function sqliteDeletePurchase(id: string): boolean {
+  try {
+    const numId = Number(id);
+    db.runSync('DELETE FROM purchase WHERE id = ?', [numId]);
+    return true;
+  } catch (e) {
+    console.warn('sqliteDeletePurchase error:', e);
+    return false;
+  }
+}
+
+/**
+ * Insère une nouvelle catégorie créée par l'utilisateur ou le parent dans `category`.
+ * @param cat Nouvelle catégorie avec nom, type ('product' ou 'expense'), statut actif, couleur, description, etc.
  * @returns Identifiant persistant de la catégorie dans SQLite.
  */
 export function sqliteAddCategory(cat: Category): string {
   try {
-    // Insertion de la catégorie avec icône vectorielle par défaut 'cart-outline' sans aucun emoji
     const res = db.runSync(
-      'INSERT INTO category (name_key, type, icon, is_active) VALUES (?, ?, ?, ?)',
-      [cat.name, cat.kind, 'cart-outline', cat.active ? 1 : 0]
+      'INSERT INTO category (name_key, type, icon, is_active, user_id, description, color, is_custom, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        cat.name,
+        cat.kind,
+        'cart-outline',
+        cat.active ? 1 : 0,
+        cat.userId ? Number(cat.userId) || null : null,
+        cat.description || null,
+        cat.color || null,
+        cat.isCustom ? 1 : 0,
+        cat.scope || 'personal',
+      ]
     );
     return String(res.lastInsertRowId);
   } catch (e) {
-    console.warn('sqliteAddCategory error:', e);
-    return cat.id;
+    try {
+      const res = db.runSync(
+        'INSERT INTO category (name_key, type, icon, is_active) VALUES (?, ?, ?, ?)',
+        [cat.name, cat.kind, 'cart-outline', cat.active ? 1 : 0]
+      );
+      return String(res.lastInsertRowId);
+    } catch (err) {
+      console.warn('sqliteAddCategory error:', err);
+      return cat.id;
+    }
   }
 }
 
 /**
  * Modifie le libellé ou l'état actif/inactif d'une catégorie dans `category`.
  * @param id Identifiant de la catégorie.
- * @param patch Modifications partielles du libellé ou statut.
+ * @param patch Modifications partielles du libellé, description, couleur ou statut.
  */
 export function sqliteUpdateCategory(id: string, patch: Partial<Category>): void {
   try {
@@ -786,8 +1049,154 @@ export function sqliteUpdateCategory(id: string, patch: Partial<Category>): void
     if (patch.active !== undefined) {
       db.runSync('UPDATE category SET is_active = ? WHERE id = ?', [patch.active ? 1 : 0, numId]);
     }
+    if (patch.description !== undefined) {
+      try {
+        db.runSync('UPDATE category SET description = ? WHERE id = ?', [patch.description, numId]);
+      } catch { }
+    }
+    if (patch.color !== undefined) {
+      try {
+        db.runSync('UPDATE category SET color = ? WHERE id = ?', [patch.color, numId]);
+      } catch { }
+    }
   } catch (e) {
     console.warn('sqliteUpdateCategory error:', e);
+  }
+}
+
+/**
+ * Supprime une catégorie personnalisée de la table SQLite si elle n'est pas utilisée.
+ * @param id Identifiant de la catégorie.
+ */
+export function sqliteDeleteCategory(id: string): boolean {
+  try {
+    const numId = Number(id);
+    // Vérifier si la catégorie est une catégorie système
+    const cat = db.getFirstSync<{ is_system: number }>('SELECT is_system FROM category WHERE id = ?', [numId]);
+    if (cat && cat.is_system === 1) {
+      return false; // Catégorie système protégée
+    }
+
+    // Vérifier si elle est utilisée dans purchase ou expense
+    const inPurchase = db.getFirstSync<{ id: number }>('SELECT id FROM purchase WHERE category_id = ? LIMIT 1', [numId]);
+    if (inPurchase) return false;
+
+    const inExpense = db.getFirstSync<{ id: number }>('SELECT id FROM expense WHERE category_id = ? LIMIT 1', [numId]);
+    if (inExpense) return false;
+
+    db.runSync('DELETE FROM category WHERE id = ?', [numId]);
+    db.runSync('DELETE FROM user_category WHERE category_id = ?', [numId]);
+    return true;
+  } catch (e) {
+    console.warn('sqliteDeleteCategory error:', e);
+    return false;
+  }
+}
+
+/**
+ * Sauvegarde la réserve de fonds familiaux dans `family_fund`.
+ */
+export function sqliteSaveFamilyFund(fund: FamilyFund): void {
+  try {
+    db.runSync(
+      'INSERT OR REPLACE INTO family_fund (id, parent_id, balance, total_contributions, updated_at) VALUES (?, ?, ?, ?, ?)',
+      [fund.id, fund.parentId, fund.balance, fund.totalContributions, fund.updatedAt]
+    );
+  } catch (e) {
+    console.warn('sqliteSaveFamilyFund error:', e);
+  }
+}
+
+/**
+ * Enregistre une allocation / don d'argent dans `family_allocation`.
+ */
+export function sqliteAddAllocation(alloc: MoneyAllocation): void {
+  try {
+    db.runSync(
+      'INSERT OR REPLACE INTO family_allocation (id, parent_id, child_id, child_name, amount, note, date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [alloc.id, alloc.parentId, alloc.childId, alloc.childName, alloc.amount, alloc.note || null, alloc.date, alloc.createdAt]
+    );
+  } catch (e) {
+    console.warn('sqliteAddAllocation error:', e);
+  }
+}
+
+/**
+ * Met à jour une allocation d'argent parent -> enfant dans `family_allocation`.
+ */
+export function sqliteUpdateAllocation(id: string, patch: Partial<MoneyAllocation>): boolean {
+  try {
+    if (patch.amount !== undefined) {
+      db.runSync('UPDATE family_allocation SET amount = ? WHERE id = ?', [patch.amount, id]);
+    }
+    if (patch.note !== undefined) {
+      db.runSync('UPDATE family_allocation SET note = ? WHERE id = ?', [patch.note, id]);
+    }
+    if (patch.date !== undefined) {
+      db.runSync('UPDATE family_allocation SET date = ? WHERE id = ?', [patch.date, id]);
+    }
+    if (patch.childId !== undefined) {
+      db.runSync('UPDATE family_allocation SET child_id = ?, child_name = ? WHERE id = ?', [patch.childId, patch.childName || '', id]);
+    }
+    return true;
+  } catch (e) {
+    console.warn('sqliteUpdateAllocation error:', e);
+    return false;
+  }
+}
+
+/**
+ * Supprime une allocation d'argent dans `family_allocation`.
+ */
+export function sqliteDeleteAllocation(id: string): boolean {
+  try {
+    db.runSync('DELETE FROM family_allocation WHERE id = ?', [id]);
+    return true;
+  } catch (e) {
+    console.warn('sqliteDeleteAllocation error:', e);
+    return false;
+  }
+}
+
+/**
+ * Enregistre une demande d'argent soumise par un enfant dans `money_request`.
+ */
+export function sqliteAddMoneyRequest(req: MoneyRequest): void {
+  try {
+    db.runSync(
+      'INSERT OR REPLACE INTO money_request (id, parent_id, child_id, child_name, amount, reason, status, date, created_at, responded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [req.id, req.parentId, req.childId, req.childName, req.amount, req.reason, req.status, req.date, req.createdAt, req.respondedAt || null]
+    );
+  } catch (e) {
+    console.warn('sqliteAddMoneyRequest error:', e);
+  }
+}
+
+/**
+ * Met à jour le statut d'une demande d'argent dans `money_request`.
+ */
+export function sqliteUpdateMoneyRequest(id: string, status: 'approved' | 'rejected', respondedAt: string): void {
+  try {
+    db.runSync(
+      'UPDATE money_request SET status = ?, responded_at = ? WHERE id = ?',
+      [status, respondedAt, id]
+    );
+  } catch (e) {
+    console.warn('sqliteUpdateMoneyRequest error:', e);
+  }
+}
+
+/**
+ * Sauvegarde un budget familial dans `family_budget`.
+ */
+export function sqliteSaveFamilyBudget(b: FamilyBudget): void {
+  try {
+    db.runSync(
+      'INSERT OR REPLACE INTO family_budget (id, parent_id, start_date, end_date, total, allocations, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [b.id, b.parentId, b.start, b.end, b.total, JSON.stringify(b.allocations), b.createdAt]
+    );
+  } catch (e) {
+    console.warn('sqliteSaveFamilyBudget error:', e);
   }
 }
 
