@@ -1,58 +1,123 @@
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+// Composants de base de React Native pour la mise en page, les boutons tactiles et les alertes natives
+import { Alert, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { BudgetCard, CategoryCard, ExpenseCard, TransactionRow } from '@/components/Cards';
+// Modal de création rapide d'une catégorie personnalisée
+import { CustomCategoryModal } from '@/components/CustomCategoryModal';
+// Modal de saisie vocale intelligente pour tous les types d'utilisateurs
+import { VoiceTransactionModal } from '@/components/VoiceTransactionModal';
 import { Screen } from '@/components/Screen';
-import { AlertBanner, Button, EmptyState, Eyebrow, LoadingScreen, SectionTitle } from '@/components/ui';
-import { colors } from '@/constants/theme';
-import { categoryName, currentBudget, pointsFor, summarize, userTxns } from '@/state/selectors';
+import { AlertBanner, Button, EmptyState, Eyebrow, SectionTitle } from '@/components/ui';
+import { colors, radius, space } from '@/constants/theme';
+import { categoryName, pointsFor, summarize } from '@/state/selectors';
 import { useStore } from '@/state/store';
-import { fmtDate, fmtDateLocale, fmtRange, money, monthNameLocale, parseISO, short } from '@/utils/format';
+import { fmtDateLocale, fmtRange, money, monthNameLocale, parseISO, short } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
 import { getCategoryIcon } from '@/utils/categoryIcons';
 
 /**
  * MISSION DE LA FONCTION : HomeScreen
- *   Écran principal et tableau de bord central de l'application Masrouf (`/(tabs)`).
- *   Aggrège les données financières du mois en cours : solde disponible, dépenses totales,
- *   jauge d'alerte, enveloppes de catégories et dernières transactions.
- *
- * RÔLE DANS L'APPLICATION :
- *   C'est le point d'atterrissage quotidien de l'utilisateur. Il pilote la gamification,
- *   détecte les périodes budgétaires réussies pour déclencher l'écran de félicitations,
- *   et fournit des raccourcis vers la création d'achats et de dépenses.
+ *   Écran d'accueil principal et tableau de bord central de Masrouf (`/(tabs)`).
+ *   Fournit une vue d'ensemble complète et unifiée des finances du foyer ou de l'utilisateur :
+ *   1. Carte de budget principale : démarre à 0.000 DT lorsqu'aucun budget n'a été attribué.
+ *   2. Bouton "Ajouter une catégorie +" placé exactement sous le cadre vert à droite.
+ *   3. Deux actions clairement distinctes sans duplication :
+ *      - "Ajouter un achat / produit"
+ *      - "Ajouter une dépense"
+ *   4. Suivi budgétaire des enfants pour le parent (alloué, dépensé, restant, %).
+ *   5. Liste des dernières transactions réelles de la base SQLite.
+ *   6. Bouton microphone en bas de l'écran pour la saisie vocale intelligente (bilingue FR/AR).
  *
  * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   - En-tête de bienvenue personnalisé avec salutation horaire et prénom (ex: "Bonjour, Ahmed").
- *   - Carte de budget principale `<BudgetCard />` avec grand solde restant en DT, jauge de couleur
- *     et dates de validité.
- *   - Liste des enveloppes de catégories `<CategoryCard />` (avec bouton "Voir tout").
- *   - Liste des 4 transactions les plus récentes `<TransactionRow />` ou `<EmptyState />` si aucune dépense.
- *   - Bouton flottant FAB vert forêt en bas d'écran "＋ Ajouter achat".
+ *   - En-tête personnalisé avec salutation selon l'heure.
+ *   - Carte de budget verte Masrouf (0.000 DT par défaut si vierge).
+ *   - Bouton "+ Catégorie" sous la carte à droite.
+ *   - Barre d'actions à deux boutons (Achat vs Dépense).
+ *   - Progression des enveloppes catégorielles et des budgets enfants.
+ *   - Historique des transactions récentes.
+ *   - Bouton microphone en bas pour la dictée vocale.
  */
 export default function HomeScreen() {
-  // Outil de redirection et de changement de page
+  // Outil de navigation impérative Expo Router
   const router = useRouter();
 
-  // Accès à la base locale SQLite, au profil connecté et à la période centrale sélectionnée
+  // Données globales de la base SQLite et profil utilisateur connecté
   const { db, me, selectedBudget } = useStore();
 
-  // Fonctions de traduction multilingue (français/anglais/arabe) et détection du sens d'écriture droite-à-gauche
+  // Système d'internationalisation (FR, EN, AR) et détection du sens d'écriture RTL
   const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
-  // État local pour afficher plus ou moins de catégories dans le tableau de bord
+  // État d'expansion pour afficher toutes les catégories ou seulement les premières
   const [expanded, setExpanded] = useState(false);
 
-  // La période sélectionnée est la référence centrale absolue de l'écran d'accueil
+  // Contrôle d'ouverture de la modale de création d'une nouvelle catégorie
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+
+  // Contrôle d'ouverture de la modale de saisie vocale intelligente
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+
+  // Référence de période active (peut être null si aucun budget n'a encore été créé)
   const budget = selectedBudget;
 
-  // Calcul statistique du budget (dépensé, restant, pourcentage consommé, état healthy/warning/exceeded)
+  // Calcul statistique réel du budget sélectionné
   const sum = budget && me ? summarize(db, me.id, budget) : null;
 
-  /**
-   * 🏆 Détection de récompense (Gamification) :
-   * Vérifie si l'utilisateur a réussi un budget sans le dépasser pour afficher l'écran festif de félicitations.
-   */
+  // Date du jour et bornes du mois courant pour affichage lorsque aucun budget n'est créé
+  const now = new Date();
+  const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const currentMonthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const defaultRangeText = fmtRange(currentMonthStart, currentMonthEnd, langue);
+
+  // Valeurs budgétaires garanties réelles (0 lorsqu'aucun budget n'a été attribué)
+  const availableAmount = sum ? sum.left : 0;
+  const spentAmount = sum ? sum.spent : 0;
+  const totalBudgetAmount = sum ? sum.total : 0;
+  const consumedPct = sum ? sum.pct : 0;
+  const displayRange = budget ? fmtRange(budget.start, budget.end, langue) : defaultRangeText;
+
+  // Liste des enfants rattachés au parent
+  const myChildren = useMemo(() => {
+    if (!me || (me.role !== 'parent' && me.role !== 'admin')) return [];
+    return db.users.filter(
+      (u) => u.role === 'child' && (u.parentId === me.id || u.familyId === me.familyId)
+    );
+  }, [db.users, me]);
+
+  // Synthèse de la progression de chaque enfant sans exposer leurs achats détaillés
+  const childrenProgress = useMemo(() => {
+    if (myChildren.length === 0) return [];
+    const activeStart = budget?.start || currentMonthStart;
+    const activeEnd = budget?.end || currentMonthEnd;
+
+    return myChildren.map((ch) => {
+      const chBudget = db.budgets.find(
+        (b) => b.userId === ch.id && b.start === activeStart
+      );
+      const allocated = chBudget?.total || ch.allocatedTotal || 0;
+      const chExpenses = db.expenses
+        .filter((e) => e.userId === ch.id && e.date >= activeStart && e.date <= activeEnd)
+        .reduce((s, e) => s + e.amount, 0);
+      const chPurchases = db.purchases
+        .filter((p) => p.userId === ch.id && p.date >= activeStart && p.date <= activeEnd)
+        .reduce((s, p) => s + p.price, 0);
+      const spent = chExpenses + chPurchases;
+      const remaining = Math.max(0, allocated - spent);
+      const pct = allocated > 0 ? Math.round((spent / allocated) * 100) : 0;
+
+      return {
+        child: ch,
+        allocated,
+        spent,
+        remaining,
+        pct,
+      };
+    });
+  }, [myChildren, db.budgets, db.expenses, db.purchases, budget, currentMonthStart, currentMonthEnd]);
+
+  // Détection de récompense (Gamification)
   const reward = useMemo(() => {
     if (!me) return null;
     return (
@@ -65,153 +130,349 @@ export default function HomeScreen() {
   // Si une période réussie est détectée, redirection automatique vers la page de félicitations
   useEffect(() => {
     if (reward) {
-      router.push({ pathname: '/felicitations', params: { id: reward.budget.id } } as never);
+      router.push({
+        pathname: '/felicitations',
+        params: { id: reward.budget.id },
+      } as never);
     }
-  }, [reward?.budget.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reward, router]);
 
-  // Récupération sécurisée des 4 transactions les plus récentes rattachées à la période centrale sélectionnée
+  // Transactions récentes de l'utilisateur connecté
   const txns = useMemo(() => {
-    // Si aucun profil connecté n'est chargé, liste vide par précaution
     if (!me) return [];
-    // Récupération de l'ensemble des transactions de l'utilisateur
-    const all = userTxns(db, me.id);
-    // Si aucun budget n'est actif, retourne les 4 premières transactions
-    if (!budget) return all.slice(0, 4);
-    // Filtrage rigoureux sur l'intervalle de dates du budget avec vérification d'existence
-    return all
-      .filter((t) => Boolean(t && t.date && t.date >= budget.start && t.date <= budget.end))
-      .slice(0, 4);
-  }, [db, me, budget]);
+    const activeStart = budget?.start || currentMonthStart;
+    const activeEnd = budget?.end || currentMonthEnd;
 
-  // Si l'utilisateur n'est pas encore chargé depuis la mémoire, affichage du sablier animé (placé strictement après tous les hooks)
-  if (!me) return <LoadingScreen />;
+    // Récupération des achats de l'utilisateur
+    const myPurchases = db.purchases
+      .filter((p) => p.userId === me.id && p.date >= activeStart && p.date <= activeEnd)
+      .map((p) => {
+        const prod = db.products.find((pr) => pr.id === p.productId);
+        return {
+          id: p.id,
+          kind: 'purchase' as const,
+          title: prod?.name || 'Achat',
+          detail: p.store || '',
+          amount: p.price,
+          date: p.date,
+          categoryId: prod?.categoryId || 'food',
+        };
+      });
 
-  // Vérification de la présence d'une période sélectionnée avec un budget alloué
-  const hasBudget = Boolean(budget && Number(budget.total) > 0);
+    // Récupération des dépenses directes de l'utilisateur
+    const myExpenses = db.expenses
+      .filter((e) => e.userId === me.id && e.date >= activeStart && e.date <= activeEnd)
+      .map((e) => ({
+        id: e.id,
+        kind: 'expense' as const,
+        title: e.note || categoryName(db, e.categoryId),
+        detail: categoryName(db, e.categoryId),
+        amount: e.amount,
+        date: e.date,
+        categoryId: e.categoryId,
+      }));
 
-  // Filtrage des catégories associées au budget ayant une allocation définie
+    // Fusion et tri décroissant par date
+    return [...myPurchases, ...myExpenses].sort((a, b) => b.date.localeCompare(a.date));
+  }, [db, me, budget, currentMonthStart, currentMonthEnd]);
+
+  if (!me) return null;
+
+  // Liste des catégories ayant une allocation dans le budget actif
   const allocCats = budget
     ? Object.keys(budget.allocations).filter((id) => (budget.allocations[id] ?? 0) > 0)
     : [];
 
-  // Découpage pour afficher soit les 2 premières catégories, soit l'ensemble si "Voir plus" est cliqué
-  const shown = expanded ? allocCats : allocCats.slice(0, 2);
-  const rest = allocCats.slice(2);
-  const restSpent = rest.reduce((a, id) => a + (sum?.byCat[id] ?? 0), 0);
+  const shown = expanded ? allocCats : allocCats.slice(0, 3);
+  const rest = allocCats.slice(3);
   const restAlloc = rest.reduce((a, id) => a + (budget?.allocations[id] ?? 0), 0);
-  const d = budget ? parseISO(budget.start) : null;
+
+  const displayMonthDate = budget ? parseISO(budget.start) : now;
 
   return (
     <Screen
-      // Titre en haut de page avec salutation selon l'heure et prénom de l'utilisateur
+      // Salutation dynamique avec le nom de l'utilisateur
       title={`${t('bonjour')}, ${me.name.split(' ')[0]}`}
-      // Bouton flottant d'action principale (+ Ajouter un achat) actif uniquement si une période et un budget sont alloués
-      fab={
-        hasBudget
-          ? {
-              label: `＋ ${t('ajouter_un_achat')}`,
-              onPress: () => router.push('/nouveau-produit'),
-            }
-          : undefined
-      }
+      // Aucun bouton flottant redondant : actions uniques et distinctes intégrées directement dans la page
     >
-      {budget && sum && d ? (
-        <>
-          {/* Libellé du mois et intervalle exact de dates de la période de budget sélectionnée */}
-          <View
-            style={{
-              flexDirection: isRTL ? 'row-reverse' : 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
-              {monthNameLocale(d.getUTCMonth(), langue).toUpperCase()} {d.getUTCFullYear()}  ·  {fmtRange(budget.start, budget.end, langue)}
-            </Eyebrow>
-            <Pressable
-              onPress={() => router.push('/(tabs)/calendrier')}
-              hitSlop={8}
-              accessibilityRole="button"
-            >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.green }}>
-                {t('calendrier')} {isRTL ? '‹' : '›'}
-              </Text>
-            </Pressable>
-          </View>
+      {/* 1. En-tête de période calendaire */}
+      <View
+        style={{
+          flexDirection: isRTL ? 'row-reverse' : 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 6,
+        }}
+      >
+        <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
+          {monthNameLocale(displayMonthDate.getUTCMonth(), langue).toUpperCase()}{' '}
+          {displayMonthDate.getUTCFullYear()} · {displayRange}
+        </Eyebrow>
+        <Pressable
+          onPress={() => router.push('/(tabs)/calendrier')}
+          hitSlop={8}
+          accessibilityRole="button"
+        >
+          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.forest }}>
+            {t('calendrier')} {isRTL ? '‹' : '›'}
+          </Text>
+        </Pressable>
+      </View>
 
-          {/* Carte principale de budget avec jauge colorée */}
-          <BudgetCard
-            available={sum.left}
-            spent={sum.spent}
-            total={sum.total}
-            pct={sum.pct}
-            over={sum.status === 'exceeded' ? sum.over : undefined}
-            range={fmtRange(budget.start, budget.end, langue)}
-            onPress={() =>
-              router.push({ pathname: '/budget-mois', params: { mode: 'edit', id: budget.id } } as never)
-            }
+      {/* 2. Carte principale de Budget (commence à 0 lorsqu'aucun budget n'a été alloué) */}
+      <BudgetCard
+        available={availableAmount}
+        spent={spentAmount}
+        total={totalBudgetAmount}
+        pct={consumedPct}
+        over={sum && sum.status === 'exceeded' ? sum.over : undefined}
+        range={displayRange}
+        onPress={() => {
+          // Si compte enfant : information de verrouillage
+          if (me.role === 'child') {
+            Alert.alert(t('compte_enfant'), t('budget_alloue_par_parent'));
+            return;
+          }
+          // Si aucun budget créé ou modification : navigation vers l'écran de configuration du budget
+          if (budget) {
+            router.push({ pathname: '/budget-mois', params: { mode: 'edit', id: budget.id } } as never);
+          } else {
+            router.push('/budget-mois');
+          }
+        }}
+      />
+
+      {/* 3. Bouton "Ajouter une catégorie +" positionné exactement sous le cadre vert du budget, à droite */}
+      <View
+        // Disposition horizontale inversée en arabe (RTL)
+        style={{
+          // Direction adaptée au sens de lecture
+          flexDirection: isRTL ? 'row-reverse' : 'row',
+          // Alignement à droite (ou à gauche en RTL)
+          justifyContent: 'flex-end',
+          // Espacement vertical sous le cadre vert
+          marginTop: 8,
+          // Marge inférieure avant les actions
+          marginBottom: 10,
+        }}
+      >
+        {/* Bouton tactile d'ouverture du modal de sélection ou création de catégorie */}
+        <TouchableOpacity
+          // Déclencheur d'ouverture du modal de catégorie
+          onPress={() => setCategoryModalOpen(true)}
+          // Style en pilule menthe avec bordure discrète
+          style={{
+            // Direction d'affichage des icônes et textes
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            // Alignement centré des éléments
+            alignItems: 'center',
+            // Fond vert menthe clair distinctif
+            backgroundColor: colors.mint,
+            // Rembourrage vertical
+            paddingVertical: 7,
+            // Rembourrage horizontal
+            paddingHorizontal: 12,
+            // Forme en pilule arrondie
+            borderRadius: radius.pill,
+            // Bordure fine
+            borderWidth: 1,
+            // Couleur de bordure subtile
+            borderColor: colors.border,
+          }}
+          // Opacité réduite au clic
+          activeOpacity={0.7}
+          // Rôle d'accessibilité
+          accessibilityRole="button"
+          // Libellé d'accessibilité
+          accessibilityLabel={t('ajouter_categorie')}
+        >
+          {/* Icône vectorielle plus d'ajout */}
+          <Ionicons
+            name="add-circle"
+            size={16}
+            color={colors.forest}
+            style={{ marginHorizontal: 4 }}
           />
+          {/* Libellé 'Ajouter une catégorie +' */}
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.forest }}>
+            {t('ajouter_categorie')} +
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-          {/* Bannière verte rassurante si le budget est bien tenu */}
-          {sum.status === 'healthy' && (
-            <AlertBanner
-              tone="success"
-              title={t('budget_se_porte_bien')}
-              detail={t('budget_se_porte_bien_detail', { montant: money(sum.left) })}
+      {/* Message clair et bouton si aucun budget n'a encore été saisi (affiche 0 partout) */}
+      {totalBudgetAmount === 0 && (
+        <View
+          style={{
+            backgroundColor: colors.white,
+            borderRadius: radius.card,
+            padding: 14,
+            marginBottom: 10,
+            borderWidth: 1,
+            borderColor: colors.border,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', marginBottom: 10 }}>
+            {isRTL ? 'لم يتم تحديد أي ميزانية لهذا الشهر.' : 'Aucun budget défini pour ce mois.'}
+          </Text>
+          {me.role !== 'child' && (
+            <Button
+              label={isRTL ? 'تحديد ميزانية الشهر' : 'Définir le budget du mois'}
+              variant="secondary"
+              onPress={() => router.push('/budget-mois')}
             />
           )}
+        </View>
+      )}
 
-          {/* Bannière jaune d'avertissement dès que 80% du budget est consommé */}
-          {sum.status === 'warning' && (
-            <AlertBanner
-              tone="warning"
-              title={t('budget_alerte_80')}
-              detail={t('budget_alerte_80_detail', { montant: money(sum.left) })}
-            />
-          )}
+      {/* 4. Alertes de seuils budgétaires (s'il y a un budget actif) */}
+      {sum && sum.status === 'healthy' && (
+        <AlertBanner
+          tone="success"
+          title={t('budget_se_porte_bien')}
+          detail={t('budget_se_porte_bien_detail', { montant: money(sum.left) })}
+        />
+      )}
+      {sum && sum.status === 'warning' && (
+        <AlertBanner
+          tone="warning"
+          title={t('budget_alerte_80')}
+          detail={t('budget_alerte_80_detail', { montant: money(sum.left) })}
+        />
+      )}
+      {sum && sum.status === 'exceeded' && (
+        <AlertBanner
+          tone="danger"
+          title={t('budget_depasse')}
+          detail={t('budget_depasse_detail', { montant: money(sum.over) })}
+        />
+      )}
 
-          {/* Bannière rouge critique en cas de dépassement réel du budget */}
-          {sum.status === 'exceeded' && (
-            <AlertBanner
-              tone="danger"
-              title={t('budget_depasse')}
-              detail={t('budget_depasse_detail', { montant: money(sum.over) })}
-            />
-          )}
+      {/* 5. Deux actions clairement distinctes : "Ajouter un achat / produit" et "Ajouter une dépense" */}
+      <View
+        style={{
+          flexDirection: isRTL ? 'row-reverse' : 'row',
+          gap: 12,
+          marginVertical: 10,
+        }}
+      >
+        {/* Action 1 : Ajouter un achat / produit */}
+        <TouchableOpacity
+          onPress={() => router.push('/nouveau-produit')}
+          style={{
+            flex: 1,
+            backgroundColor: colors.forest,
+            borderRadius: radius.card,
+            paddingVertical: 14,
+            paddingHorizontal: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            elevation: 2,
+          }}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={t('ajouter_un_achat')}
+        >
+          <Ionicons
+            name="cart-outline"
+            size={18}
+            color={colors.white}
+            style={{ marginHorizontal: 4 }}
+          />
+          <Text style={{ color: colors.white, fontWeight: '700', fontSize: 13, textAlign: 'center' }}>
+            {t('ajouter_un_achat')}
+          </Text>
+        </TouchableOpacity>
 
-          {/* Titre de section : Vos catégories */}
+        {/* Action 2 : Ajouter une dépense */}
+        <TouchableOpacity
+          onPress={() => router.push('/nouvelle-depense')}
+          style={{
+            flex: 1,
+            backgroundColor: colors.white,
+            borderRadius: radius.card,
+            paddingVertical: 14,
+            paddingHorizontal: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            borderWidth: 1.5,
+            borderColor: colors.forest,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.05,
+            shadowRadius: 4,
+            elevation: 1,
+          }}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={t('ajouter_depense_simple')}
+        >
+          <Ionicons
+            name="receipt-outline"
+            size={18}
+            color={colors.forest}
+            style={{ marginHorizontal: 4 }}
+          />
+          <Text style={{ color: colors.forest, fontWeight: '700', fontSize: 13, textAlign: 'center' }}>
+            {t('ajouter_depense_simple')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 6. Section Vos Catégories */}
+      {allocCats.length > 0 && (
+        <View style={{ marginTop: 8, marginBottom: 8 }}>
           <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
             {t('vos_categories')}
           </SectionTitle>
 
-          {/* Cartes individuelles des catégories affichées avec icône descriptive */}
           {shown.map((id) => {
-            // Récupération du libellé de référence de la catégorie
             const rawCatName = categoryName(db, id);
-            // Traduction automatique dans la langue courante
             const translatedCatName = traduireCategorie(rawCatName);
-            // Résolution de l'icône évocatrice dédiée (ex: restaurant, voiture, reçu)
             const catIcon = getCategoryIcon(rawCatName);
+            const catAlloc = budget?.allocations[id] ?? 0;
+            // Calcul du pourcentage prévu : (allocation catégorie / budget total) * 100
+            const plannedPct =
+              totalBudgetAmount > 0
+                ? Math.round((catAlloc / totalBudgetAmount) * 100)
+                : (db.defaultPercentages[id] ?? 0);
+            // Dépenses de la catégorie ce mois-ci
+            const catSpent = txns
+              .filter((tx) => tx.categoryId === id)
+              .reduce((s, tx) => s + tx.amount, 0);
+            // Total dépensé ce mois-ci
+            const userTotalSpent = sum?.spent ?? 0;
+            // Pourcentage réel consommé : (dépense catégorie / total des dépenses) * 100
+            const actualPct =
+              userTotalSpent > 0 ? Math.round((catSpent / userTotalSpent) * 100) : 0;
 
             return (
-              // Carte de catégorie affichant uniquement son nom et son budget alloué
               <CategoryCard
                 key={id}
                 name={translatedCatName}
                 icon={catIcon}
-                allocation={budget.allocations[id] ?? 0}
+                allocation={catAlloc}
+                spent={catSpent}
+                plannedPct={plannedPct}
+                actualPct={actualPct}
               />
             );
           })}
 
-          {/* Ligne récapitulative des autres catégories lorsque la liste est repliée (montre uniquement le budget alloué) */}
           {!expanded && rest.length > 0 && (
             <Pressable
               onPress={() => setExpanded(true)}
               style={{
                 flexDirection: isRTL ? 'row-reverse' : 'row',
                 justifyContent: 'space-between',
-                paddingVertical: 4,
+                paddingVertical: 6,
               }}
               accessibilityRole="button"
             >
@@ -232,106 +493,209 @@ export default function HomeScreen() {
             </Pressable>
           )}
 
-          {/* Bouton pour replier la liste des catégories */}
           {expanded && rest.length > 0 && (
             <Pressable
               onPress={() => setExpanded(false)}
               accessibilityRole="button"
-              style={{ alignSelf: isRTL ? 'flex-end' : 'flex-start' }}
+              style={{ alignSelf: isRTL ? 'flex-end' : 'flex-start', paddingVertical: 4 }}
             >
-              <Text style={{ fontSize: 13, color: colors.green, fontWeight: '600' }}>
+              <Text style={{ fontSize: 13, color: colors.forest, fontWeight: '600' }}>
                 {t('voir_moins')}
               </Text>
             </Pressable>
           )}
-        </>
-      ) : (
-        /* Affichage de l'état vide si l'utilisateur n'a pas encore créé de budget */
-        <>
-          <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
-            {t('aucun_budget_periode').toUpperCase()}
-          </Eyebrow>
-          <EmptyState
-            icon="wallet-outline"
-            title={t('donner_direction_dinar')}
-            detail={t('aucun_budget_actif_detail')}
-            actionLabel={t('creer_budget')}
-            onAction={() => router.push('/budget-mois')}
-          />
-        </>
+        </View>
       )}
 
-      {/* Titre de section : Transactions récentes */}
-      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
+      {/* 7. Suivi budgétaire des enfants pour le parent (sans révéler le détail d'achats) */}
+      {(me.role === 'parent' || me.role === 'admin') && childrenProgress.length > 0 && (
+        <View style={{ marginTop: 14, marginBottom: 8 }}>
+          <View
+            style={{
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}
+          >
+            <SectionTitle style={{ marginBottom: 0 }}>
+              {t('budget_enfants') || 'Budget des enfants'}
+            </SectionTitle>
+            <Pressable
+              onPress={() => router.push('/(admin)/enfants')}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.forest }}>
+                {t('gerer') || 'Gérer'} {isRTL ? '‹' : '›'}
+              </Text>
+            </Pressable>
+          </View>
+
+          {childrenProgress.map((cp) => (
+            <View
+              key={cp.child.id}
+              style={{
+                backgroundColor: colors.white,
+                borderRadius: radius.card,
+                padding: 14,
+                marginBottom: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: isRTL ? 'row-reverse' : 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.forest }}>
+                  {cp.child.name}
+                </Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.forest }}>
+                  {money(cp.spent)} / {money(cp.allocated)}
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: colors.warm,
+                  overflow: 'hidden',
+                  marginBottom: 6,
+                }}
+              >
+                <View
+                  style={{
+                    height: '100%',
+                    width: `${Math.min(cp.pct, 100)}%`,
+                    backgroundColor: cp.pct > 100 ? colors.coral : colors.forest,
+                  }}
+                />
+              </View>
+
+              <View
+                style={{
+                  flexDirection: isRTL ? 'row-reverse' : 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 12, color: colors.muted }}>
+                  {t('reste')} : {money(cp.remaining)}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: cp.pct > 100 ? colors.coral : colors.mint,
+                  }}
+                >
+                  {cp.pct}%
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* 8. Transactions récentes */}
+      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', marginTop: 10 }}>
         {t('transactions_recentes')}
       </SectionTitle>
 
-      {/* Affichage des transactions récentes ou état vide si aucune opération n'a encore été saisie */}
       {(!txns || txns.length === 0) ? (
-        // Composant d'état vide invitant l'utilisateur à créer sa première dépense
         <EmptyState
           icon="receipt-outline"
           title={t('aucune_transaction_enregistree')}
           detail={t('premiere_transaction_detail')}
         />
       ) : (
-        // Parcours et affichage sécurisé de chaque transaction récente filtrée
-        txns
-          .filter((item): item is typeof item & { id: string } => Boolean(item && typeof item === 'object' && item.id))
-          .map((tItem, index) => {
-            // Date sécurisée de l'opération
-            const safeDate = tItem.date || '';
-            // Détails textuels (magasin ou note)
-            const safeDetail = tItem.detail || '';
-            // Titre descriptif
-            const safeTitle = tItem.title || 'Transaction';
-            // Montant numérique garanti
-            const safeAmount = Number(tItem.amount) || 0;
-            // Libellé de date localisé (ex: "12 nov. 2026")
-            const formattedDate = safeDate ? fmtDateLocale(safeDate, langue) : '';
-            // Concaténation élégante du magasin et de la date
-            const fullDetail = [safeDetail, formattedDate].filter(Boolean).join(' · ');
-            // Clé React garantie unique combinant le type, l'identifiant et l'index (évite toute collision)
-            const uniqueKey = `${tItem.kind || 'txn'}-${tItem.id}-${index}`;
+        txns.slice(0, 5).map((tItem, index) => {
+          const safeDate = tItem.date || '';
+          const safeDetail = tItem.detail || '';
+          const safeTitle = tItem.title || 'Transaction';
+          const safeAmount = Number(tItem.amount) || 0;
+          const formattedDate = safeDate ? fmtDateLocale(safeDate, langue) : '';
+          const fullDetail = [safeDetail, formattedDate].filter(Boolean).join(' · ');
+          const uniqueKey = `${tItem.kind}-${tItem.id}-${index}`;
 
-            // Branche 1 : Transaction d'achat de produits avec ticket détaillé
-            if (tItem.kind === 'purchase') {
-              return (
-                <TransactionRow
-                  key={uniqueKey}
-                  title={safeTitle}
-                  detail={fullDetail}
-                  amount={`−${money(safeAmount).replace(' DT', '')}`}
-                  onPress={() =>
-                    router.push({ pathname: '/modifier-achat', params: { id: tItem.id } } as never)
-                  }
-                />
-              );
-            }
-
-            // Branche 2 : Dépense directe avec icône personnalisée selon la catégorie
+          if (tItem.kind === 'purchase') {
             return (
-              <ExpenseCard
+              <TransactionRow
                 key={uniqueKey}
                 title={safeTitle}
                 detail={fullDetail}
-                icon={getCategoryIcon(categoryName(db, tItem.categoryId), 'expense')}
-                amount={money(safeAmount)}
+                amount={`−${money(safeAmount).replace(' DT', '')}`}
                 onPress={() =>
-                  router.push({ pathname: '/modifier-depense', params: { id: tItem.id } } as never)
+                  router.push({ pathname: '/modifier-achat', params: { id: tItem.id } } as never)
                 }
               />
             );
-          })
+          }
+
+          return (
+            <ExpenseCard
+              key={uniqueKey}
+              title={safeTitle}
+              detail={fullDetail}
+              icon={getCategoryIcon(categoryName(db, tItem.categoryId), 'expense')}
+              amount={money(safeAmount)}
+              onPress={() =>
+                router.push({ pathname: '/modifier-depense', params: { id: tItem.id } } as never)
+              }
+            />
+          );
+        })
       )}
 
-      {/* Bouton secondaire d'ajout de dépense simple */}
-      <Button
-        label={t('ajouter_depense_simple')}
-        variant="secondary"
-        onPress={() => router.push('/nouvelle-depense')}
+      {/* 9. Bouton Microphone en bas de la Home pour la saisie vocale intelligente */}
+      <View style={{ alignItems: 'center', marginTop: 20, marginBottom: 24 }}>
+        <TouchableOpacity
+          onPress={() => setVoiceModalOpen(true)}
+          style={{
+            backgroundColor: colors.forest,
+            width: 58,
+            height: 58,
+            borderRadius: 29,
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: colors.forest,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.35,
+            shadowRadius: 6,
+            elevation: 5,
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Saisie vocale intelligente"
+        >
+          <Ionicons name="mic" size={28} color={colors.mint} />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6, fontWeight: '500' }}>
+          {isRTL ? 'اضغط للتحدث' : 'Appuyez pour dicter'}
+        </Text>
+      </View>
+
+      {/* Boîte modale de création de catégorie */}
+      <CustomCategoryModal
+        visible={categoryModalOpen}
+        onClose={() => setCategoryModalOpen(false)}
+        scope={me.role === 'parent' || me.role === 'admin' ? 'family' : 'personal'}
       />
-      <View style={{ height: 4 }} />
+
+      {/* Boîte modale de saisie vocale intelligente */}
+      <VoiceTransactionModal
+        visible={voiceModalOpen}
+        onClose={() => setVoiceModalOpen(false)}
+        onSuccess={() => setVoiceModalOpen(false)}
+      />
+
+      <View style={{ height: 10 }} />
     </Screen>
   );
 }

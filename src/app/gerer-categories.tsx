@@ -26,26 +26,27 @@
 
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 // Composant réutilisable de sélection de catégories avec cartes tactiles et boutons bascule
 import { CategoryPicker } from '@/components/CategoryPicker';
+// Modal de création et édition de catégories personnalisées
+import { CustomCategoryModal } from '@/components/CustomCategoryModal';
 // Conteneur d'écran avec retour arrière et gestion du défilement
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
 import { AlertBanner, Body, Button, Eyebrow, SectionTitle } from '@/components/ui';
+// Constantes de thème (couleurs vert forêt, blanc)
+import { colors } from '@/constants/theme';
 // Magasin d'état global connecté à SQLite
 import { useStore } from '@/state/store';
+import type { Category } from '@/state/types';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
 
 /**
  * MISSION DU COMPOSANT :
  * Gérer l'écran de modification des catégories personnalisées de l'utilisateur.
- *
- * RÔLE DANS L'APPLICATION :
- * Charge les catégories actuellement cochées dans le profil SQLite et enregistre les modifications.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- * La vue complète avec les deux rayons de catégories, le compteur dynamique et les boutons d'action.
  */
 export default function ManageCategoriesScreen() {
   // Hook de navigation Expo Router pour revenir à l'écran précédent
@@ -57,34 +58,60 @@ export default function ManageCategoriesScreen() {
 
   // État local : tableau contenant les IDs des catégories actuellement sélectionnées par l'utilisateur
   const [selected, setSelected] = useState<string[]>(me?.categoryIds ?? []);
+  // État local modal création/édition de catégorie
+  const [modalVisible, setModalVisible] = useState(false);
+  const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
-  /**
-   * MISSION DE LA FONCTION :
-   * Inverser l'état de sélection d'une catégorie (l'ajouter si elle était absente, la retirer si elle était présente).
-   *
-   * RÔLE DANS L'APPLICATION :
-   * Met à jour la liste en mémoire locale avant la validation finale.
-   *
-   * CE QUI EST AFFICHÉ À L'ÉCRAN :
-   * Fait basculer instantanément le texte du bouton de la catégorie entre 'Choisir' et '✓ Sélectionné',
-   * et met à jour le chiffre entre parenthèses dans le bouton vert du bas.
-   */
   const toggle = (id: string) =>
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
 
-  /**
-   * MISSION DE LA FONCTION :
-   * Enregistrer la liste définitive des catégories choisies dans la base SQLite locale.
-   *
-   * RÔLE DANS L'APPLICATION :
-   * Appelle `actions.setUserCategories` qui met à jour la colonne `category_ids` du profil utilisateur,
-   * puis referme l'écran.
-   *
-   * CE QUI EST AFFICHÉ À L'ÉCRAN :
-   * Sauvegarde les données et revient immédiatement à l'écran précédent avec le tableau de bord actualisé.
-   */
+  const handleOpenAdd = () => {
+    setCategoryToEdit(null);
+    setDeleteError('');
+    setModalVisible(true);
+  };
+
+  const handleEdit = (category: Category) => {
+    setCategoryToEdit(category);
+    setDeleteError('');
+    setModalVisible(true);
+  };
+
+  const handleDelete = (id: string) => {
+    const cat = db.categories.find((c) => c.id === id);
+    const catName = cat?.name ?? '';
+
+    Alert.alert(
+      t('confirmer'),
+      `Voulez-vous vraiment supprimer la catégorie "${catName}" ?`,
+      [
+        { text: t('annuler'), style: 'cancel' },
+        {
+          text: t('supprimer'),
+          style: 'destructive',
+          onPress: () => {
+            const res = actions.deleteCustomCategory(id);
+            if (!res.ok) {
+              setDeleteError(res.error ?? t('supprimer_categorie_impossible_utilisee'));
+            } else {
+              setSelected((prev) => prev.filter((x) => x !== id));
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCategorySuccess = (cat: Category) => {
+    // Si c'est une nouvelle catégorie, on la coche automatiquement
+    if (!selected.includes(cat.id)) {
+      setSelected((prev) => [...prev, cat.id]);
+    }
+  };
+
   const handleSave = () => {
     actions.setUserCategories(selected);
     router.back();
@@ -98,21 +125,68 @@ export default function ManageCategoriesScreen() {
         {t('choisissez_ce_que_vous_suivez')}
       </Eyebrow>
 
-      {/* Titre de la section */}
-      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('vos_categories')}
-      </SectionTitle>
+      {/* Titre de la section et bouton d'ajout de catégorie */}
+      <View
+        // Disposition de l'en-tête de section adaptée au sens de lecture
+        style={[
+          styles.headerRow,
+          { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' },
+        ]}
+      >
+        {/* Titre de section 'Vos catégories' */}
+        <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', flex: 1, marginBottom: 0 }}>
+          {t('vos_categories')}
+        </SectionTitle>
 
-      {/* Explication rassurante : décocher une catégorie ne supprime aucun historique passé */}
+        <TouchableOpacity
+          onPress={handleOpenAdd}
+          style={{
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            alignItems: 'center',
+            backgroundColor: colors.mint,
+            paddingVertical: 6,
+            paddingHorizontal: 10,
+            borderRadius: 20,
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={16} color={colors.forest} style={{ marginHorizontal: 2 }} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.forest }}>
+            {t('ajouter_categorie')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Explication rassurante */}
       <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
         {t('categories_separation_explication')}
       </Body>
+
+      {/* Alerte si tentative de suppression d'une catégorie utilisée */}
+      {deleteError ? (
+        <AlertBanner
+          tone="danger"
+          title={t('erreur')}
+          detail={deleteError}
+        />
+      ) : null}
 
       {/* Composant de sélection : affiche la grille des rayons Produits et Dépenses */}
       <CategoryPicker
         categories={db.categories}
         selected={selected}
         onToggle={toggle}
+        onEditCategory={handleEdit}
+        onDeleteCategory={handleDelete}
+      />
+
+      {/* Modal d'ajout / modification de catégorie */}
+      <CustomCategoryModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSuccess={handleCategorySuccess}
+        categoryToEdit={categoryToEdit}
+        scope="personal"
       />
 
       {/* Bannière d'avertissement jaune si aucune catégorie n'est cochée */}
@@ -123,7 +197,7 @@ export default function ManageCategoriesScreen() {
         />
       ) : null}
 
-      {/* Bouton vert forêt : enregistre la sélection et affiche le nombre de catégories actives */}
+      {/* Bouton vert forêt : enregistre la sélection */}
       <Button
         label={`${t('enregistrer_nb_categories')} (${selected.length})`}
         disabled={selected.length === 0}
@@ -139,3 +213,25 @@ export default function ManageCategoriesScreen() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  headerRow: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.forest,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+  addBtnText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+});

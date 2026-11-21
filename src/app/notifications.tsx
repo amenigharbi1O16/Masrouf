@@ -88,13 +88,14 @@ export default function NotificationsScreen() {
       title={t('notifications')}
       // Bouton flèche retour vers la page précédente
       back
-      // Action de retour explicite adaptée au rôle utilisateur / administrateur
+      // Action de retour explicite vers la page précédente ou l'accueil
       onBack={() => {
-        if (me?.role === 'admin') {
-          router.replace('/(admin)/dashboard');
-        } else if (router.canGoBack()) {
+        // Si possible, retour à l'écran précédent
+        if (router.canGoBack()) {
+          // Navigation arrière standard
           router.back();
         } else {
+          // Sinon retour au tableau de bord principal
           router.replace('/(tabs)');
         }
       }}

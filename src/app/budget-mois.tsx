@@ -143,6 +143,26 @@ export default function BudgetPeriodScreen() {
   // Sécurité : si la session est expirée
   if (!me) return null;
 
+  // Sécurité : le compte enfant a son budget fixé par son parent et ne peut pas l'éditer
+  if (me.role === 'child') {
+    // Rendu en lecture seule informant que le budget est géré par le parent
+    return (
+      <Screen title={t('budget')} back onBack={() => router.replace('/(tabs)')}>
+        {/* Bannière explicative sur l'allocation parentale */}
+        <AlertBanner
+          tone="info"
+          title={t('compte_enfant')}
+          detail={t('budget_alloue_par_parent')}
+        />
+        {/* Bouton de retour vers le tableau de bord */}
+        <Button
+          label="Retour à l'accueil"
+          onPress={() => router.replace('/(tabs)')}
+        />
+      </Screen>
+    );
+  }
+
   // Sécurité : si on a demandé d'éditer un budget introuvable
   if (editing && !existing) {
     return (

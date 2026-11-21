@@ -40,8 +40,10 @@ import { colors, radius } from '@/constants/theme';
 import { UNITS } from '@/constants/units';
 // Magasin d'état global connecté à SQLite
 import { useStore } from '@/state/store';
-// Utilitaire d'accès à la galerie photo native du smartphone
-import { pickPhoto } from '@/utils/photos';
+// Utilitaire d'accès à la caméra et à la galerie photo native
+import { pickPhotoFromGallery, takePhotoWithCamera } from '@/utils/photos';
+// Modal de choix de la source de photo (Caméra vs Galerie)
+import { PhotoSourceModal } from '@/components/PhotoSourceModal';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
 
@@ -72,6 +74,8 @@ export default function EditProductScreen() {
   const [name, setName] = useState(product?.name ?? '');
   const [brand, setBrand] = useState(product?.brand ?? '');
   const [photo, setPhoto] = useState(product?.photo);
+  // Contrôle d'affichage de la modal de sélection de source photo (Caméra vs Galerie)
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '');
   const [unit, setUnit] = useState(product?.unit ?? 'L');
   const [error, setError] = useState('');
@@ -153,11 +157,7 @@ export default function EditProductScreen() {
 
       {/* Bouton tactile de sélection ou remplacement de la photo de l'article */}
       <Pressable
-        onPress={async () => {
-          // Ouvre le sélecteur d'images natif du smartphone
-          const u = await pickPhoto();
-          if (u) setPhoto(u);
-        }}
+        onPress={() => setPhotoModalOpen(true)}
         accessibilityRole="button"
         style={{
           backgroundColor: colors.white,
@@ -194,6 +194,27 @@ export default function EditProductScreen() {
           />
         ) : null}
       </Pressable>
+
+      {/* Feuille modale de sélection de la source photo (Caméra vs Galerie) */}
+      <PhotoSourceModal
+        visible={photoModalOpen}
+        onClose={() => setPhotoModalOpen(false)}
+        hasPhoto={!!photo}
+        onSelectCamera={async () => {
+          setPhotoModalOpen(false);
+          const u = await takePhotoWithCamera();
+          if (u) setPhoto(u);
+        }}
+        onSelectGallery={async () => {
+          setPhotoModalOpen(false);
+          const u = await pickPhotoFromGallery();
+          if (u) setPhoto(u);
+        }}
+        onRemovePhoto={() => {
+          setPhotoModalOpen(false);
+          setPhoto('');
+        }}
+      />
 
       {/* Sélecteur déroulant pour changer le rayon de l'article */}
       <SelectField

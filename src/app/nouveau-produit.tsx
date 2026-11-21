@@ -46,8 +46,10 @@ import { UNITS } from '@/constants/units';
 import { useStore } from '@/state/store';
 // Fonctions utilitaires de calcul de montants et dates
 import { fmtDateLocale, isValidISO, money, todayISO, toNum } from '@/utils/format';
-// Utilitaire d'accès à la galerie photo native
-import { pickPhoto } from '@/utils/photos';
+// Utilitaire d'accès à la caméra et à la galerie photo native
+import { pickPhotoFromGallery, takePhotoWithCamera } from '@/utils/photos';
+// Modal de choix de la source de photo (Caméra vs Galerie)
+import { PhotoSourceModal } from '@/components/PhotoSourceModal';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
 
@@ -82,6 +84,8 @@ export default function AddProductScreen() {
   const [brand, setBrand] = useState('');
   // Photo enregistrée (optionnelle)
   const [photo, setPhoto] = useState<string | undefined>();
+  // Contrôle d'affichage de la modal de sélection de source photo (Caméra vs Galerie)
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
   // Catégorie sélectionnée (par défaut la première disponible)
   const [categoryId, setCategoryId] = useState(availableCats[0]?.id ?? 'food');
   // Prix total payé en Dinars Tunisiens (ex: 14.500)
@@ -236,12 +240,7 @@ export default function AddProductScreen() {
 
       {/* Champ 3 : Carte tactile pour la sélection de la photo */}
       <Pressable
-        onPress={async () => {
-          // Ouverture du sélecteur natif de photos
-          const photoUri = await pickPhoto();
-          // Mise à jour de l'état si une photo a été choisie
-          if (photoUri) setPhoto(photoUri);
-        }}
+        onPress={() => setPhotoModalOpen(true)}
         accessibilityRole="button"
         style={[
           styles.photoCard,
@@ -277,6 +276,27 @@ export default function AddProductScreen() {
           />
         ) : null}
       </Pressable>
+
+      {/* Feuille modale de sélection de la source photo (Caméra vs Galerie) */}
+      <PhotoSourceModal
+        visible={photoModalOpen}
+        onClose={() => setPhotoModalOpen(false)}
+        hasPhoto={!!photo}
+        onSelectCamera={async () => {
+          setPhotoModalOpen(false);
+          const photoUri = await takePhotoWithCamera();
+          if (photoUri) setPhoto(photoUri);
+        }}
+        onSelectGallery={async () => {
+          setPhotoModalOpen(false);
+          const photoUri = await pickPhotoFromGallery();
+          if (photoUri) setPhoto(photoUri);
+        }}
+        onRemovePhoto={() => {
+          setPhotoModalOpen(false);
+          setPhoto(undefined);
+        }}
+      />
 
       {/* Champ 4 : Sélecteur déroulant de la catégorie de produit */}
       <SelectField

@@ -25,12 +25,16 @@
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
+// Composants natifs pour alertes et boutons tactiles
+import { Alert, Text, TouchableOpacity, View } from 'react-native';
 // Formulaire modulaire de saisie d'une dépense directe
 import { ExpenseForm } from '@/components/ExpenseForm';
 // Conteneur d'écran avec retour arrière et gestion du défilement
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
 import { EmptyState, Eyebrow } from '@/components/ui';
+// Constantes de design
+import { colors, radius } from '@/constants/theme';
 // Magasin d'état global connecté à SQLite
 import { useStore } from '@/state/store';
 // Système d'internationalisation et détection du sens d'écriture RTL
@@ -72,6 +76,34 @@ export default function EditExpenseScreen() {
     );
   }
 
+  // Fonction de suppression de la dépense avec confirmation préalable
+  const handleDelete = () => {
+    // Alerte de confirmation native empêchant toute suppression accidentelle
+    Alert.alert(
+      // Titre de l'alerte
+      isRTL ? 'تأكيد الحذف' : 'Confirmer la suppression',
+      // Message d'avertissement explicatif
+      isRTL
+        ? 'هل أنت متأكد من حذف هذا المصروف؟ لا يمكن التراجع عن هذه العملية.'
+        : 'Êtes-vous sûr de vouloir supprimer cette dépense ? Cette action est irréversible.',
+      [
+        // Bouton d'annulation sans impact
+        { text: isRTL ? 'إلغاء' : 'Annuler', style: 'cancel' },
+        // Bouton de validation destructrice
+        {
+          text: isRTL ? 'حذف' : 'Supprimer',
+          style: 'destructive',
+          onPress: () => {
+            // Suppression effective de la dépense dans SQLite et le store
+            actions.deleteExpense(expense.id);
+            // Retour fluide à l'écran précédent
+            router.back();
+          },
+        },
+      ]
+    );
+  };
+
   return (
     // Screen : conteneur assurant les marges physiques et le défilement fluide
     <Screen title={t('modifier_depense_titre')} back>
@@ -108,6 +140,27 @@ export default function EditExpenseScreen() {
           } as never);
         }}
       />
+
+      {/* Bouton de suppression définitive de la dépense */}
+      <View style={{ marginTop: 16, marginBottom: 24 }}>
+        <TouchableOpacity
+          onPress={handleDelete}
+          style={{
+            backgroundColor: '#FEE2E2',
+            paddingVertical: 14,
+            borderRadius: radius.card,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: colors.coral,
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={{ color: colors.coral, fontWeight: '700', fontSize: 14 }}>
+            {isRTL ? 'حذف هذا المصروف' : 'Supprimer cette dépense'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </Screen>
   );
 }

@@ -1,218 +1,997 @@
 /**
  * FICHIER : src/app/(admin)/dashboard.tsx
- * IDENTIFIANT INVENTAIRE : FICHIER-004
- * ÉCRAN : ECRAN-ADM-01 (Tableau de Bord Administrateur)
+ * IDENTIFIANT INVENTAIRE : FICHIER-004-FAMILY-DASHBOARD
+ * ÉCRAN : TABLEAU DE BORD FAMILIAL DU PARENT (Parent Family Dashboard)
  *
  * MISSION DU FICHIER :
- * Présenter le tableau de bord synthétique de l'administrateur système.
- * Il regroupe l'ensemble des indicateurs quantitatifs clés de la base de données
- * tout en respectant une règle de confidentialité absolue : aucun montant monétaire
- * individuel ni ticket de caisse privé n'est affiché.
- *
- * DANS QUOI CE FICHIER AIDE DANS L'APPLICATION :
- * Il offre au responsable technique ou au jury une vision panoramique de l'activité
- * globale de Masrouf (nombre d'inscrits, comptes suspendus, volumétrie des achats
- * et dépenses) et sert de plaque tournante pour naviguer vers les autres outils de gestion.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN POUR L'UTILISATEUR :
- * - Un grand titre traduit 'Vue d'ensemble' avec un badge 'ADMINISTRATEUR'.
- * - Une grille responsive de 8 tuiles statistiques blanches avec de grands chiffres vert forêt
- *   (Comptes totaux, Comptes actifs, Comptes suspendus, Périodes de budget, Produits suivis,
- *   Achats totaux, Dépenses fixes, Catégories actives).
- * - Une bannière d'information bleue/menthe rappelant le secret strict de la vie privée.
- * - Quatre grands boutons d'accès rapide vers les modules d'administration :
- *   'Utilisateurs', 'Catégories', 'Pourcentages par défaut' et 'Règles des points'.
+ * Être le centre névralgique de gestion financière du foyer :
+ * 1. En-tête : Message de bienvenue, nom du parent, nom de famille et notifications.
+ * 2. Synthèse Financière : Réserve familiale disponible, fonds totaux, fonds alloués, dépenses globales.
+ * 3. Vue des Enfants : Soldes disponibles, montants alloués, accès rapide aux profils.
+ * 4. Actions Rapides : Ajouter un enfant, Donner de l'argent, Gérer le budget, Voir les demandes.
+ * 5. Demandes d'argent en attente : Approbation et rejet instantanés avec mise à jour du solde dans SQLite.
+ * 6. Activités récentes et répartition des dépenses du foyer.
  */
 
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { Text, View } from 'react-native';
-// Composant conteneur d'écran avec gestion du défilement et marges adaptées
+import React, { useState } from 'react';
+import {
+  Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useDrawer } from '@/components/DrawerContext';
 import { Screen } from '@/components/Screen';
-// Composants atomiques d'interface utilisateur
-import { AlertBanner, Button, Eyebrow, SectionTitle } from '@/components/ui';
-// Constantes de thème (couleurs vert forêt, blanc, bordures et arrondis)
+import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/components/ui';
 import { colors, radius } from '@/constants/theme';
-// Magasin d'état global connecté à la base SQLite
 import { useStore } from '@/state/store';
-// Système d'internationalisation (FR, EN, AR) et détection du sens d'écriture RTL
+import type { User } from '@/state/types';
+import { formatTND } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
 
-/**
- * MISSION DE LA FONCTION :
- * Afficher une carte blanche individuelle présentant une métrique quantitative.
- *
- * RÔLE DANS L'APPLICATION :
- * Composant de présentation réutilisable pour structurer les compteurs statistiques du tableau de bord.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- * Une boîte blanche avec des coins arrondis (radius.card) contenant le nombre en très grand (taille 28)
- * en vert forêt (#102B27) et son intitulé explicatif en petit en dessous en gris ardoise.
- */
-function Stat({
-  label,
-  value,
-  isRTL,
-}: {
-  label: string;
-  value: number;
-  isRTL: boolean;
-}) {
-  return (
-    // Boîte de la statistique occupant environ la moitié de la largeur de l'écran pour former une grille à 2 colonnes
-    <View
-      style={{
-        flexBasis: '47%',
-        flexGrow: 1,
-        backgroundColor: colors.white,
-        borderRadius: radius.card,
-        padding: 16,
-        gap: 4,
-        alignItems: isRTL ? 'flex-end' : 'flex-start',
-      }}
-    >
-      {/* Valeur numérique mise en évidence en grand caractère gras vert forêt (taille rehaussée) */}
-      <Text
-        style={{ fontSize: 29.5, fontWeight: '600', color: colors.forest }}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-      >
-        {value}
-      </Text>
-      {/* Intitulé traduit de la métrique en police claire et visible */}
-      <Text
-        style={{
-          fontSize: 13.5,
-          color: colors.muted,
-          textAlign: isRTL ? 'right' : 'left',
-        }}
-        numberOfLines={2}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-/**
- * MISSION DU COMPOSANT :
- * Assembler et afficher le tableau de bord complet d'administration.
- *
- * RÔLE DANS L'APPLICATION :
- * Calcule dynamiquement les métriques agrégées depuis le store SQLite et gère les redirections de navigation.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- * L'écran d'accueil administrateur complet avec ses tuiles, sa bannière de confidentialité et ses boutons.
- */
-export default function AdminDashboard() {
-  // Hook de navigation pour se déplacer vers les autres écrans d'administration
+export default function FamilyDashboard() {
   const router = useRouter();
-  // Données globales de la base SQLite
-  const { db } = useStore();
-  // Traductions dynamiques
+  const { open } = useDrawer();
+  const { db, me, actions } = useStore();
   const { t, isRTL } = useTranslation();
 
-  // Filtrage pour isoler les utilisateurs normaux des comptes administrateurs
-  const people = db.users.filter((u) => u.role === 'user');
+  // Modal rapide pour donner de l'argent à un enfant sélectionné
+  const [giveMoneyModal, setGiveMoneyModal] = useState(false);
+  const [targetChild, setTargetChild] = useState<User | null>(null);
+  const [giveAmount, setGiveAmount] = useState('');
+  const [giveNote, setGiveNote] = useState('');
+  const [giveError, setGiveError] = useState('');
+  const [giveBusy, setGiveBusy] = useState(false);
+
+  // Données financières du parent connecté
+  const familyFund = db.familyFunds.find((f) => f.parentId === me?.id) || {
+    balance: 0,
+    totalAdded: 0,
+    totalAllocated: 0,
+  };
+
+  // Liste des enfants rattachés au parent
+  const childrenList = db.users.filter(
+    (u) => u.role === 'child' && (u.parentId === me?.id || u.familyId === me?.familyId)
+  );
+
+  // Demandes d'argent en attente
+  const pendingRequests = db.moneyRequests.filter(
+    (r) => r.parentId === me?.id && r.status === 'pending'
+  );
+
+  // Historique des allocations
+  const myAllocations = db.allocations.filter((a) => a.parentId === me?.id);
+
+  // Calcul des dépenses totales de la famille (enfants + parent)
+  const familyUserIds = [me?.id, ...childrenList.map((c) => c.id)];
+  const totalFamilyExpenses = db.expenses
+    .filter((e) => familyUserIds.includes(e.userId))
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  // Ouvrir la modale d'allocation pour un enfant spécifique
+  const openGiveModal = (child: User) => {
+    setTargetChild(child);
+    setGiveAmount('');
+    setGiveNote('');
+    setGiveError('');
+    setGiveMoneyModal(true);
+  };
+
+  // Soumission de l'allocation d'argent
+  const submitGiveMoney = async () => {
+    if (!targetChild) return;
+    const num = parseFloat(giveAmount.replace(',', '.'));
+    if (isNaN(num) || num <= 0) {
+      setGiveError('Veuillez entrer un montant valide supérieur à 0.');
+      return;
+    }
+
+    if (num > familyFund.balance) {
+      setGiveError(
+        `Fonds insuffisants dans la réserve. Disponible : ${formatTND(familyFund.balance)}`
+      );
+      return;
+    }
+
+    setGiveBusy(true);
+    setGiveError('');
+
+    const res = await actions.allocateMoney(targetChild.id, num, giveNote.trim() || undefined);
+    setGiveBusy(false);
+
+    if (!res.ok) {
+      setGiveError(res.error ?? 'Erreur lors de l’allocation.');
+    } else {
+      setGiveMoneyModal(false);
+      Alert.alert(
+        'Succès',
+        `${formatTND(num)} ont été alloués avec succès à ${targetChild.name}.`
+      );
+    }
+  };
+
+  // Répondre à une demande d'argent
+  const handleRequestResponse = async (requestId: string, approve: boolean) => {
+    const res = await actions.respondToMoneyRequest(requestId, approve);
+    if (!res.ok) {
+      Alert.alert('Erreur', res.error ?? 'Impossible de traiter la demande.');
+    }
+  };
 
   return (
-    // Screen : conteneur assurant les marges physiques et le défilement fluide
-    <Screen title={t('vue_ensemble_admin')}>
-      {/* Surtitre en lettres majuscules identifiant le rôle administrateur */}
-      <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('administrateur').toUpperCase()}
-      </Eyebrow>
-
-      {/* Grille de statistiques agrégées (8 indicateurs au total) */}
-      <View
-        style={{
-          // Inverse le sens des colonnes en mode arabe RTL
-          flexDirection: isRTL ? 'row-reverse' : 'row',
-          flexWrap: 'wrap',
-          gap: 10,
-        }}
+    <Screen plain title={t('espace_familial')}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.container}
       >
-        {/* Tuile 1 : Nombre total de comptes utilisateurs inscrits */}
-        <Stat label={t('stat_comptes')} value={people.length} isRTL={isRTL} />
-        {/* Tuile 2 : Nombre d'utilisateurs actuellement actifs */}
-        <Stat
-          label={t('stat_comptes_actifs')}
-          value={people.filter((u) => u.active).length}
-          isRTL={isRTL}
-        />
-        {/* Tuile 3 : Nombre de comptes ayant été suspendus par l'administrateur */}
-        <Stat
-          label={t('stat_suspendus')}
-          value={people.filter((u) => !u.active).length}
-          isRTL={isRTL}
-        />
-        {/* Tuile 4 : Nombre total de périodes de budget créées par les utilisateurs */}
-        <Stat
-          label={t('stat_periodes_budget')}
-          value={db.budgets.length}
-          isRTL={isRTL}
-        />
-        {/* Tuile 5 : Nombre d'articles d'épicerie différents répertoriés */}
-        <Stat
-          label={t('stat_produits_suivis')}
-          value={db.products.length}
-          isRTL={isRTL}
-        />
-        {/* Tuile 6 : Nombre de tickets de caisse et achats individuels enregistrés */}
-        <Stat
-          label={t('stat_achats_enregistres')}
-          value={db.purchases.length}
-          isRTL={isRTL}
-        />
-        {/* Tuile 7 : Nombre de dépenses directes (factures, loyers) notées */}
-        <Stat
-          label={t('stat_depenses_enregistrees')}
-          value={db.expenses.length}
-          isRTL={isRTL}
-        />
-        {/* Tuile 8 : Nombre de catégories actives dans le système */}
-        <Stat
-          label={t('stat_categories_actives')}
-          value={db.categories.filter((c) => c.active).length}
-          isRTL={isRTL}
-        />
-      </View>
+        {/* EN-TÊTE FAMILIAL */}
+        <View
+          style={[
+            styles.headerRow,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.menuIconBtn}
+            onPress={open}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="menu" size={24} color={colors.forest} />
+          </TouchableOpacity>
 
-      {/* Bannière informative garantissant le secret des transactions personnelles */}
-      <AlertBanner
-        tone="info"
-        title={t('admin_confidentialite_titre')}
-        detail={t('admin_confidentialite_detail')}
-      />
+          <View style={{ flex: 1, marginHorizontal: 10 }}>
+            <Text
+              style={[styles.headerGreeting, { textAlign: isRTL ? 'right' : 'left' }]}
+            >
+              Bonjour, {me?.name?.split(' ')[0] || 'Parent'} 👋
+            </Text>
+            <Text
+              style={[styles.headerFamily, { textAlign: isRTL ? 'right' : 'left' }]}
+            >
+              {me?.familyName || 'Famille Masrouf'} · Espace Familial
+            </Text>
+          </View>
 
-      {/* Titre de la section des actions de configuration */}
-      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('gerer_section')}
-      </SectionTitle>
+          <TouchableOpacity
+            style={styles.notifBtn}
+            onPress={() => router.push('/notifications')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={22} color={colors.forest} />
+            {pendingRequests.length > 0 && <View style={styles.notifBadgeDot} />}
+          </TouchableOpacity>
+        </View>
 
-      {/* Bouton vert forêt : navigation vers la liste et la gestion des comptes utilisateurs */}
-      <Button
-        label={t('utilisateurs_admin')}
-        onPress={() => router.push('/(admin)/utilisateurs')}
-      />
-      {/* Bouton secondaire clair : navigation vers le catalogue des catégories */}
-      <Button
-        label={t('categories_admin')}
-        variant="secondary"
-        onPress={() => router.push('/(admin)/categories')}
-      />
-      {/* Bouton secondaire clair : navigation vers le calibrage des pourcentages par défaut */}
-      <Button
-        label={t('pourcentages_defaut')}
-        variant="secondary"
-        onPress={() => router.push('/(admin)/pourcentages')}
-      />
-      {/* Bouton secondaire clair : navigation vers les paliers et barèmes de points de fidélité */}
-      <Button
-        label={t('regles_points_admin')}
-        variant="secondary"
-        onPress={() => router.push('/(admin)/points-regles')}
-      />
+        {/* CARTE DE SYNTHÈSE FINANCIÈRE DE LA FAMILLE */}
+        <View style={styles.fundCard}>
+          <View
+            style={[
+              styles.fundCardHeader,
+              { flexDirection: isRTL ? 'row-reverse' : 'row' },
+            ]}
+          >
+            {/* Badge de réserve familiale avec icône mallette */}
+            <View style={styles.fundBadge}>
+              {/* Icône de mallette fidèle à la maquette */}
+              <Ionicons name="briefcase-outline" size={15} color={colors.mint} />
+              {/* Libellé en lettres capitales */}
+              <Text style={styles.fundBadgeText}>RÉSERVE FAMILIALE</Text>
+            </View>
+            {/* Bouton d'approvisionnement en pilule vert foncé */}
+            <TouchableOpacity
+              style={styles.addFundsBtn}
+              onPress={() => router.push('/(admin)/finances')}
+              activeOpacity={0.7}
+            >
+              {/* Icône plus en blanc */}
+              <Ionicons name="add" size={16} color={colors.white} />
+              {/* Libellé blanc du bouton */}
+              <Text style={styles.addFundsBtnText}>Approvisionner</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text
+            style={[styles.fundBalanceNumber, { textAlign: isRTL ? 'right' : 'left' }]}
+          >
+            {formatTND(familyFund.balance)}
+          </Text>
+          <Text
+            style={[styles.fundBalanceLabel, { textAlign: isRTL ? 'right' : 'left' }]}
+          >
+            Fonds disponibles pour les allocations du foyer
+          </Text>
+
+          <View style={styles.fundStatsDivider} />
+
+          <View style={styles.fundStatsRow}>
+            <View style={styles.fundStatItem}>
+              <Text style={styles.fundStatVal}>
+                {formatTND(familyFund.totalAllocated || 0)}
+              </Text>
+              <Text style={styles.fundStatLbl}>Total alloué</Text>
+            </View>
+            <View style={styles.fundStatSep} />
+            <View style={styles.fundStatItem}>
+              <Text style={styles.fundStatVal}>
+                {formatTND(totalFamilyExpenses)}
+              </Text>
+              <Text style={styles.fundStatLbl}>Dépenses famille</Text>
+            </View>
+            <View style={styles.fundStatSep} />
+            <View style={styles.fundStatItem}>
+              <Text style={styles.fundStatVal}>
+                {childrenList.length}
+              </Text>
+              <Text style={styles.fundStatLbl}>Enfants inscrits</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ACTIONS RAPIDES (4 BOUTONS CLÉS) */}
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push('/(admin)/enfants')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#E3F2FD' }]}>
+              <Ionicons name="person-add" size={20} color="#1565C0" />
+            </View>
+            <Text style={styles.quickActionLabel}>Ajouter Enfant</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push('/(admin)/finances')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#EAF7F0' }]}>
+              <Ionicons name="cash" size={20} color={colors.forest} />
+            </View>
+            <Text style={styles.quickActionLabel}>Donner Argent</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push('/(admin)/demandes')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#FFF3E0' }]}>
+              <Ionicons name="mail" size={20} color="#E65100" />
+            </View>
+            <Text style={styles.quickActionLabel}>Demandes</Text>
+            {pendingRequests.length > 0 && (
+              <View style={styles.quickActionBadge}>
+                <Text style={styles.quickActionBadgeText}>
+                  {pendingRequests.length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push('/(admin)/budget-analyses')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#F3E5F5' }]}>
+              <Ionicons name="pie-chart" size={20} color="#7B1FA2" />
+            </View>
+            <Text style={styles.quickActionLabel}>Budgets</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* DEMANDES D'ARGENT EN ATTENTE (SI PRÉSENTES) */}
+        {pendingRequests.length > 0 && (
+          <View style={styles.sectionWrap}>
+            <View
+              style={[
+                styles.sectionHeaderRow,
+                { flexDirection: isRTL ? 'row-reverse' : 'row' },
+              ]}
+            >
+              <SectionTitle style={{ marginBottom: 0 }}>
+                Demandes d’argent ({pendingRequests.length})
+              </SectionTitle>
+              <TouchableOpacity
+                onPress={() => router.push('/(admin)/demandes')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.seeAllText}>Tout voir</Text>
+              </TouchableOpacity>
+            </View>
+
+            {pendingRequests.slice(0, 3).map((req) => (
+              <View
+                key={req.id}
+                style={[
+                  styles.requestCard,
+                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                ]}
+              >
+                <View style={styles.requestChildAvatar}>
+                  <Ionicons name="person" size={20} color="#E65100" />
+                </View>
+
+                <View style={{ flex: 1, marginHorizontal: 10 }}>
+                  <Text style={styles.requestChildName}>{req.childName}</Text>
+                  <Text style={styles.requestReason}>
+                    {req.reason || 'Argent de poche'}
+                  </Text>
+                  <Text style={styles.requestAmount}>
+                    {formatTND(req.amount)}
+                  </Text>
+                </View>
+
+                <View style={styles.requestBtnCol}>
+                  <TouchableOpacity
+                    style={styles.approveBtn}
+                    onPress={() => handleRequestResponse(req.id, true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="checkmark" size={16} color={colors.white} />
+                    <Text style={styles.actionBtnText}>Approuver</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.rejectBtn}
+                    onPress={() => handleRequestResponse(req.id, false)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="close" size={16} color="#E11D48" />
+                    <Text style={[styles.actionBtnText, { color: '#E11D48' }]}>
+                      Rejeter
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* APERÇU DES ENFANTS DU FOYER */}
+        <View style={styles.sectionWrap}>
+          <View
+            style={[
+              styles.sectionHeaderRow,
+              { flexDirection: isRTL ? 'row-reverse' : 'row' },
+            ]}
+          >
+            <SectionTitle style={{ marginBottom: 0 }}>
+              Mes Enfants ({childrenList.length})
+            </SectionTitle>
+            <TouchableOpacity
+              onPress={() => router.push('/(admin)/enfants')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.seeAllText}>Gérer</Text>
+            </TouchableOpacity>
+          </View>
+
+          {childrenList.length === 0 ? (
+            <View style={styles.emptyCard}>
+              {/* Icône de deux personnes en contour ardoise */}
+              <Ionicons name="people-outline" size={44} color={colors.gray} />
+              {/* Titre d'état vide */}
+              <Text style={styles.emptyTitle}>Aucun enfant enregistré</Text>
+              {/* Explication incitant à la création du premier compte enfant */}
+              <Text style={styles.emptySub}>
+                Créez un compte pour votre enfant afin de lui allouer de l'argent de
+                poche et lui apprendre à gérer son budget.
+              </Text>
+              {/* Bouton centré d'ajout d'enfant conforme à la maquette */}
+              <TouchableOpacity
+                style={styles.emptyAddBtn}
+                onPress={() => router.push('/(admin)/enfants')}
+                activeOpacity={0.8}
+              >
+                {/* Texte blanc du bouton d'action */}
+                <Text style={styles.emptyAddBtnText}>+ Ajouter un enfant</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {childrenList.map((ch) => (
+                <View
+                  key={ch.id}
+                  style={[
+                    styles.childRowCard,
+                    { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                  ]}
+                >
+                  <View style={styles.childAvatar}>
+                    <Ionicons name="person-outline" size={22} color={colors.forest} />
+                  </View>
+
+                  <View style={{ flex: 1, marginHorizontal: 10 }}>
+                    <Text style={styles.childName}>{ch.name}</Text>
+                    <Text style={styles.childEmail}>{ch.email}</Text>
+                    <View style={styles.balanceTag}>
+                      <Text style={styles.balanceTagText}>
+                        Solde dispo : {formatTND(ch.balance || 0)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.giveMoneyBtn}
+                    onPress={() => openGiveModal(ch)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="gift-outline" size={16} color={colors.white} />
+                    <Text style={styles.giveMoneyBtnText}>Donner</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* ACTIVITÉ RÉCENTE DE LA FAMILLE */}
+        <View style={styles.sectionWrap}>
+          <View
+            style={[
+              styles.sectionHeaderRow,
+              { flexDirection: isRTL ? 'row-reverse' : 'row' },
+            ]}
+          >
+            <SectionTitle style={{ marginBottom: 0 }}>
+              Activité Récente
+            </SectionTitle>
+            <TouchableOpacity
+              onPress={() => router.push('/(admin)/historique')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.seeAllText}>Historique complet</Text>
+            </TouchableOpacity>
+          </View>
+
+          {myAllocations.length === 0 ? (
+            <View style={styles.emptyMiniCard}>
+              <Text style={styles.emptyMiniText}>
+                Aucun transfert d’argent réalisé pour l’instant.
+              </Text>
+            </View>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {myAllocations.slice(0, 4).map((alloc) => (
+                <View
+                  key={alloc.id}
+                  style={[
+                    styles.activityItem,
+                    { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                  ]}
+                >
+                  <View style={styles.activityIcon}>
+                    <Ionicons name="arrow-up" size={16} color={colors.forest} />
+                  </View>
+                  <View style={{ flex: 1, marginHorizontal: 8 }}>
+                    <Text style={styles.activityTitle}>
+                      Allocation à {alloc.childName}
+                    </Text>
+                    <Text style={styles.activitySub}>
+                      {alloc.note || 'Argent de poche'} · {alloc.date}
+                    </Text>
+                  </View>
+                  <Text style={styles.activityAmount}>
+                    −{formatTND(alloc.amount)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* MODAL RAPIDE "DONNER DE L'ARGENT" */}
+      <Modal
+        visible={giveMoneyModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGiveMoneyModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View
+              style={[
+                styles.modalHeader,
+                { flexDirection: isRTL ? 'row-reverse' : 'row' },
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>
+                  Allouer à {targetChild?.name}
+                </Text>
+                <Text style={styles.modalSub}>
+                  Réserve disponible : {formatTND(familyFund.balance)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setGiveMoneyModal(false)}
+                style={styles.modalClose}
+              >
+                <Ionicons name="close" size={20} color={colors.forest} />
+              </TouchableOpacity>
+            </View>
+
+            {giveError ? (
+              <AlertBanner tone="danger" title={t('erreur')} detail={giveError} />
+            ) : null}
+
+            <Input
+              label="Montant de l'allocation (TND)"
+              value={giveAmount}
+              onChangeText={(txt) => {
+                setGiveAmount(txt);
+                setGiveError('');
+              }}
+              keyboardType="decimal-pad"
+              placeholder="Ex: 25.000"
+              autoFocus
+            />
+
+            <Input
+              label="Motif ou note pour l'enfant"
+              value={giveNote}
+              onChangeText={setGiveNote}
+              placeholder="Ex: Semaine de cours, félicitations..."
+            />
+
+            <View style={styles.modalBtnGroup}>
+              <Button
+                label="Confirmer le virement"
+                onPress={submitGiveMoney}
+                loading={giveBusy}
+              />
+              <Button
+                label="Annuler"
+                variant="secondary"
+                onPress={() => setGiveMoneyModal(false)}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  headerRow: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  menuIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  headerGreeting: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.forest,
+  },
+  headerFamily: {
+    fontSize: 12,
+    color: colors.gray,
+    marginTop: 2,
+  },
+  notifBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  notifBadgeDot: {
+    position: 'absolute',
+    top: 9,
+    right: 10,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E11D48',
+  },
+  fundCard: {
+    backgroundColor: colors.forest,
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: colors.forest,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  fundCardHeader: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  fundBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  fundBadgeText: {
+    color: colors.mint,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  addFundsBtn: {
+    // Disposition horizontale de l'icône plus et du libellé
+    flexDirection: 'row',
+    // Alignement centré sur l'axe vertical
+    alignItems: 'center',
+    // Espacement horizontal entre l'icône et le texte
+    gap: 4,
+    // Fond vert foncé identique à la maquette Family Space
+    backgroundColor: '#1B4E44',
+    // Rembourrage horizontal confortable
+    paddingHorizontal: 12,
+    // Rembourrage vertical adapté au format pilule
+    paddingVertical: 6,
+    // Coins arrondis en pilule
+    borderRadius: 14,
+  },
+  addFundsBtnText: {
+    // Texte blanc contrasté sur fond vert foncé
+    color: colors.white,
+    // Taille de police nette
+    fontSize: 12,
+    // Graisse semi-bold affirmée
+    fontWeight: '700',
+  },
+  fundBalanceNumber: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: colors.white,
+    letterSpacing: 1,
+  },
+  fundBalanceLabel: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: 2,
+  },
+  fundStatsDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    marginVertical: 14,
+  },
+  fundStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  fundStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  fundStatVal: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.white,
+  },
+  fundStatLbl: {
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.65)',
+    marginTop: 2,
+  },
+  fundStatSep: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 20,
+  },
+  quickActionCard: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  quickActionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  quickActionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.forest,
+    textAlign: 'center',
+  },
+  quickActionBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: '#E11D48',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  quickActionBadgeText: {
+    color: colors.white,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  sectionWrap: {
+    marginBottom: 20,
+  },
+  sectionHeaderRow: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  seeAllText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  requestCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FFE0B2',
+  },
+  requestChildAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFF3E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestChildName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  requestReason: {
+    fontSize: 12,
+    color: colors.gray,
+    marginTop: 2,
+  },
+  requestAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#E65100',
+    marginTop: 2,
+  },
+  requestBtnCol: {
+    gap: 6,
+  },
+  approveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.forest,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  rejectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFE4E6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  actionBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  childRowCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  childAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EAF7F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  childName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  childEmail: {
+    fontSize: 11,
+    color: colors.gray,
+    marginTop: 1,
+  },
+  balanceTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#EAF7F0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  balanceTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  giveMoneyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.forest,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  giveMoneyBtnText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  emptyCard: {
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.forest,
+    marginTop: 10,
+  },
+  emptySub: {
+    fontSize: 13,
+    color: colors.gray,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginVertical: 10,
+  },
+  emptyAddBtn: {
+    // Fond vert forêt officiel
+    backgroundColor: colors.forest,
+    // Rembourrage horizontal généreux
+    paddingHorizontal: 22,
+    // Rembourrage vertical
+    paddingVertical: 10,
+    // Coins arrondis doux
+    borderRadius: 10,
+    // Espacement supérieur
+    marginTop: 6,
+  },
+  emptyAddBtnText: {
+    // Texte blanc contrasté
+    color: colors.white,
+    // Taille de police nette
+    fontSize: 13,
+    // Graisse semi-bold affirmée
+    fontWeight: '700',
+  },
+  emptyMiniCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  emptyMiniText: {
+    fontSize: 13,
+    color: colors.gray,
+  },
+  activityItem: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  activityIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EAF7F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activityTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  activitySub: {
+    fontSize: 11,
+    color: colors.gray,
+    marginTop: 2,
+  },
+  activityAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#E11D48',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.forest,
+  },
+  modalSub: {
+    fontSize: 12,
+    color: colors.gray,
+    marginTop: 2,
+  },
+  modalClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnGroup: {
+    gap: 10,
+    marginTop: 14,
+  },
+});

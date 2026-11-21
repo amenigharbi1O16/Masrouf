@@ -25,12 +25,16 @@
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
+// Composants natifs pour alertes et boutons tactiles
+import { Alert, Text, TouchableOpacity, View } from 'react-native';
 // Formulaire modulaire de saisie d'achat de produit
 import { PurchaseForm } from '@/components/PurchaseForm';
 // Conteneur d'écran avec retour arrière et gestion du défilement
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
 import { EmptyState, Eyebrow } from '@/components/ui';
+// Constantes graphiques du design system
+import { colors, radius } from '@/constants/theme';
 // Magasin d'état global connecté à SQLite
 import { useStore } from '@/state/store';
 // Système d'internationalisation et détection du sens d'écriture RTL
@@ -42,22 +46,51 @@ import { useTranslation } from '@/utils/i18n';
  *
  * RÔLE DANS L'APPLICATION :
  * Récupère l'achat ciblé par son ID dans SQLite et initialise le formulaire avec ses valeurs actuelles.
+ * Permet également la suppression définitive de l'achat avec confirmation.
  *
  * CE QUI EST AFFICHÉ À L'ÉCRAN :
- * Le formulaire pré-rempli avec les champs éditables (prix, quantité, magasin, date).
+ * Le formulaire pré-rempli avec les champs éditables (prix, quantité, magasin, date) et le bouton de suppression.
  */
 export default function EditPurchaseScreen() {
   // Hook de navigation Expo Router
   const router = useRouter();
   // Extraction de l'identifiant de l'achat passé dans l'URL (ex: /modifier-achat?id=...)
   const { id } = useLocalSearchParams<{ id: string }>();
-  // Extraction des achats de la base SQLite
-  const { db } = useStore();
+  // Extraction des achats de la base SQLite et des actions de mutation
+  const { db, actions } = useStore();
   // Fonctions de traduction et sens de lecture
   const { t, isRTL } = useTranslation();
 
   // Recherche de l'achat ciblé dans la liste hydratée depuis SQLite
   const purchase = db.purchases.find((p) => p.id === id);
+
+  // Fonction de suppression de l'achat avec confirmation
+  const handleDelete = () => {
+    // Alerte de confirmation native
+    Alert.alert(
+      // Titre
+      isRTL ? 'تأكيد الحذف' : 'Confirmer la suppression',
+      // Message
+      isRTL
+        ? 'هل أنت متأكد من حذف عملية الشراء هذه؟ لا يمكن التراجع عن هذه العملية.'
+        : 'Êtes-vous sûr de vouloir supprimer cet achat ? Cette action est irréversible.',
+      [
+        // Bouton Annuler
+        { text: isRTL ? 'إلغاء' : 'Annuler', style: 'cancel' },
+        // Bouton Supprimer
+        {
+          text: isRTL ? 'حذف' : 'Supprimer',
+          style: 'destructive',
+          onPress: () => {
+            // Suppression effective dans SQLite et dans le store
+            actions.deletePurchase(purchase!.id);
+            // Retour fluide
+            router.back();
+          },
+        },
+      ]
+    );
+  };
 
   // Sécurité : si l'achat a été supprimé ou est introuvable
   if (!purchase) {
@@ -111,6 +144,27 @@ export default function EditPurchaseScreen() {
           } as never);
         }}
       />
+
+      {/* Bouton de suppression définitive de l'achat */}
+      <View style={{ marginTop: 16, marginBottom: 24 }}>
+        <TouchableOpacity
+          onPress={handleDelete}
+          style={{
+            backgroundColor: '#FEE2E2',
+            paddingVertical: 14,
+            borderRadius: radius.card,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: colors.coral,
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={{ color: colors.coral, fontWeight: '700', fontSize: 14 }}>
+            {isRTL ? 'حذف عملية الشراء هذه' : 'Supprimer cet achat'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </Screen>
   );
 }
