@@ -27,10 +27,16 @@
  * - Le bouton secondaire clair 'Créer un compte' redirigeant vers `/inscription`.
  */
 
+// Icônes vectorielles Ionicons pour les boutons et indicateurs
 import { Ionicons } from '@expo/vector-icons';
+// Hooks de navigation et paramètres de route d'Expo Router
 import { useLocalSearchParams, useRouter } from 'expo-router';
+// React core et hook de gestion d'état local
 import React, { useState } from 'react';
+// Composants de base React Native pour le texte et les conteneurs
 import { Text, View } from 'react-native';
+// Logo officiel Masrouf vectoriel botanique
+import { MasroufLogo } from '@/components/MasroufLogo';
 // Sélecteur de langue interactif supérieur
 import { LanguageSelector } from '@/components/LanguageSelector';
 // Conteneur d'écran sans barre supérieure native (mode plain)
@@ -162,8 +168,8 @@ export default function LoginScreen() {
           alignItems: isRTL ? 'flex-end' : 'flex-start',
         }}
       >
-        {/* Icône de feuille vert menthe lumineuse */}
-        <Ionicons name="leaf" size={42} color={colors.mint} />
+        {/* Logo officiel Masrouf vectoriel en variante menthe pour fond sombre */}
+        <MasroufLogo size={46} variant="mint" />
         {/* Message d'accueil en lettres blanches */}
         <Text
           style={{

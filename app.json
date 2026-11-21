@@ -20,7 +20,10 @@
       "permissions": [
         "POST_NOTIFICATIONS",
         "VIBRATE",
-        "RECEIVE_BOOT_COMPLETED"
+        "RECEIVE_BOOT_COMPLETED",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -40,6 +43,13 @@
       ],
       "expo-sqlite",
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "L'application a besoin d'accéder à vos photos pour illustrer vos produits.",
+          "cameraPermission": "L'application a besoin d'accéder à votre appareil photo pour photographier vos produits."
+        }
+      ],
       [
         "expo-notifications",
         {

@@ -46,21 +46,21 @@ export default function RootIndex() {
     return <LoadingScreen />;
   }
 
-  // Étape 2 : Si aucun compte n'est connecté en session, on oriente vers la page d'authentification
+  // Étape 2 : Si aucun compte n'est connecté en session, on oriente vers la page d'accueil et découverte
   if (!me) {
-    return <Redirect href="/login" />;
+    return <Redirect href="/welcome" />;
   }
 
-  // Étape 3 : Si le compte connecté possède le rôle 'admin', on l'envoie vers son espace de gestion dédié
-  if (me.role === 'admin') {
-    return <Redirect href="/(admin)/dashboard" />;
+  // Étape 3 : Si mot de passe temporaire nécessitant un changement
+  if (me.mustChangePassword) {
+    return <Redirect href="/changer-mot-de-passe" />;
   }
 
-  // Étape 4 : Si le compte est un utilisateur normal qui n'a pas encore validé l'onboarding post-inscription
+  // Étape 4 : Si le compte n'a pas encore validé l'onboarding post-inscription (parents et utilisateurs)
   if (!me.onboarded) {
     return <Redirect href="/onboarding" />;
   }
 
-  // Étape 5 : Pour tout utilisateur normal avec session valide et catégories configurées, on ouvre l'accueil
+  // Étape 5 : Pour tout utilisateur authentifié (Parent, Enfant ou Individuel), redirection vers l'accueil
   return <Redirect href="/(tabs)" />;
 }

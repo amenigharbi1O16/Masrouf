@@ -30,9 +30,10 @@
  * - Un bouton secondaire clair 'Déjà un compte ? Se connecter' renvoyant vers `/login`.
  */
 
-import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // Sélecteur de langue universel interactif (FR, AR, EN)
 import { LanguageSelector } from '@/components/LanguageSelector';
 // Conteneur d'écran avec retour arrière vers le login
@@ -67,10 +68,16 @@ import {
 export default function RegistrationScreen() {
   // Hook de navigation Expo Router
   const router = useRouter();
+  const params = useLocalSearchParams<{ type?: string }>();
   // Méthode d'enregistrement de compte fournie par le contexte d'authentification
   const { register } = useAuth();
   // Fonctions de traduction et sens de lecture
   const { t, isRTL } = useTranslation();
+
+  // Type de compte choisi : Personnel par défaut ou Famille selon la sélection de l'accueil
+  const [accountType, setAccountType] = useState<'personal' | 'family'>(
+    params.type === 'family' ? 'family' : 'personal'
+  );
 
   // États locaux des champs du formulaire
   const [name, setName] = useState('');
@@ -121,8 +128,8 @@ export default function RegistrationScreen() {
     setError('');
     setBusy(true);
 
-    // Appel du service d'inscription cryptographique SQLite
-    const res = await register(name, email, password);
+    // Appel du service d'inscription cryptographique SQLite avec le type de compte
+    const res = await register(name, email, password, accountType);
     setBusy(false);
 
     // En cas d'échec retourné par SQLite (ex: adresse email déjà enregistrée)
@@ -138,9 +145,9 @@ export default function RegistrationScreen() {
   };
 
   return (
-    // Screen : conteneur avec titre 'Créer un compte' et flèche retour vers /login
-    <Screen title={t('creer_compte')} back onBack={() => router.replace('/login')}>
-      {/* Sélecteur de langue supérieur universel : permet de choisir l'arabe, le français ou l'anglais dès le départ */}
+    // Screen : conteneur avec titre 'Créer un compte' et flèche retour vers /welcome ou /login
+    <Screen title={t('creer_compte')} back onBack={() => router.replace('/welcome')}>
+      {/* Sélecteur de langue supérieur universel */}
       <LanguageSelector />
 
       {/* Surtitre institutionnel en lettres capitales */}
@@ -152,6 +159,81 @@ export default function RegistrationScreen() {
       <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
         {t('creer_compte')}
       </SectionTitle>
+
+      {/* Sélecteur de Type de Compte Interactif */}
+      <View style={styles.typeSelectorContainer}>
+        <TouchableOpacity
+          style={[
+            styles.typeOption,
+            accountType === 'personal' && styles.typeOptionActivePersonal,
+          ]}
+          onPress={() => setAccountType('personal')}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name="person"
+            size={18}
+            color={accountType === 'personal' ? colors.forest : colors.gray}
+          />
+          <Text
+            style={[
+              styles.typeOptionText,
+              accountType === 'personal' && styles.typeOptionTextActive,
+            ]}
+          >
+            {t('compte_personnel_titre')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.typeOption,
+            accountType === 'family' && styles.typeOptionActiveFamily,
+          ]}
+          onPress={() => setAccountType('family')}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name="people"
+            size={18}
+            color={accountType === 'family' ? '#1565C0' : colors.gray}
+          />
+          <Text
+            style={[
+              styles.typeOptionText,
+              accountType === 'family' && [styles.typeOptionTextActive, { color: '#1565C0' }],
+            ]}
+          >
+            {t('compte_famille_titre')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Bandeau d'information sur le mode choisi */}
+      <View
+        style={[
+          styles.accountNotice,
+          accountType === 'family'
+            ? { backgroundColor: '#E3F2FD', borderColor: '#90CAF9' }
+            : { backgroundColor: '#EAF7F0', borderColor: '#A5D6A7' },
+        ]}
+      >
+        <Ionicons
+          name={accountType === 'family' ? 'information-circle' : 'person-circle'}
+          size={18}
+          color={accountType === 'family' ? '#1565C0' : colors.forest}
+        />
+        <Text
+          style={[
+            styles.accountNoticeText,
+            { color: accountType === 'family' ? '#0D47A1' : colors.forest },
+          ]}
+        >
+          {accountType === 'family'
+            ? 'Compte Parent : Accès complet à l’Espace Personnel et à l’Espace Familial'
+            : 'Compte Personnel : Gestion individuelle autonome de vos achats et budgets'}
+        </Text>
+      </View>
 
       {/* Explication rassurante sur le stockage 100% local sur le smartphone */}
       <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
@@ -228,3 +310,56 @@ export default function RegistrationScreen() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  typeSelectorContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    marginVertical: 14,
+  },
+  typeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FAFAFA',
+  },
+  typeOptionActivePersonal: {
+    borderColor: colors.forest,
+    backgroundColor: '#EAF7F0',
+  },
+  typeOptionActiveFamily: {
+    borderColor: '#1565C0',
+    backgroundColor: '#E3F2FD',
+  },
+  typeOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray,
+  },
+  typeOptionTextActive: {
+    color: colors.forest,
+    fontWeight: '700',
+  },
+  accountNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  accountNoticeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+    lineHeight: 16,
+  },
+});

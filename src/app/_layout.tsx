@@ -66,23 +66,19 @@ function Gate({ children }: { children: React.ReactNode }) {
     // Si la base SQLite n'est pas encore prête, attendre la fin de l'initialisation
     if (!ready) return;
 
-    // Définition des routes publiques d'authentification (réservées aux personnes non connectées)
-    const isAuthRoute = first === 'login' || first === 'inscription';
+    // Définition des routes publiques d'authentification et de bienvenue (accessibles hors connexion)
+    const isAuthRoute =
+      first === 'login' || first === 'inscription' || first === 'welcome';
 
-    // CAS 1 : Aucun utilisateur connecté -> redirection vers la connexion sauf si route d'auth ou manuel d'utilisation
+    // CAS 1 : Aucun utilisateur connecté -> redirection vers l'accueil/découverte
     if (!me) {
-      // Autorise la consultation de login, inscription et du manuel d'utilisation officiel en mode déconnecté
       if (!isAuthRoute && first !== 'manuel-utilisation') {
-        router.replace('/login');
+        router.replace('/welcome');
       }
       return;
     }
 
-    // CAS 2 : Compte utilisateur suspendu ou désactivé par l'administrateur
-    if (!me.active) {
-      actions.logout();
-      return;
-    }
+    // CAS 2 : Règle Masrouf - Aucun compte n'est jamais suspendu ou bloqué
 
     // CAS 3 : Mot de passe temporaire nécessitant un changement immédiat
     if (me.mustChangePassword) {
@@ -92,26 +88,7 @@ function Gate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // CAS 4 : Rôle Administrateur connecté
-    if (me.role === 'admin') {
-      if (
-        first !== '(admin)' &&
-        first !== 'changer-mot-de-passe' &&
-        first !== 'notifications' &&
-        first !== 'manuel-utilisation'
-      ) {
-        router.replace('/(admin)/dashboard');
-      }
-      return;
-    }
-
-    // CAS 5 : Utilisateur normal tentant d'accéder aux routes d'administration
-    if (first === '(admin)') {
-      router.replace('/(tabs)');
-      return;
-    }
-
-    // CAS 6 : Utilisateur régulier qui n'a pas encore validé l'assistant d'accueil
+    // CAS 4 : Utilisateur ou Parent qui n'a pas encore validé l'onboarding post-inscription
     if (!me.onboarded) {
       if (first !== 'onboarding') {
         router.replace('/onboarding');
@@ -119,8 +96,25 @@ function Gate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // CAS 7 : Utilisateur normal connecté tentant d'accéder à login, inscription ou onboarding terminé
-    // La route 'manuel-utilisation' reste 100% accessible pour un utilisateur connecté
+    // Détection du rôle Parent (ou ancien admin)
+    const isParent = me.role === 'parent' || me.role === 'admin';
+
+    // CAS 5 : Rôle Parent connecté et initié
+    if (isParent) {
+      if (isAuthRoute || first === 'onboarding') {
+        router.replace('/(tabs)');
+        return;
+      }
+      return;
+    }
+
+    // CAS 6 : Utilisateur normal ou Enfant tentant d'accéder aux routes d'administration
+    if (first === '(admin)') {
+      router.replace('/(tabs)');
+      return;
+    }
+
+    // CAS 7 : Utilisateur normal ou Enfant connecté tentant d'accéder à auth ou onboarding déjà terminé
     if (isAuthRoute || first === 'onboarding') {
       router.replace(homeRouteFor(me) as never);
     }

@@ -23,14 +23,22 @@
  *   bannière d'aide bleue sur le budget, bouton vert 'Aller à l'accueil' et bouton 'Modifier ma sélection'.
  */
 
+// Icônes vectorielles Ionicons pour les boutons et puces
 import { Ionicons } from '@expo/vector-icons';
+// Hook de navigation impérative Expo Router
 import { useRouter } from 'expo-router';
+// React core et hook de gestion d'état d'étape
 import React, { useState } from 'react';
-import { Text, View } from 'react-native';
+// Composants de base React Native pour le texte et les conteneurs
+import { Text, TouchableOpacity, View } from 'react-native';
+// Logo officiel Masrouf vectoriel botanique
+import { MasroufLogo } from '@/components/MasroufLogo';
 // Ligne récapitulative stylisée avec icône et libellé
 import { TransactionRow } from '@/components/Cards';
 // Sélecteur visuel de catégories réutilisable
 import { CategoryPicker } from '@/components/CategoryPicker';
+// Modal de sélection et création de catégorie personnalisée
+import { CustomCategoryModal } from '@/components/CustomCategoryModal';
 // Conteneur d'écran avec retour conditionnel
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
@@ -64,25 +72,20 @@ export default function OnboardingScreen() {
   // Hook de navigation Expo Router pour rediriger vers la page d'accueil à la fin
   const router = useRouter();
   // Accès aux catégories de la base et à l'action de finalisation d'onboarding
-  const { db, actions } = useStore();
+  const { db, me, actions } = useStore();
   // Fonctions de traduction et sens de lecture
   const { t, isRTL, traduireCategorie } = useTranslation();
 
   // État local : numéro de l'étape en cours (1: Découverte, 2: Sélection, 3: Récapitulatif)
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  // État local : tableau des catégories sélectionnées
-  // Initialisé strictement à 0 (tableau vide []), puis s'incrémente ou se décrémente dynamiquement sans valeur codée en dur
+  // État local : tableau des identifiants des catégories sélectionnées
   const [selected, setSelected] = useState<string[]>([]);
+  // État local : affichage du modal d'ajout / création de catégorie
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
 
   /**
    * MISSION DE LA FONCTION :
    * Basculer l'état coché / décoché d'une catégorie donnée.
-   *
-   * RÔLE DANS L'APPLICATION :
-   * Permet à l'utilisateur de composer sa liste sur mesure à l'étape 2.
-   *
-   * CE QUI EST AFFICHÉ À L'ÉCRAN :
-   * Met à jour immédiatement le bouton tactile de la catégorie en vert foncé et recalcule le compteur du bouton de passage à l'étape 3.
    */
   const toggle = (id: string) =>
     setSelected((prev) =>
@@ -95,18 +98,12 @@ export default function OnboardingScreen() {
   /**
    * MISSION DE LA FONCTION :
    * Finaliser le parcours d'onboarding et enregistrer définitivement la sélection dans SQLite.
-   *
-   * RÔLE DANS L'APPLICATION :
-   * Appelle `actions.completeOnboarding` qui persiste les catégories dans la table `users`,
-   * passe le drapeau `onboarded = 1`, et redirige vers l'accueil `/(tabs)` sans aucun écran blanc.
-   *
-   * CE QUI EST AFFICHÉ À L'ÉCRAN :
-   * Fait basculer l'application vers le tableau de bord d'accueil complet avec les enveloppes configurées.
+   * Redirige l'utilisateur (parent ou standard) vers son tableau de bord principal.
    */
   const finish = () => {
     // Écriture synchrone dans SQLite via le store
     actions.completeOnboarding(selected);
-    // Redirection propre et définitive vers le tableau de bord principal
+    // Redirection vers le tableau de bord principal
     router.replace('/(tabs)');
   };
 
@@ -155,9 +152,9 @@ export default function OnboardingScreen() {
               alignItems: isRTL ? 'flex-end' : 'flex-start',
             }}
           >
-            {/* Icône de feuille menthe lumineuse */}
-            <Ionicons name="leaf" size={48} color={colors.mint} />
-            {/* Message d'accroche chaleureux en lettres blanches */}
+            {/* Logo officiel Masrouf vectoriel en variante menthe pour fond sombre */}
+            <MasroufLogo size={48} variant="mint" />
+            {/* Message d'accroche chaleureux en lettres blanches adapté au profil */}
             <Text
               style={{
                 color: colors.white,
@@ -167,7 +164,11 @@ export default function OnboardingScreen() {
                 textAlign: isRTL ? 'right' : 'left',
               }}
             >
-              {t('onboarding_titre_hero')}
+              {me?.role === 'child'
+                ? isRTL
+                  ? `مرحبًا ${me.name}، دعنا نبدأ في تنظيم مصروفك!`
+                  : `Bienvenue ${me.name}, découvrez comment gérer votre argent de poche !`
+                : t('onboarding_titre_hero')}
             </Text>
           </View>
 
@@ -217,19 +218,58 @@ export default function OnboardingScreen() {
             02 / 03 · {t('choisir_ce_que_vous_suivez').toUpperCase()}
           </Eyebrow>
 
-          {/* Titre et note explicative */}
-          <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-            {t('vie_quotidienne_organisee')}
-          </SectionTitle>
+          {/* Titre de la section de sélection des catégories et bouton d'ajout de catégorie */}
+          <View
+            style={{
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: 4,
+              marginBottom: 4,
+            }}
+          >
+            <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 0, flex: 1 }}>
+              {t('vie_quotidienne_organisee')}
+            </SectionTitle>
+
+            <TouchableOpacity
+              onPress={() => setCategoryModalOpen(true)}
+              style={{
+                flexDirection: isRTL ? 'row-reverse' : 'row',
+                alignItems: 'center',
+                backgroundColor: colors.mint,
+                paddingVertical: 6,
+                paddingHorizontal: 10,
+                borderRadius: 20,
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={16} color={colors.forest} style={{ marginHorizontal: 2 }} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.forest }}>
+                {t('ajouter_categorie')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Sous-titre expliquant que la sélection est modifiable à tout moment */}
           <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
             {t('changer_a_tout_moment')}
           </Body>
 
-          {/* Sélecteur de catégories : affiche la liste des rayons avec boutons tactiles réactifs */}
+          {/* Sélecteur de catégories : affiche uniquement les catégories existantes */}
           <CategoryPicker
             categories={db.categories}
             selected={selected}
             onToggle={toggle}
+          />
+
+          {/* Modal interactif d'ajout et création de catégorie */}
+          <CustomCategoryModal
+            visible={categoryModalOpen}
+            onClose={() => setCategoryModalOpen(false)}
+            onSuccess={(newCat) => {
+              setSelected((prev) => Array.from(new Set([...prev, newCat.id])));
+            }}
           />
 
           {/* Bouton vert de transition vers le récapitulatif avec compteur d'éléments */}
@@ -288,8 +328,11 @@ export default function OnboardingScreen() {
             detail={t('definir_depuis_accueil')}
           />
 
-          {/* Bouton vert forêt : validation finale et ouverture de la page d'accueil sans écran blanc */}
-          <Button label={t('aller_a_accueil')} onPress={finish} />
+          {/* Bouton vert forêt : validation finale vers l'accueil */}
+          <Button
+            label={t('aller_a_accueil')}
+            onPress={finish}
+          />
 
           {/* Bouton secondaire clair : permet de revenir à l'étape 2 pour ajuster la liste */}
           <Button
