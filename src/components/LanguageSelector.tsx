@@ -26,8 +26,9 @@ interface LanguageSelectorProps {
    * Variante visuelle :
    * - 'pills' : boutons sous forme de pastilles rondes (pour les écrans Login, Inscription, Réglages).
    * - 'drawer' : boutons textuels épurés séparés par des slashes pour le tiroir latéral.
+   * - 'discreet' : sélecteur minimaliste et discret pour l'écran de bienvenue botanique.
    */
-  variant?: 'pills' | 'drawer';
+  variant?: 'pills' | 'drawer' | 'discreet';
   /**
    * Indique si le sélecteur est affiché dans le tiroir utilisateur (taille de police légèrement augmentée pour lisibilité)
    */
@@ -99,6 +100,47 @@ export function LanguageSelector({ style, variant = 'pills', isUserDrawer = fals
                 </Text>
               </Pressable>
             </React.Fragment>
+          );
+        })}
+      </View>
+    );
+  }
+
+  // Affichage discret et épuré pour l'écran de bienvenue botanique
+  if (variant === 'discreet') {
+    const discreetOptions: { code: Langue; label: string }[] = [
+      { code: 'en', label: 'EN' },
+      { code: 'fr', label: 'FR' },
+      { code: 'ar', label: 'عربي' },
+    ];
+
+    return (
+      <View style={[styles.discreetContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }, style]}>
+        {discreetOptions.map((opt) => {
+          const active = langue === opt.code;
+          return (
+            <Pressable
+              key={opt.code}
+              onPress={() => changerLangue(opt.code)}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.discreetButton,
+                active && styles.discreetButtonActive,
+                pressed && { opacity: 0.7 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={opt.label}
+              accessibilityState={{ selected: active }}
+            >
+              <Text
+                style={[
+                  styles.discreetText,
+                  active ? styles.discreetTextActive : styles.discreetTextInactive,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
           );
         })}
       </View>
@@ -246,5 +288,38 @@ const styles = StyleSheet.create({
     // Graisse grasse marquant l'état sélectionné
     fontWeight: '700',
     opacity: 1,
+  },
+
+  // Styles de la variante discrète pour l'écran de bienvenue botanique
+  discreetContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(226, 231, 223, 0.7)',
+  },
+  discreetButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+  },
+  discreetButtonActive: {
+    backgroundColor: colors.mint,
+  },
+  discreetText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  discreetTextActive: {
+    color: colors.forest,
+    fontWeight: '800',
+  },
+  discreetTextInactive: {
+    color: colors.greyGreen,
   },
 });
