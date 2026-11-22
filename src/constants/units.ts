@@ -37,9 +37,13 @@
  * - `value` : Valeur technique brute stockée dans les colonnes SQLite `product.unit` et `purchase.unit`.
  * - `label` : Libellé textuel affiché dans l'interface et les fenêtres modales de sélection.
  */
-export const UNITS = ['L', 'mL', 'kg', 'g', 'pc'].map((u) => ({
-  // Valeur technique transmise aux requêtes SQL d'insertion/mise à jour
-  value: u,
-  // Libellé visuel présenté à l'utilisateur dans la liste de sélection
-  label: u,
-}));
+export const UNITS = [
+  // Option vide pour les produits sans unité physique de mesure (ex: vêtements, chaussures, accessoires)
+  { value: '', label: 'Aucune' },
+  ...['L', 'mL', 'kg', 'g', 'pc'].map((u) => ({
+    // Valeur technique transmise aux requêtes SQL d'insertion/mise à jour
+    value: u,
+    // Libellé visuel présenté à l'utilisateur dans la liste de sélection
+    label: u,
+  })),
+];

@@ -99,8 +99,19 @@ export default function ComparePriceScreen() {
   // Fonctions de traduction et sens de lecture
   const { t, isRTL } = useTranslation();
 
-  // Vérification de la présence d'une période sélectionnée avec budget alloué
-  const hasBudget = Boolean(selectedBudget && Number(selectedBudget.total) > 0);
+  const isChildUser = me?.role === 'child' || me?.accountType === 'child';
+  const activeBudget = selectedBudget ?? (me ? currentBudget(db, me.id) : null);
+  // Vérification de la présence d'un budget actif ou d'une allocation enfant
+  const hasBudget = Boolean(
+    (selectedBudget && Number(selectedBudget.total) > 0) ||
+    (activeBudget && Number(activeBudget.total) > 0) ||
+    isChildUser ||
+    (me && (
+      (me.balance !== undefined && me.balance > 0) ||
+      (me.allocatedTotal !== undefined && me.allocatedTotal > 0) ||
+      (me.budgetMensuel !== undefined && me.budgetMensuel > 0)
+    ))
+  );
 
   // Recherche de l'article dans le catalogue SQLite
   const product = db.products.find((p) => p.id === q.productId);
@@ -231,14 +242,22 @@ export default function ComparePriceScreen() {
       {prev ? (
         <InfoRow
           label={t('prix_unitaire_precedent')}
-          value={`${dt(unitOf(prev))} DT / ${prev.unit}`}
+          value={
+            prev.unit
+              ? `${dt(unitOf(prev))} DT / ${prev.unit}`
+              : `${dt(unitOf(prev))} DT`
+          }
         />
       ) : null}
 
       {/* Ligne affichant le nouveau prix unitaire calculé aujourd'hui */}
       <InfoRow
         label={t('nouveau_prix_unitaire')}
-        value={`${dt(newUnit)} DT / ${q.unit}`}
+        value={
+          q.unit
+            ? `${dt(newUnit)} DT / ${q.unit}`
+            : `${dt(newUnit)} DT`
+        }
         tone="good"
       />
 
@@ -293,8 +312,8 @@ export default function ComparePriceScreen() {
         </View>
       )}
 
-      {/* Bouton vert forêt : confirmation finale et écriture dans SQLite (désactivé si aucune période/budget) */}
-      <Button label={t('confirmer_achat_btn')} onPress={confirm} disabled={!hasBudget} />
+      {/* Bouton vert forêt : confirmation finale et écriture dans SQLite */}
+      <Button label={t('confirmer_achat_btn')} onPress={confirm} />
 
       {/* Bouton secondaire clair : permet de retourner corriger le prix ou la quantité */}
       <Button

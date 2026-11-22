@@ -24,13 +24,14 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { Screen } from '@/components/Screen';
 import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/components/ui';
 import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
+import { formatTND, todayISO } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
 import { getCategoryIcon } from '@/utils/categoryIcons';
 import { ouvrirManuelUtilisation } from '@/utils/pdf';
@@ -133,6 +134,31 @@ export default function SettingsScreen() {
   // État local indiquant si la confirmation de sauvegarde doit être affichée
   const [saved, setSaved] = useState(false);
 
+  const isChild = me?.role === 'child' || me?.accountType === 'child';
+
+  // Budget alloué au child par le parent sans aucun changement ni ajout
+  // Placé AVANT tout return conditionnel pour respecter strictement les règles des Hooks React
+  const childAllocatedBudget = useMemo(() => {
+    if (!isChild || !me) return 0;
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const startOfMonth = `${currentMonthKey}-01`;
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const endOfMonth = `${currentMonthKey}-${String(lastDay).padStart(2, '0')}`;
+
+    const chBudget =
+      db.budgets.find(
+        (b) => b.userId === me.id && (b.start.slice(0, 7) === currentMonthKey || (b.start <= todayISO() && todayISO() <= b.end))
+      ) || db.budgets.find((b) => b.userId === me.id);
+
+    const allocsInMonth = db.allocations
+      .filter((a) => a.childId === me.id && a.date >= startOfMonth && a.date <= endOfMonth)
+      .reduce((s, a) => s + a.amount, 0);
+
+    return chBudget?.total || allocsInMonth || me.allocatedTotal || me.balance || me.budgetMensuel || 0;
+  }, [isChild, db.budgets, db.allocations, me]);
+
+  // Sécurité : si aucun profil utilisateur n'est connecté
   if (!me) return null;
 
   // Catégories suivies par l'utilisateur
@@ -143,7 +169,7 @@ export default function SettingsScreen() {
   return (
     <Screen title={t('reglages')}>
       <Eyebrow style={{ textAlign: isRTL ? 'right' : 'left' }}>
-        {t('compte_personnel').toUpperCase()}
+        {(isChild ? t('compte_enfant') : t('compte_personnel')).toUpperCase()}
       </Eyebrow>
       {/* Champ de saisie pour modifier le nom complet de l'utilisateur */}
       <Input
@@ -157,6 +183,14 @@ export default function SettingsScreen() {
       />
       {/* Champ d'affichage en lecture seule de l'adresse e-mail de connexion */}
       <Input label={t('email')} value={me.email} editable={false} />
+      {/* Pour le compte enfant : affichage exact du budget alloué par le parent sans altération */}
+      {isChild ? (
+        <Input
+          label={t('budget_alloue') || 'Budget alloué par le parent'}
+          value={formatTND(childAllocatedBudget)}
+          editable={false}
+        />
+      ) : null}
       {/* Bannière de confirmation verte affichée dès que les modifications sont enregistrées */}
       {saved ? <AlertBanner tone="success" title={t('profil_enregistre')} /> : null}
       {/* Bouton d'action pour enregistrer le nouveau nom (actif uniquement si le nom a changé) */}
@@ -301,10 +335,21 @@ export default function SettingsScreen() {
       <Row
         icon="wallet-outline"
         label={t('budget_du_mois')}
-        detail={t('modifier_budget_detail')}
-        onPress={() =>
-          router.push({ pathname: '/budget-mois', params: { mode: 'edit' } } as never)
+        detail={
+          isChild
+            ? `${formatTND(childAllocatedBudget)} · ${t('budget_alloue_par_parent') || 'Alloué par le parent'}`
+            : t('modifier_budget_detail')
         }
+        onPress={() => {
+          if (isChild) {
+            Alert.alert(
+              t('compte_enfant') || 'Compte Enfant',
+              `${t('budget_alloue_par_parent') || 'Votre budget est alloué par vos parents'} : ${formatTND(childAllocatedBudget)}`
+            );
+            return;
+          }
+          router.push({ pathname: '/budget-mois', params: { mode: 'edit' } } as never);
+        }}
         isRTL={isRTL}
       />
       {/* Ligne cliquable vers l'écran d'activation/désactivation des catégories */}

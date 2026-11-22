@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -136,6 +137,17 @@ export default function MoneyRequestsScreen() {
       const willExceed = (catEnfantBudget > 0 && projectedSpent > catEnfantBudget) || catEnfantBudget === 0;
 
       if (willExceed) {
+        if (Platform.OS === 'web') {
+          const msg = isRTL
+            ? `الموافقة على هذا الطلب (${formatTND(req.amount)}) تتجاوز الميزانية المخصصة للأطفال (المتبقي: ${formatTND(remainingEnfantBudget)}). هل تريد تأكيد التحويل وتجاوز الميزانية؟`
+            : `L'approbation de cette demande de ${formatTND(req.amount)} dépasse le budget alloué à la catégorie « Enfant » (Budget restant : ${formatTND(remainingEnfantBudget)} / Prévu : ${formatTND(catEnfantBudget)}).\n\nSouhaitez-vous confirmer l'allocation malgré le dépassement ? L'opération sera marquée en rouge dans vos analyses.`;
+          const confirmed = typeof window !== 'undefined' ? window.confirm(msg) : true;
+          if (confirmed) {
+            await processResponse(reqId, true);
+          }
+          return;
+        }
+
         Alert.alert(
           isRTL ? 'تنبيه تجاوز الميزانية' : 'Dépassement du budget Enfant',
           isRTL

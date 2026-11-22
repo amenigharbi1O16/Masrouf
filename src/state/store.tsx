@@ -173,6 +173,10 @@ export interface Actions {
   setLanguage(langue: 'fr' | 'ar' | 'en'): void;
 }
 
+// Verrous anti-duplication pour les allocations
+let lastAllocationTimestamp = 0;
+let lastAllocationSignature = '';
+
 /** Interface du contexte Store fourni aux composants */
 interface Ctx {
   db: DB;
@@ -244,9 +248,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                       sqliteAddUser(u);
                     } catch { }
                   } else {
+                    const ex = loaded.users[existingIdx];
                     if (u.celebratedBudgetIds && u.celebratedBudgetIds.length > 0) {
-                      loaded.users[existingIdx].celebratedBudgetIds = u.celebratedBudgetIds;
+                      ex.celebratedBudgetIds = u.celebratedBudgetIds;
                     }
+                    // Restauration des catégories choisies si absentes dans SQLite
+                    if ((!ex.categoryIds || ex.categoryIds.length === 0) && u.categoryIds && u.categoryIds.length > 0) {
+                      ex.categoryIds = u.categoryIds;
+                      try {
+                        sqliteSetUserCategories(ex.id, u.categoryIds);
+                      } catch { }
+                    }
+                    // Préservation du statut enfant/parent
+                    if (u.role === 'child' || u.accountType === 'child') {
+                      ex.role = 'child';
+                      ex.accountType = 'child';
+                    }
+                    if (u.parentId && !ex.parentId) ex.parentId = u.parentId;
+                    if (u.familyId && !ex.familyId) ex.familyId = u.familyId;
+                    if (u.familyName && !ex.familyName) ex.familyName = u.familyName;
+                    if (u.balance !== undefined && !ex.balance) ex.balance = u.balance;
+                    if (u.allocatedTotal !== undefined && !ex.allocatedTotal) ex.allocatedTotal = u.allocatedTotal;
+                    if (u.budgetMensuel !== undefined && !ex.budgetMensuel) ex.budgetMensuel = u.budgetMensuel;
                   }
                 }
               }
@@ -269,8 +292,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               // C. Fusionner les produits : si un produit existe dans AsyncStorage mais pas encore dans SQLite
               if (Array.isArray(parsed.products)) {
                 for (const p of parsed.products) {
+                  const pName = String(p?.name || '').trim().toLowerCase();
                   const exists = loaded.products.some(
-                    (x) => x.id === p.id || (x.userId === p.userId && x.name.trim().toLowerCase() === p.name.trim().toLowerCase())
+                    (x) => x.id === p.id || (x.userId === p.userId && String(x?.name || '').trim().toLowerCase() === pName)
                   );
                   if (!exists) {
                     loaded.products.push(p);
@@ -315,6 +339,58 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                     loaded.notifications.push(n);
                     try {
                       sqliteSaveNotification(n);
+                    } catch { }
+                  }
+                }
+              }
+
+              // G. Fusionner les allocations familiales
+              if (Array.isArray(parsed.allocations)) {
+                for (const a of parsed.allocations) {
+                  const exists = (loaded.allocations || []).some((x) => x.id === a.id);
+                  if (!exists) {
+                    loaded.allocations = [a, ...(loaded.allocations || [])];
+                    try {
+                      sqliteAddAllocation(a);
+                    } catch { }
+                  }
+                }
+              }
+
+              // H. Fusionner les demandes d'argent
+              if (Array.isArray(parsed.moneyRequests)) {
+                for (const mr of parsed.moneyRequests) {
+                  const exists = (loaded.moneyRequests || []).some((x) => x.id === mr.id);
+                  if (!exists) {
+                    loaded.moneyRequests = [mr, ...(loaded.moneyRequests || [])];
+                    try {
+                      sqliteAddMoneyRequest(mr);
+                    } catch { }
+                  }
+                }
+              }
+
+              // I. Fusionner la réserve financière familiale
+              if (Array.isArray(parsed.familyFunds)) {
+                for (const ff of parsed.familyFunds) {
+                  const exists = (loaded.familyFunds || []).some((x) => x.id === ff.id || x.parentId === ff.parentId);
+                  if (!exists) {
+                    loaded.familyFunds = [ff, ...(loaded.familyFunds || [])];
+                    try {
+                      sqliteSaveFamilyFund(ff);
+                    } catch { }
+                  }
+                }
+              }
+
+              // J. Fusionner les budgets familiaux
+              if (Array.isArray(parsed.familyBudgets)) {
+                for (const fb of parsed.familyBudgets) {
+                  const exists = (loaded.familyBudgets || []).some((x) => x.id === fb.id);
+                  if (!exists) {
+                    loaded.familyBudgets = [fb, ...(loaded.familyBudgets || [])];
+                    try {
+                      sqliteSaveFamilyBudget(fb);
                     } catch { }
                   }
                 }
@@ -673,28 +749,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             (u) => u.role === 'child' && (u.parentId === currentUserId || u.familyId === currentUserObj.familyId)
           );
 
-          // 3. Assigner automatiquement aux budgets des enfants
+          // 3. Assigner automatiquement aux budgets des enfants sans écraser leurs allocations directes
           if (familyChildren.length > 0 && totalEnfantAllocated > 0) {
             const perChildAmount = Math.round((totalEnfantAllocated / familyChildren.length) * 1000) / 1000;
             for (const child of familyChildren) {
               const existingChildBudget = d.budgets.find(
                 (bg) => bg.userId === child.id && (bg.start === start || bg.start.slice(0, 7) === monthKey)
               );
+              const effectiveAmount = child.allocatedTotal && child.allocatedTotal > 0
+                ? child.allocatedTotal
+                : perChildAmount;
               const childBudgetId = existingChildBudget?.id || uid();
               const childBudget: Budget = {
                 id: childBudgetId,
                 userId: child.id,
                 start,
                 end,
-                total: perChildAmount,
+                total: effectiveAmount,
                 allocations: existingChildBudget?.allocations || {},
               };
               sqliteSaveBudget(childBudget);
               childBudgetsToAdd.push(childBudget);
 
               // Mettre à jour le budget_mensuel dans SQLite pour l'enfant
-              sqliteUpdateUser(child.id, { budget_mensuel: perChildAmount });
-              patchUser(child.id, { budgetMensuel: perChildAmount });
+              sqliteUpdateUser(child.id, { budget_mensuel: effectiveAmount, allocatedTotal: effectiveAmount });
+              patchUser(child.id, { budgetMensuel: effectiveAmount, allocatedTotal: effectiveAmount });
             }
           }
 
@@ -773,14 +852,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
         // Si le produit existe déjà, on réutilise sa fiche au lieu de créer un doublon
         if (existing) {
-          // Préparation des éventuels champs à compléter (marque, unité, photo)
+          // Préparation des éventuels champs à compléter (marque, unité, photo, catégorie)
           const patch: Partial<Product> = {};
-          // Mise à jour de la marque si elle était absente
-          if (p.brand && !existing.brand) patch.brand = p.brand.trim();
-          // Mise à jour de l'unité si elle était absente
-          if (p.unit && !existing.unit) patch.unit = p.unit;
-          // Mise à jour de la photo si elle était absente
-          if (p.photo && !existing.photo) patch.photo = p.photo;
+          // Mise à jour de la marque si spécifiée et modifiée
+          if (p.brand && existing.brand !== p.brand.trim()) patch.brand = p.brand.trim();
+          // Mise à jour de l'unité si modifiée ou spécifiée (accepte aussi chaîne vide '')
+          if (p.unit !== undefined && p.unit !== existing.unit) patch.unit = p.unit;
+          // Conservation et synchronisation rigoureuse de la catégorie allouée
+          if (p.categoryId && p.categoryId !== existing.categoryId) patch.categoryId = p.categoryId;
+          // Mise à jour de la photo si elle était absente ou modifiée
+          if (p.photo && (!existing.photo || existing.photo !== p.photo)) patch.photo = p.photo;
 
           // Si des enrichissements sont nécessaires
           if (Object.keys(patch).length > 0) {
@@ -1390,6 +1471,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       // 21. Allocation d'argent d'un parent vers un compte enfant
       allocateMoney(childId, amount, note) {
+        // Protection stricte contre la duplication rapide (double-clic)
+        const nowMs = Date.now();
+        const allocSig = `${childId}-${amount.toFixed(3)}`;
+        if (lastAllocationSignature === allocSig && nowMs - lastAllocationTimestamp < 2500) {
+          return { ok: true };
+        }
+        lastAllocationSignature = allocSig;
+        lastAllocationTimestamp = nowMs;
+
         // Récupération de l'instantané de la base SQLite
         const d = dbRef.current!;
         // Récupération de l'identifiant du parent connecté
@@ -1405,7 +1495,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (amount <= 0) return { ok: false, error: 'Le montant doit être supérieur à zéro.' };
 
         // Recherche du compte enfant destinataire rattaché à la famille
-        const child = d.users.find((u) => u.id === childId && u.role === 'child');
+        const child = d.users.find((u) => u.id === childId && (u.role === 'child' || u.accountType === 'child'));
         // Erreur si l'enfant n'est pas trouvé
         if (!child) return { ok: false, error: 'Enfant introuvable dans votre famille.' };
 
@@ -1432,26 +1522,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           fund = { id: uid(), parentId: parent.id, balance: 0, totalContributions: 0, updatedAt: todayISO() };
         }
 
-        // Décrémentation du solde de la réserve familiale et cumul des allocations
-        const newFundBalance = Math.max(0, fund.balance - amount);
+        // Décrémentation du solde de la réserve familiale et cumul des allocations avec arrondi strict
+        const newFundBalance = Math.max(0, Math.round(((fund.balance || 0) - amount) * 1000) / 1000);
         // Mise à jour de l'objet réserve
         fund = {
           ...fund,
           balance: newFundBalance,
-          totalAllocated: (fund.totalAllocated || 0) + amount,
+          totalAllocated: Math.round(((fund.totalAllocated || 0) + amount) * 1000) / 1000,
           updatedAt: todayISO(),
         };
         // Persistance dans SQLite
         sqliteSaveFamilyFund(fund);
 
-        // Incrémentation du solde disponible et du total alloué pour l'enfant
-        const newChildBalance = (child.balance || 0) + amount;
+        // Incrémentation du solde disponible et du total alloué pour l'enfant avec arrondi strict
+        const newChildBalance = Math.round(((child.balance || 0) + amount) * 1000) / 1000;
         // Nouveau montant cumulé alloué
-        const newChildAllocated = (child.allocatedTotal || 0) + amount;
+        const newChildAllocated = Math.round(((child.allocatedTotal || 0) + amount) * 1000) / 1000;
         // Mise à jour en mémoire du profil de l'enfant
-        patchUser(child.id, { balance: newChildBalance, allocatedTotal: newChildAllocated });
+        patchUser(child.id, { balance: newChildBalance, allocatedTotal: newChildAllocated, budgetMensuel: newChildAllocated });
         // Sauvegarde durable du profil de l'enfant dans SQLite
-        sqliteUpdateUser(child.id, { balance: newChildBalance, allocatedTotal: newChildAllocated });
+        sqliteUpdateUser(child.id, { balance: newChildBalance, allocatedTotal: newChildAllocated, budget_mensuel: newChildAllocated });
 
         // Calcul des bornes du mois en cours pour le budget personnel de l'enfant
         const dateNow = new Date();
@@ -1464,15 +1554,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
         // Recherche du budget actif de l'enfant pour le mois en cours
         const existingChildBudget = d.budgets.find(
-          (b) => b.userId === child.id && b.start === currentMonthStart
+          (b) => b.userId === child.id && (b.start === currentMonthStart || b.start.slice(0, 7) === currentMonthStart.slice(0, 7))
         );
 
         // Tableau mis à jour des budgets
         let updatedBudgets = d.budgets;
         // Si le budget enfant existe déjà pour le mois
         if (existingChildBudget) {
-          // Nouveau total budgétaire cumulé
-          const updatedChildTotal = (existingChildBudget.total || 0) + amount;
+          // Nouveau total budgétaire cumulé exactement égal au montant alloué sans doublon
+          const updatedChildTotal = newChildAllocated;
           // Mise à jour dans SQLite via sqliteSaveBudget
           sqliteSaveBudget({ ...existingChildBudget, total: updatedChildTotal });
           // Mise à jour de la liste locale
@@ -1486,7 +1576,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             userId: child.id,
             start: currentMonthStart,
             end: currentMonthEnd,
-            total: amount,
+            total: newChildAllocated,
             allocations: {},
           };
           // Insertion dans SQLite via sqliteSaveBudget
@@ -1505,8 +1595,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           childId: child.id,
           // Nom de l'enfant
           childName: child.name,
-          // Montant alloué
-          amount,
+          // Montant alloué arrondi au millime
+          amount: Math.round(amount * 1000) / 1000,
           // Note descriptive optionnelle
           note: note || undefined,
           // Date du jour
@@ -1529,8 +1619,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           userId: parent.id,
           // Catégorie « Enfant »
           categoryId: catEnfant.id,
-          // Montant déduit du budget parent
-          amount,
+          // Montant déduit du budget parent arrondi au millime
+          amount: Math.round(amount * 1000) / 1000,
           // Date de l'opération
           date: todayISO(),
           // Note détaillée précisant l'enfant destinataire
@@ -1628,17 +1718,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // Si le don reste pour le même enfant
         if (oldChildId === newChildId) {
           // Différence de montant
-          const diff = newAmount - oldAmount;
+          const diff = Math.round((newAmount - oldAmount) * 1000) / 1000;
           // Si l'enfant existe
           if (targetChild) {
             // Nouveau solde de l'enfant
-            const updatedBalance = Math.max(0, (targetChild.balance || 0) + diff);
+            const updatedBalance = Math.max(0, Math.round(((targetChild.balance || 0) + diff) * 1000) / 1000);
             // Nouveau cumul alloué
-            const updatedAllocated = Math.max(0, (targetChild.allocatedTotal || 0) + diff);
+            const updatedAllocated = Math.max(0, Math.round(((targetChild.allocatedTotal || 0) + diff) * 1000) / 1000);
             // Mise à jour locale du profil enfant
-            patchUser(targetChild.id, { balance: updatedBalance, allocatedTotal: updatedAllocated });
+            patchUser(targetChild.id, { balance: updatedBalance, allocatedTotal: updatedAllocated, budgetMensuel: updatedAllocated });
             // Mise à jour dans SQLite
-            sqliteUpdateUser(targetChild.id, { balance: updatedBalance, allocatedTotal: updatedAllocated });
+            sqliteUpdateUser(targetChild.id, { balance: updatedBalance, allocatedTotal: updatedAllocated, budget_mensuel: updatedAllocated });
+            // Mise à jour du budget enfant
+            const chBg = d.budgets.find((b) => b.userId === targetChild.id);
+            if (chBg) {
+              const newTotal = Math.max(0, Math.round(((chBg.total || 0) + diff) * 1000) / 1000);
+              sqliteSaveBudget({ ...chBg, total: newTotal });
+            }
           }
         } else {
           // Si l'enfant a changé : annulation sur l'ancien enfant
@@ -1646,24 +1742,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           // Si l'ancien enfant existe
           if (oldChild) {
             // Décrémentation du solde de l'ancien enfant
-            const updatedOldBalance = Math.max(0, (oldChild.balance || 0) - oldAmount);
+            const updatedOldBalance = Math.max(0, Math.round(((oldChild.balance || 0) - oldAmount) * 1000) / 1000);
             // Décrémentation du cumul alloué de l'ancien enfant
-            const updatedOldAllocated = Math.max(0, (oldChild.allocatedTotal || 0) - oldAmount);
+            const updatedOldAllocated = Math.max(0, Math.round(((oldChild.allocatedTotal || 0) - oldAmount) * 1000) / 1000);
             // Mise à jour locale de l'ancien enfant
-            patchUser(oldChild.id, { balance: updatedOldBalance, allocatedTotal: updatedOldAllocated });
+            patchUser(oldChild.id, { balance: updatedOldBalance, allocatedTotal: updatedOldAllocated, budgetMensuel: updatedOldAllocated });
             // Mise à jour SQLite de l'ancien enfant
-            sqliteUpdateUser(oldChild.id, { balance: updatedOldBalance, allocatedTotal: updatedOldAllocated });
+            sqliteUpdateUser(oldChild.id, { balance: updatedOldBalance, allocatedTotal: updatedOldAllocated, budget_mensuel: updatedOldAllocated });
+            const oldBg = d.budgets.find((b) => b.userId === oldChild.id);
+            if (oldBg) {
+              const newTotal = Math.max(0, Math.round(((oldBg.total || 0) - oldAmount) * 1000) / 1000);
+              sqliteSaveBudget({ ...oldBg, total: newTotal });
+            }
           }
           // Crédit sur le nouvel enfant
           if (targetChild) {
             // Incrémentation du solde du nouvel enfant
-            const updatedNewBalance = (targetChild.balance || 0) + newAmount;
+            const updatedNewBalance = Math.round(((targetChild.balance || 0) + newAmount) * 1000) / 1000;
             // Incrémentation du cumul alloué du nouvel enfant
-            const updatedNewAllocated = (targetChild.allocatedTotal || 0) + newAmount;
+            const updatedNewAllocated = Math.round(((targetChild.allocatedTotal || 0) + newAmount) * 1000) / 1000;
             // Mise à jour locale du nouvel enfant
-            patchUser(targetChild.id, { balance: updatedNewBalance, allocatedTotal: updatedNewAllocated });
+            patchUser(targetChild.id, { balance: updatedNewBalance, allocatedTotal: updatedNewAllocated, budgetMensuel: updatedNewAllocated });
             // Mise à jour SQLite du nouvel enfant
-            sqliteUpdateUser(targetChild.id, { balance: updatedNewBalance, allocatedTotal: updatedNewAllocated });
+            sqliteUpdateUser(targetChild.id, { balance: updatedNewBalance, allocatedTotal: updatedNewAllocated, budget_mensuel: updatedNewAllocated });
+            const newBg = d.budgets.find((b) => b.userId === targetChild.id);
+            if (newBg) {
+              const newTotal = Math.round(((newBg.total || 0) + newAmount) * 1000) / 1000;
+              sqliteSaveBudget({ ...newBg, total: newTotal });
+            }
           }
         }
 
@@ -1756,14 +1862,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const child = d.users.find((u) => u.id === targetAlloc.childId);
         // Si l'enfant existe
         if (child) {
-          // Nouveau solde ajusté
-          const updatedBalance = Math.max(0, (child.balance || 0) - targetAlloc.amount);
-          // Nouveau cumul alloué ajusté
-          const updatedAllocated = Math.max(0, (child.allocatedTotal || 0) - targetAlloc.amount);
+          // Nouveau solde ajusté avec arrondi strict
+          const updatedBalance = Math.max(0, Math.round(((child.balance || 0) - targetAlloc.amount) * 1000) / 1000);
+          // Nouveau cumul alloué ajusté avec arrondi strict
+          const updatedAllocated = Math.max(0, Math.round(((child.allocatedTotal || 0) - targetAlloc.amount) * 1000) / 1000);
           // Mise à jour locale du profil enfant
-          patchUser(child.id, { balance: updatedBalance, allocatedTotal: updatedAllocated });
+          patchUser(child.id, { balance: updatedBalance, allocatedTotal: updatedAllocated, budgetMensuel: updatedAllocated });
           // Mise à jour dans SQLite
-          sqliteUpdateUser(child.id, { balance: updatedBalance, allocatedTotal: updatedAllocated });
+          sqliteUpdateUser(child.id, { balance: updatedBalance, allocatedTotal: updatedAllocated, budget_mensuel: updatedAllocated });
+          // Mise à jour du budget enfant
+          const chBg = d.budgets.find((b) => b.userId === child.id);
+          if (chBg) {
+            const newTotal = Math.max(0, Math.round(((chBg.total || 0) - targetAlloc.amount) * 1000) / 1000);
+            sqliteSaveBudget({ ...chBg, total: newTotal });
+          }
         }
 
         // 3. Supprimer la dépense parent liée dans la catégorie Enfant

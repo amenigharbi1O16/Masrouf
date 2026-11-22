@@ -86,7 +86,8 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
   const { visible, close } = useDrawer();
 
   // Données de l'utilisateur connecté, statut administrateur et fonction de déconnexion
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isChild } = useAuth();
+  const isChildUser = isChild || user?.role === 'child' || user?.accountType === 'child';
 
   // Traduction et gestion de l'alignement RTL pour l'arabe
   const { t, isRTL, langue } = useTranslation();
@@ -260,7 +261,7 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                   ]}
                 >
                   <Ionicons
-                    name={isAdmin ? 'shield-checkmark' : 'person-circle'}
+                    name={isAdmin ? 'shield-checkmark' : (isChildUser ? 'sparkles' : 'person-circle')}
                     size={isAdmin ? 24 : 36}
                     color={colors.mint}
                   />
@@ -276,7 +277,7 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    {user?.name || (isAdmin ? t('administrateur') : t('compte_personnel'))}
+                    {user?.name || (isAdmin ? t('administrateur') : (isChildUser ? (t('compte_enfant') || 'Compte Enfant') : t('compte_personnel')))}
                   </Text>
                   {/* Badge de rôle avec typographie et espacement améliorés pour l'utilisateur */}
                   <View
@@ -295,7 +296,7 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                       ]}
                       numberOfLines={1}
                     >
-                      {subtitle}
+                      {isChildUser ? (t('compte_enfant') || 'Compte Enfant') : subtitle}
                     </Text>
                   </View>
                 </View>

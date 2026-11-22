@@ -41,6 +41,7 @@ import {
   addDays,
   daysBetween,
   fmtRange,
+  formatTND,
   getExactMonthBounds,
   isValidISO,
   money,
@@ -157,15 +158,33 @@ export default function BudgetPeriodScreen() {
   if (!me) return null;
 
   // Sécurité : le compte enfant a son budget fixé par son parent et ne peut pas l'éditer
-  if (me.role === 'child') {
+  const isChild = me.role === 'child' || me.accountType === 'child';
+  if (isChild) {
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const startOfMonth = `${currentMonthKey}-01`;
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const endOfMonth = `${currentMonthKey}-${String(lastDay).padStart(2, '0')}`;
+
+    const chBudget =
+      db.budgets.find(
+        (b) => b.userId === me.id && (b.start.slice(0, 7) === currentMonthKey || (b.start <= todayISO() && todayISO() <= b.end))
+      ) || db.budgets.find((b) => b.userId === me.id);
+
+    const allocsInMonth = db.allocations
+      .filter((a) => a.childId === me.id && a.date >= startOfMonth && a.date <= endOfMonth)
+      .reduce((s, a) => s + a.amount, 0);
+
+    const childAllocatedBudget = me.allocatedTotal || chBudget?.total || allocsInMonth || me.balance || me.budgetMensuel || 0;
+
     // Rendu en lecture seule informant que le budget est géré par le parent
     return (
       <Screen title={t('budget')} back onBack={() => router.replace('/(tabs)')}>
-        {/* Bannière explicative sur l'allocation parentale */}
+        {/* Bannière explicative sur l'allocation parentale avec montant exact sans altération */}
         <AlertBanner
           tone="info"
           title={t('compte_enfant')}
-          detail={t('budget_alloue_par_parent')}
+          detail={`${t('budget_alloue_par_parent')} (${formatTND(childAllocatedBudget)})`}
         />
         {/* Bouton de retour vers le tableau de bord */}
         <Button

@@ -160,7 +160,7 @@ export async function loadDBFromSQLite(): Promise<DB> {
     return {
       id: String(r.id),
       name: isEnfant ? CANONICAL_ENFANT_NAME : r.name_key,
-      kind: r.type as 'product' | 'expense',
+      kind: isEnfant ? 'expense' : (r.type as 'product' | 'expense'),
       active: r.is_active === 1,
       userId: r.user_id ? String(r.user_id) : undefined,
       description: r.description || undefined,
@@ -170,6 +170,26 @@ export async function loadDBFromSQLite(): Promise<DB> {
       createdAt: r.created_at || undefined,
     };
   });
+
+  // Garantie que la catégorie Enfant est toujours présente dans les dépenses actives
+  const hasEnfant = categories.some((c) => isChildrenCategory(c));
+  if (!hasEnfant) {
+    const canonicalEnfant: Category = {
+      id: CANONICAL_ENFANT_ID,
+      name: CANONICAL_ENFANT_NAME,
+      kind: 'expense',
+      active: true,
+      scope: 'family',
+    };
+    categories.push(canonicalEnfant);
+  } else {
+    for (const c of categories) {
+      if (isChildrenCategory(c)) {
+        c.kind = 'expense';
+        c.active = true;
+      }
+    }
+  }
 
   // Dictionnaire des pourcentages par défaut par identifiant de catégorie
   const defaultPercentages = Object.fromEntries(
@@ -277,8 +297,9 @@ export async function loadDBFromSQLite(): Promise<DB> {
       'SELECT category_id FROM user_category WHERE user_id = ? AND enabled = 1',
       [u.id]
     );
-    const role: Role = u.role === 'admin' ? 'admin' : u.role === 'child' ? 'child' : 'user';
-    const isFamily = role === 'admin' || u.account_type === 'family';
+    const role: Role = u.role === 'admin' ? 'admin' : (u.role === 'child' || u.account_type === 'child') ? 'child' : (u.role === 'parent' || u.account_type === 'family') ? 'parent' : 'user';
+    const accountType = u.account_type || (role === 'child' ? 'child' : (role === 'admin' || role === 'parent') ? 'family' : 'personal');
+    const isFamily = role === 'admin' || role === 'parent' || accountType === 'family';
     return {
       id: String(u.id),
       name: u.name,
@@ -294,9 +315,10 @@ export async function loadDBFromSQLite(): Promise<DB> {
       langue: u.langue || 'fr',
       parentId: u.parent_id ? String(u.parent_id) : undefined,
       familyId: u.family_id ? String(u.family_id) : (isFamily ? `fam-${u.id}` : undefined),
-      accountType: u.account_type || (role === 'admin' ? 'family' : role === 'child' ? 'child' : 'personal'),
+      accountType,
       balance: Number(u.balance) || 0,
       allocatedTotal: Number(u.allocated_total) || 0,
+      budgetMensuel: Number(u.budget_mensuel) || 0,
       familyName: u.family_name || (isFamily ? 'Famille Ben Ali' : undefined),
     };
   });
@@ -402,7 +424,7 @@ export async function loadDBFromSQLite(): Promise<DB> {
       name: p.name,
       brand: p.brand || '',
       categoryId: String(p.category_id),
-      unit: p.unit || 'pc',
+      unit: p.unit !== undefined && p.unit !== null ? p.unit : '',
       photo: p.photo_path || undefined,
     }));
   } catch { }
@@ -429,7 +451,7 @@ export async function loadDBFromSQLite(): Promise<DB> {
       productId: String(pu.product_id),
       price: pu.price,
       quantity: pu.quantity || 1,
-      unit: pu.unit || 'pc',
+      unit: pu.unit !== undefined && pu.unit !== null ? pu.unit : '',
       store: pu.store || 'Magasin',
       date: pu.date || todayISO(),
     }));
@@ -654,6 +676,23 @@ export async function loadDBFromSQLite(): Promise<DB> {
 // ============================================================
 
 /**
+ * Résout un identifiant utilisateur (numérique ou chaîne) vers son ID SQLite numérique correspondant.
+ */
+export function resolveNumericUserId(userId: string | number | undefined): number {
+  if (!userId) return 1;
+  const num = Number(userId);
+  if (Number.isFinite(num) && num > 0) return num;
+  try {
+    const row = db.getFirstSync<{ id: number }>(
+      'SELECT id FROM user WHERE id = ? OR email = ? COLLATE NOCASE',
+      [String(userId), String(userId)]
+    );
+    if (row?.id) return row.id;
+  } catch {}
+  return 1;
+}
+
+/**
  * Insère un nouvel utilisateur dans la table SQLite `user`.
  * @param user Objet utilisateur complet contenant le hash de mot de passe.
  */
@@ -701,11 +740,7 @@ export function sqliteAddUser(user: User): string {
  */
 export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
   try {
-    let numId = Number(id);
-    if (!Number.isFinite(numId) || numId <= 0) {
-      const uRow = db.getFirstSync<{ id: number }>('SELECT id FROM user WHERE email = ?', [id]);
-      if (uRow?.id) numId = uRow.id;
-    }
+    let numId = resolveNumericUserId(id);
     if (!Number.isFinite(numId) || numId <= 0) return;
     if (patch.name !== undefined) {
       db.runSync('UPDATE user SET name = ? WHERE id = ?', [patch.name, numId]);
@@ -715,6 +750,26 @@ export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
     }
     if (patch.passwordHash !== undefined) {
       db.runSync('UPDATE user SET password_hash = ? WHERE id = ?', [patch.passwordHash, numId]);
+    }
+    if (patch.role !== undefined) {
+      try {
+        db.runSync('UPDATE user SET role = ? WHERE id = ?', [patch.role, numId]);
+      } catch {}
+    }
+    if (patch.accountType !== undefined) {
+      try {
+        db.runSync('UPDATE user SET account_type = ? WHERE id = ?', [patch.accountType, numId]);
+      } catch {}
+    }
+    if (patch.parentId !== undefined) {
+      try {
+        db.runSync('UPDATE user SET parent_id = ? WHERE id = ?', [patch.parentId, numId]);
+      } catch {}
+    }
+    if (patch.familyId !== undefined) {
+      try {
+        db.runSync('UPDATE user SET family_id = ? WHERE id = ?', [patch.familyId, numId]);
+      } catch {}
     }
     if (patch.active !== undefined) {
       db.runSync('UPDATE user SET is_active = ? WHERE id = ?', [patch.active ? 1 : 0, numId]);
@@ -738,6 +793,12 @@ export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
         db.runSync('UPDATE user SET allocated_total = ? WHERE id = ?', [patch.allocatedTotal, numId]);
       } catch { }
     }
+    if (patch.budgetMensuel !== undefined || patch.budget_mensuel !== undefined) {
+      const bVal = patch.budgetMensuel ?? patch.budget_mensuel ?? 0;
+      try {
+        db.runSync('UPDATE user SET budget_mensuel = ? WHERE id = ?', [bVal, numId]);
+      } catch { }
+    }
     if (patch.familyName !== undefined) {
       try {
         db.runSync('UPDATE user SET family_name = ? WHERE id = ?', [patch.familyName, numId]);
@@ -756,11 +817,7 @@ export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
  */
 export function sqliteSetUserCategories(userId: string, categoryIds: string[]): void {
   try {
-    let numUserId = Number(userId);
-    if (!Number.isFinite(numUserId) || numUserId <= 0) {
-      const uRow = db.getFirstSync<{ id: number }>('SELECT id FROM user WHERE email = ?', [userId]);
-      if (uRow?.id) numUserId = uRow.id;
-    }
+    let numUserId = resolveNumericUserId(userId);
     if (!Number.isFinite(numUserId) || numUserId <= 0) return;
 
     db.runSync('DELETE FROM user_category WHERE user_id = ?', [numUserId]);
@@ -768,8 +825,8 @@ export function sqliteSetUserCategories(userId: string, categoryIds: string[]): 
       let numCatId = Number(catId);
       if (!Number.isFinite(numCatId) || numCatId <= 0) {
         const row = db.getFirstSync<{ id: number }>(
-          'SELECT id FROM category WHERE name_key = ? COLLATE NOCASE',
-          [catId]
+          'SELECT id FROM category WHERE id = ? OR name_key = ? COLLATE NOCASE',
+          [catId, catId]
         );
         if (row?.id) numCatId = row.id;
       }
@@ -793,7 +850,7 @@ export function sqliteSetUserCategories(userId: string, categoryIds: string[]): 
  */
 export function sqliteSaveBudget(budget: Budget): string {
   try {
-    const numUserId = Number(budget.userId);
+    const numUserId = resolveNumericUserId(budget.userId);
     // Conservation fidèle des dates exactes de la période choisie par l'utilisateur
     const start = budget.start;
     const end = budget.end;
@@ -835,7 +892,14 @@ export function sqliteSaveBudget(budget: Budget): string {
       try {
         db.runSync('DELETE FROM envelope WHERE budget_id = ?', [budgetDbId]);
         for (const [catIdStr, montant] of Object.entries(budget.allocations)) {
-          const numCatId = Number(catIdStr);
+          let numCatId = Number(catIdStr);
+          if (!Number.isFinite(numCatId) || numCatId <= 0) {
+            const catRow = db.getFirstSync<{ id: number }>(
+              'SELECT id FROM category WHERE name_key = ? COLLATE NOCASE',
+              [catIdStr]
+            );
+            if (catRow?.id) numCatId = catRow.id;
+          }
           if (numCatId > 0) {
             db.runSync(
               'INSERT OR REPLACE INTO envelope (budget_id, category_id, amount) VALUES (?, ?, ?)',
@@ -856,7 +920,14 @@ export function sqliteSaveBudget(budget: Budget): string {
 
     // 4. Table category_budget : montants alloués par catégorie
     for (const [catIdStr, montant] of Object.entries(budget.allocations)) {
-      const numCatId = Number(catIdStr);
+      let numCatId = Number(catIdStr);
+      if (!Number.isFinite(numCatId) || numCatId <= 0) {
+        const catRow = db.getFirstSync<{ id: number }>(
+          'SELECT id FROM category WHERE name_key = ? COLLATE NOCASE',
+          [catIdStr]
+        );
+        if (catRow?.id) numCatId = catRow.id;
+      }
       if (numCatId > 0) {
         db.runSync(
           'INSERT OR REPLACE INTO category_budget (user_id, month, category_id, amount) VALUES (?, ?, ?, ?)',
@@ -878,10 +949,20 @@ export function sqliteSaveBudget(budget: Budget): string {
  */
 export function sqliteAddProduct(product: Product): string {
   try {
+    let catId = Number(product.categoryId);
+    if (!catId || isNaN(catId)) {
+      const catRow = db.getFirstSync<{ id: number }>(
+        'SELECT id FROM category WHERE id = ? OR name_key = ? COLLATE NOCASE',
+        [product.categoryId, product.categoryId]
+      );
+      catId = catRow?.id ?? 1;
+    }
+    const unitVal = product.unit ?? '';
+    const userIdNum = resolveNumericUserId(product.userId);
     // Insertion dans la table relationnelle product avec association à l'utilisateur (user_id)
     const res = db.runSync(
       'INSERT INTO product (name, brand, category_id, unit, photo_path, user_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [product.name, product.brand, Number(product.categoryId) || 1, product.unit, product.photo || '', Number(product.userId) || 1]
+      [product.name, product.brand, catId, unitVal, product.photo || '', userIdNum]
     );
     return String(res.lastInsertRowId);
   } catch (e) {
@@ -905,10 +986,18 @@ export function sqliteUpdateProduct(id: string, patch: Partial<Product>): void {
       db.runSync('UPDATE product SET brand = ? WHERE id = ?', [patch.brand, numId]);
     }
     if (patch.categoryId !== undefined) {
-      db.runSync('UPDATE product SET category_id = ? WHERE id = ?', [Number(patch.categoryId) || 1, numId]);
+      let catId = Number(patch.categoryId);
+      if (!catId || isNaN(catId)) {
+        const catRow = db.getFirstSync<{ id: number }>(
+          'SELECT id FROM category WHERE id = ? OR name_key = ? COLLATE NOCASE',
+          [patch.categoryId, patch.categoryId]
+        );
+        catId = catRow?.id ?? 1;
+      }
+      db.runSync('UPDATE product SET category_id = ? WHERE id = ?', [catId, numId]);
     }
     if (patch.unit !== undefined) {
-      db.runSync('UPDATE product SET unit = ? WHERE id = ?', [patch.unit, numId]);
+      db.runSync('UPDATE product SET unit = ? WHERE id = ?', [patch.unit ?? '', numId]);
     }
     if (patch.photo !== undefined) {
       db.runSync('UPDATE product SET photo_path = ? WHERE id = ?', [patch.photo || '', numId]);
@@ -932,9 +1021,11 @@ export function sqliteAddPurchase(purchase: Purchase): string {
       [Number(purchase.productId) || 1]
     );
     const categoryId = prodRow?.category_id ?? 1;
+    const unitVal = purchase.unit ?? '';
+    const userIdNum = resolveNumericUserId(purchase.userId);
     const res = db.runSync(
       'INSERT INTO purchase (product_id, user_id, category_id, store, quantity, unit, price, date, month) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [Number(purchase.productId) || 1, Number(purchase.userId) || 1, categoryId, purchase.store, purchase.quantity, purchase.unit, purchase.price, purchase.date, month]
+      [Number(purchase.productId) || 1, userIdNum, categoryId, purchase.store, purchase.quantity, unitVal, purchase.price, purchase.date, month]
     );
     return String(res.lastInsertRowId);
   } catch (e) {
@@ -972,15 +1063,6 @@ export function sqliteUpdatePurchase(id: string, patch: Partial<Purchase>): void
  * Enregistre une dépense forfaitaire courante dans la table `expense`.
  * @param expense Objet dépense contenant montant, catégorie, note et date.
  */
-/**
- * MISSION DE LA FONCTION : sqliteAddExpense
- *   Enregistre une dépense forfaitaire courante dans la table relationnelle `expense`.
- * RÔLE DANS L'APPLICATION :
- *   Insère le montant, l'utilisateur, la catégorie résolue et la date dans SQLite.
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Met à jour immédiatement le solde consommé et le montant restant de l'enveloppe budgétaire.
- * @returns Identifiant persistant de la dépense dans SQLite.
- */
 export function sqliteAddExpense(expense: Expense): string {
   try {
     // Calcul de la période mensuelle au format AAAA-MM
@@ -997,10 +1079,11 @@ export function sqliteAddExpense(expense: Expense): string {
       // Affectation de l'ID trouvé ou repli sur 1
       catId = row?.id ?? 1;
     }
+    const userIdNum = resolveNumericUserId(expense.userId);
     // Insertion persistante dans la table expense
     const res = db.runSync(
       'INSERT INTO expense (user_id, category_id, amount, label, date, month) VALUES (?, ?, ?, ?, ?, ?)',
-      [Number(expense.userId) || 1, catId, expense.amount, expense.note, expense.date, month]
+      [userIdNum, catId, expense.amount, expense.note, expense.date, month]
     );
     return String(res.lastInsertRowId);
   } catch (e) {
@@ -1274,12 +1357,13 @@ export function sqliteSaveFamilyBudget(b: FamilyBudget): void {
  */
 export function sqliteSaveNotification(n: InAppNotification): void {
   try {
+    const numUserId = resolveNumericUserId(n.userId);
     db.runSync(
       `INSERT OR REPLACE INTO notification (id, user_id, budget_id, type, title, body, reason, action_recommended, period_label, amount, threshold, is_read, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         n.id,
-        Number(n.userId) || 1,
+        numUserId,
         n.periodId ? Number(n.periodId) || null : null,
         n.type,
         n.title,
@@ -1316,7 +1400,8 @@ export function sqliteMarkNotificationRead(id: string): void {
  */
 export function sqliteMarkAllNotificationsRead(userId: string): void {
   try {
-    db.runSync('UPDATE notification SET is_read = 1 WHERE user_id = ?', [Number(userId) || 1]);
+    const numUserId = resolveNumericUserId(userId);
+    db.runSync('UPDATE notification SET is_read = 1 WHERE user_id = ?', [numUserId]);
   } catch (e) {
     console.warn('sqliteMarkAllNotificationsRead error:', e);
   }

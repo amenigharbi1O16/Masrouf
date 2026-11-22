@@ -33,7 +33,7 @@ export function AppDrawer() {
   const { me } = useStore();
 
   // Si c'est un compte enfant, badge "Compte Enfant", sinon "Compte Personnel"
-  const isChild = me?.role === 'child';
+  const isChild = me?.role === 'child' || me?.accountType === 'child';
   const subtitle = isChild
     ? (t('compte_enfant') || 'Compte Enfant')
     : (t('compte_personnel') || 'Compte Personnel');

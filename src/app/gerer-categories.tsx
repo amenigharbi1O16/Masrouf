@@ -26,10 +26,11 @@
 
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 // Composant réutilisable de sélection de catégories avec cartes tactiles et boutons bascule
 import { CategoryPicker } from '@/components/CategoryPicker';
+import { CustomCategoryModal } from '@/components/CustomCategoryModal';
 // Conteneur d'écran avec retour arrière et gestion du défilement
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
@@ -57,6 +58,8 @@ export default function ManageCategoriesScreen() {
   // État local : tableau contenant les IDs des catégories actuellement sélectionnées par l'utilisateur
   const [selected, setSelected] = useState<string[]>(me?.categoryIds ?? []);
   const [deleteError, setDeleteError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [addModalOpen, setAddModalOpen] = useState(false);
 
   const toggle = (id: string) =>
     setSelected((prev) =>
@@ -67,6 +70,25 @@ export default function ManageCategoriesScreen() {
     const cat = db.categories.find((c) => c.id === id);
     const catName = cat?.name ?? '';
 
+    const doDelete = () => {
+      const res = actions.deleteCustomCategory(id);
+      if (!res.ok) {
+        setDeleteError(res.error ?? t('supprimer_categorie_impossible_utilisee'));
+      } else {
+        setSelected((prev) => prev.filter((x) => x !== id));
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined'
+        ? window.confirm(`Voulez-vous vraiment supprimer la catégorie "${catName}" ?`)
+        : true;
+      if (confirmed) {
+        doDelete();
+      }
+      return;
+    }
+
     Alert.alert(
       t('confirmer'),
       `Voulez-vous vraiment supprimer la catégorie "${catName}" ?`,
@@ -75,14 +97,7 @@ export default function ManageCategoriesScreen() {
         {
           text: t('supprimer'),
           style: 'destructive',
-          onPress: () => {
-            const res = actions.deleteCustomCategory(id);
-            if (!res.ok) {
-              setDeleteError(res.error ?? t('supprimer_categorie_impossible_utilisee'));
-            } else {
-              setSelected((prev) => prev.filter((x) => x !== id));
-            }
-          },
+          onPress: doDelete,
         },
       ]
     );
@@ -90,7 +105,11 @@ export default function ManageCategoriesScreen() {
 
   const handleSave = () => {
     actions.setUserCategories(selected);
-    router.back();
+    Alert.alert(
+      isRTL ? 'نجاح' : 'Succès',
+      isRTL ? 'تم حفظ الفئات بنجاح!' : 'Catégories enregistrées avec succès !',
+      [{ text: 'OK', onPress: () => router.back() }]
+    );
   };
 
   return (
@@ -101,7 +120,7 @@ export default function ManageCategoriesScreen() {
         {t('choisissez_ce_que_vous_suivez')}
       </Eyebrow>
 
-      {/* Titre de la section */}
+      {/* Titre de la section avec bouton d'ajout de catégorie */}
       <View
         style={[
           styles.headerRow,
@@ -111,12 +130,30 @@ export default function ManageCategoriesScreen() {
         <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', flex: 1, marginBottom: 0 }}>
           {t('vos_categories')}
         </SectionTitle>
+
+        <TouchableOpacity
+          style={[styles.addBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+          onPress={() => setAddModalOpen(true)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={16} color={colors.white} />
+          <Text style={styles.addBtnText}>{t('ajouter_categorie')}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Explication rassurante */}
       <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
         {t('categories_separation_explication')}
       </Body>
+
+      {/* Message de succès après ajout d'une catégorie */}
+      {successMsg ? (
+        <AlertBanner
+          tone="success"
+          title={isRTL ? 'نجاح' : 'Succès'}
+          detail={successMsg}
+        />
+      ) : null}
 
       {/* Alerte si tentative de suppression d'une catégorie utilisée */}
       {deleteError ? (
@@ -155,6 +192,22 @@ export default function ManageCategoriesScreen() {
         label={t('annuler')}
         variant="secondary"
         onPress={() => router.back()}
+      />
+
+      {/* Modal d'ajout de catégorie */}
+      <CustomCategoryModal
+        visible={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        onSuccess={(cat) => {
+          setSelected((prev) => Array.from(new Set([...prev, cat.id])));
+          setSuccessMsg(
+            isRTL
+              ? `تمت إضافة فئة "${cat.name}" بنجاح!`
+              : `La catégorie "${cat.name}" a été ajoutée avec succès !`
+          );
+          setTimeout(() => setSuccessMsg(''), 5000);
+        }}
+        scope={me?.role === 'parent' || me?.role === 'admin' ? 'family' : 'personal'}
       />
     </Screen>
   );

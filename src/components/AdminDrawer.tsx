@@ -159,21 +159,21 @@ export function AdminDrawer() {
     href: string;
     badge?: number;
   }> = [
-    // 1. Accueil
-    { label: t('accueil'), icon: 'home-outline', href: '/(tabs)' },
-    // 2. Enfants
-    { label: t('enfants'), icon: 'people-outline', href: '/(admin)/enfants', badge: childrenList.length },
-    // 3. Produits
-    { label: t('produits'), icon: 'bag-outline', href: '/(tabs)/produits' },
-    // 4. Calendrier & Historique
-    { label: t('calendrier_historique') || 'Calendrier & Historique', icon: 'calendar-outline', href: '/(tabs)/calendrier' },
-    // 5. Budgets & Analyses
-    { label: t('budgets_analyses'), icon: 'pie-chart-outline', href: '/(admin)/budget-analyses' },
-    // 6. Notifications
-    { label: t('notifications'), icon: 'notifications-outline', href: '/notifications' },
-    // 7. Réglages
-    { label: t('reglages'), icon: 'settings-outline', href: '/(tabs)/reglages' },
-  ];
+      // 1. Accueil
+      { label: t('accueil'), icon: 'home-outline', href: '/(tabs)' },
+      // 2. Enfants
+      { label: t('enfants'), icon: 'people-outline', href: '/(admin)/enfants', badge: childrenList.length },
+      // 3. Produits
+      { label: t('produits'), icon: 'bag-outline', href: '/(tabs)/produits' },
+      // 4. Calendrier & Historique
+      { label: t('calendrier_historique') || 'Calendrier & Historique', icon: 'calendar-outline', href: '/(tabs)/calendrier' },
+      // 5. Budgets & Analyses
+      { label: t('budgets_analyses'), icon: 'pie-chart-outline', href: '/(admin)/budget-analyses' },
+      // 6. Notifications
+      { label: t('notifications'), icon: 'notifications-outline', href: '/notifications' },
+      // 7. Réglages
+      { label: t('reglages'), icon: 'settings-outline', href: '/(tabs)/reglages' },
+    ];
 
   return (
     // Modal plein écran transparent pour contenir le tiroir
@@ -201,15 +201,15 @@ export function AdminDrawer() {
             styles.drawer,
             isRTL
               ? {
-                  right: 0,
-                  borderTopLeftRadius: radius.hero,
-                  borderBottomLeftRadius: radius.hero,
-                }
+                right: 0,
+                borderTopLeftRadius: radius.hero,
+                borderBottomLeftRadius: radius.hero,
+              }
               : {
-                  left: 0,
-                  borderTopRightRadius: radius.hero,
-                  borderBottomRightRadius: radius.hero,
-                },
+                left: 0,
+                borderTopRightRadius: radius.hero,
+                borderBottomRightRadius: radius.hero,
+              },
             {
               width: drawerW,
               transform: [{ translateX: x }],

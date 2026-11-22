@@ -316,11 +316,11 @@ export function productPurchases(db: DB, productId: string): Purchase[] {
   }
 
   // Normalisation du nom de l'article pour comparaison insensible à la casse
-  const normName = prod.name.trim().toLowerCase();
+  const normName = String(prod?.name || '').trim().toLowerCase();
   // Recherche de tous les identifiants de produits partageant le même nom normalisé pour cet utilisateur
   const matchingProductIds = new Set(
     db.products
-      .filter((p) => (p.userId === prod.userId || !p.userId) && p.name.trim().toLowerCase() === normName)
+      .filter((p) => (p.userId === prod.userId || !p.userId) && String(p?.name || '').trim().toLowerCase() === normName)
       .map((p) => p.id)
   );
   // Ajout garanti de l'identifiant passé en paramètre

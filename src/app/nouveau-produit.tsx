@@ -27,7 +27,7 @@
 // Outils de navigation Expo Router
 import { useRouter } from 'expo-router';
 // Hooks d'état React
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 // Composants visuels et interactifs React Native
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 // Icônes vectorielles Ionicons
@@ -69,13 +69,28 @@ export default function AddProductScreen() {
   // Fonctions de traduction et sens de lecture
   const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
-  // Filtrage des catégories de produits actives sélectionnées par l'utilisateur
-  const cats = db.categories.filter(
-    (c) => c.kind === 'product' && c.active && (me?.categoryIds ?? []).includes(c.id)
-  );
+  // Extraction des catégories sélectionnées par l'utilisateur (onboarding, paramètres, allocations de budget ou créations personnalisées)
+  const userCatSet = useMemo(() => {
+    const set = new Set<string>();
+    (me?.categoryIds ?? []).forEach((id) => set.add(String(id).toLowerCase()));
+    if (selectedBudget?.allocations) {
+      Object.keys(selectedBudget.allocations).forEach((id) => set.add(String(id).toLowerCase()));
+    }
+    return set;
+  }, [me?.categoryIds, selectedBudget?.allocations]);
 
-  // Catégories de secours si l'utilisateur n'en a pas encore sélectionné
-  const availableCats = cats.length > 0 ? cats : db.categories.filter((c) => c.kind === 'product');
+  // Toutes les catégories sélectionnées par l'utilisateur qui concernent le type d'achat produits
+  const availableCats = useMemo(() => {
+    const productCats = db.categories.filter((c) => c.kind === 'product');
+    const selected = productCats.filter(
+      (c) =>
+        userCatSet.has(String(c.id).toLowerCase()) ||
+        userCatSet.has(c.name.toLowerCase()) ||
+        (me?.id && c.userId === me.id)
+    );
+    // Si l'utilisateur a des catégories de produits sélectionnées, toutes les afficher ; sinon afficher toutes les catégories de produits
+    return selected.length > 0 ? selected : productCats;
+  }, [db.categories, userCatSet, me?.id]);
 
   // États locaux des champs du produit et de son ticket de caisse
   // Nom de l'article (ex: Huile d'olive)
@@ -87,13 +102,21 @@ export default function AddProductScreen() {
   // Contrôle d'affichage de la modal de sélection de source photo (Caméra vs Galerie)
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
   // Catégorie sélectionnée (par défaut la première disponible)
-  const [categoryId, setCategoryId] = useState(availableCats[0]?.id ?? 'food');
+  const [categoryId, setCategoryId] = useState(availableCats[0]?.id ?? '');
+
+  // Synchronisation de la catégorie sélectionnée avec les catégories disponibles
+  useEffect(() => {
+    if (availableCats.length > 0 && !availableCats.some((c) => c.id === categoryId)) {
+      setCategoryId(availableCats[0].id);
+    }
+  }, [availableCats, categoryId]);
+
   // Prix total payé en Dinars Tunisiens (ex: 14.500)
   const [price, setPrice] = useState('');
   // Quantité achetée (par défaut 1)
   const [quantity, setQuantity] = useState('1');
-  // Unité physique (par défaut Litre 'L')
-  const [unit, setUnit] = useState('L');
+  // Unité physique (optionnelle, vide par défaut pour vêtements/articles sans unité)
+  const [unit, setUnit] = useState('');
   // Magasin d'achat (ex: Monoprix)
   const [store, setStore] = useState('');
 
@@ -156,7 +179,7 @@ export default function AddProductScreen() {
       name: name.trim(),
       brand: brand.trim(),
       categoryId,
-      unit,
+      unit: (unit || '').trim(),
       photo,
     });
 
@@ -165,7 +188,7 @@ export default function AddProductScreen() {
       productId,
       price: p,
       quantity: q,
-      unit,
+      unit: (unit || '').trim(),
       store: store.trim(),
       date,
     });

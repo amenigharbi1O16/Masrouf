@@ -777,6 +777,7 @@
   "solde_enfant": "الرصيد المتاح",
   "argent_de_poche": "مصروف الجيب",
   "compte_enfant": "حساب الابن",
+  "budget_alloue": "الميزانية المخصصة من الولي",
   "budget_alloue_par_parent": "تم تحديد ميزانيتك الشهرية من قبل الولي ولا يمكن تعديلها من هذا الحساب.",
   "reinitialiser_mot_de_passe": "إعادة تعيين كلمة المرور",
   "part_parent": "نصيب الولي",
@@ -821,5 +822,9 @@
   "confirmer_virement": "تأكيد التحويل",
   "saisie_libre": "إدخال حر",
   "dons_et_charite": "تبرعات وصدقات",
-  "prevu_vs_realise": "المخطط مقابل الفعلي"
+  "prevu_vs_realise": "المخطط مقابل الفعلي",
+  "succes": "نجاح",
+  "categorie_ajoutee_succes": "تمت إضافة الفئة بنجاح!",
+  "categories_enregistrees_succes": "تم حفظ الفئات بنجاح!",
+  "langue_detectee": "اللغة المكتشفة"
 }

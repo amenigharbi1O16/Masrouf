@@ -23,6 +23,7 @@ import { SelectField } from './SelectField';
 import { AlertBanner, Button, Hint, Input } from './ui';
 // Sélecteurs de calcul financier SQLite (budget en cours, dépenses par catégorie)
 import { currentBudget, spentByCategory } from '@/state/selectors';
+import { isChildrenCategory, CANONICAL_ENFANT_ID } from '@/utils/categoryMatching';
 // Magasin d'état global SQLite
 import { useStore } from '@/state/store';
 // Fonctions utilitaires de calcul et dates
@@ -85,31 +86,32 @@ export function ExpenseForm({
   // Mots-clés de détection pour les 5 catégories garanties pour Ines
   const inesKeywords = ['aliment', 'food', 'transport', 'facture', 'bill', 'loisir', 'entertain', 'épargne', 'epargne', 'saving'];
 
-  // Sélection et filtrage de toutes les catégories allouées ou choisies par l'utilisateur
+  // Sélection et filtrage de toutes les catégories de dépenses disponibles
   const cats = db.categories.filter((c) => {
     // Si la catégorie est désactivée et n'est pas celle déjà sélectionnée, on ne l'affiche pas
     if (!c.active && c.id !== initial?.categoryId) return false;
 
-    // 1. Inclusion si la catégorie fait partie du budget alloué actif
+    // 0. La catégorie Enfant doit TOUJOURS être présente dans les dépenses
+    if (isChildrenCategory(c) || c.id === CANONICAL_ENFANT_ID) return true;
+
+    // 1. Toutes les catégories de dépenses actives du système ou personnalisées
+    if (c.kind === 'expense') return true;
+
+    // 2. Inclusion si la catégorie fait partie du budget alloué actif
     if (allocatedCatIds.includes(c.id)) return true;
 
-    // 2. Inclusion si la catégorie a été choisie par l'utilisateur dans son profil
+    // 3. Inclusion si la catégorie a été choisie par l'utilisateur dans son profil
     if (userCatIds.includes(c.id)) return true;
 
-    // 3. Inclusion si c'est la catégorie initiale de la dépense en cours d'édition
+    // 4. Inclusion si c'est la catégorie initiale de la dépense en cours d'édition
     if (c.id === initial?.categoryId) return true;
 
-    // 4. Pour Ines Ben Ali : garantie stricte d'affichage des 5 catégories allouées (Alimentation, Transport, Factures, Loisirs, Épargne)
+    // 5. Pour Ines Ben Ali : garantie stricte d'affichage des 5 catégories allouées (Alimentation, Transport, Factures, Loisirs, Épargne)
     if (isInes) {
       // Normalisation du nom de la catégorie pour tester les mots-clés
       const nameLower = c.name.toLowerCase();
       // Vérification si le nom contient l'un des mots-clés prévus
       if (inesKeywords.some((kw) => nameLower.includes(kw))) return true;
-    }
-
-    // 5. Repli : si aucune catégorie n'est allouée ou choisie, afficher les catégories de type 'expense' actives
-    if (allocatedCatIds.length === 0 && userCatIds.length === 0 && c.kind === 'expense') {
-      return true;
     }
 
     // Exclusion des autres catégories

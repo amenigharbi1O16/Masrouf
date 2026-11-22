@@ -36,6 +36,7 @@ import { useTranslation } from '@/utils/i18n';
 import { getCategoryIcon } from '@/utils/categoryIcons';
 // Composant de titre de section réutilisable
 import { SectionTitle } from './ui';
+import { isChildrenCategory } from '@/utils/categoryMatching';
 
 interface CategoryPickerProps {
   categories: Category[];
@@ -67,8 +68,8 @@ export function CategoryPicker({
 
   // Découpage des catégories en deux groupes distincts (Produits vs Dépenses)
   const groups: [string, Category[]][] = [
-    [t('categories_produits'), categories.filter((c) => c.kind === 'product' && c.active)],
-    [t('categories_depenses'), categories.filter((c) => c.kind === 'expense' && c.active)],
+    [t('categories_produits'), categories.filter((c) => c.kind === 'product' && !isChildrenCategory(c) && c.active)],
+    [t('categories_depenses'), categories.filter((c) => (c.kind === 'expense' || isChildrenCategory(c)) && c.active)],
   ];
 
   return (

@@ -79,7 +79,7 @@ export default function ProductsScreen() {
     // Parcours de tous les articles bruts
     for (const p of raw) {
       // Clé normalisée : nom en minuscules sans espaces superflus
-      const key = p.name.trim().toLowerCase();
+      const key = String(p?.name || '').trim().toLowerCase();
       // Si ce nom n'a pas encore été rencontré
       if (!seen.has(key)) {
         // Enregistrement de la référence principale du produit
@@ -133,10 +133,10 @@ export default function ProductsScreen() {
         if (!s) return true;
 
         // 3. Recherche dynamique dès le premier caractère sur le nom, la marque ET le nom de la catégorie
-        const nameMatch = p.name.trim().toLowerCase().includes(s);
-        const brandMatch = (p.brand ?? '').trim().toLowerCase().includes(s);
-        const rawCat = categoryName(db, p.categoryId).trim().toLowerCase();
-        const transCat = traduireCategorie(categoryName(db, p.categoryId)).trim().toLowerCase();
+        const nameMatch = String(p?.name || '').trim().toLowerCase().includes(s);
+        const brandMatch = String(p?.brand ?? '').trim().toLowerCase().includes(s);
+        const rawCat = String(categoryName(db, p.categoryId) || '').trim().toLowerCase();
+        const transCat = String(traduireCategorie(categoryName(db, p.categoryId)) || '').trim().toLowerCase();
         const catMatch = rawCat.includes(s) || transCat.includes(s);
 
         // Inclusion si le nom, la marque ou la catégorie contient la chaîne recherchée

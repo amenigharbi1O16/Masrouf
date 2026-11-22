@@ -777,6 +777,7 @@
   "solde_enfant": "Available Balance",
   "argent_de_poche": "Pocket Money",
   "compte_enfant": "Child account",
+  "budget_alloue": "Parent allocated budget",
   "budget_alloue_par_parent": "Your monthly budget is allocated by your parent and cannot be modified from this account.",
   "reinitialiser_mot_de_passe": "Reset password",
   "part_parent": "Parent's share",
@@ -821,5 +822,9 @@
   "confirmer_virement": "Confirm transfer",
   "saisie_libre": "Custom entry",
   "dons_et_charite": "Donations & Charity",
-  "prevu_vs_realise": "Planned vs Actual"
+  "prevu_vs_realise": "Planned vs Actual",
+  "succes": "Success",
+  "categorie_ajoutee_succes": "Category added successfully!",
+  "categories_enregistrees_succes": "Categories saved successfully!",
+  "langue_detectee": "Detected language"
 }

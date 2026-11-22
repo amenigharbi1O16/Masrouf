@@ -18,6 +18,7 @@ import React, { useState } from 'react';
 import {
   Alert,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -194,6 +195,31 @@ export default function FamilyFinancesScreen() {
   const handleDeleteAlloc = () => {
     // Sécurité si aucune allocation sélectionnée
     if (!editingAlloc) return;
+    const allocId = editingAlloc.id;
+    const doDelete = () => {
+      // Suppression atomique
+      actions.deleteAllocation(allocId);
+      // Fermeture du modal
+      setEditingAlloc(null);
+      // Notification de succès
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('L’allocation a été supprimée avec succès.');
+      } else {
+        Alert.alert('Supprimée', 'L’allocation a été supprimée avec succès.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const msg = isRTL
+        ? 'هل أنت متأكد من حذف هذه العملية؟ سيتم استرجاع المبلغ في الرصيد وحذف المصروف المرتبط.'
+        : 'Êtes-vous sûr de vouloir supprimer cette allocation ? Le montant sera remboursé dans la réserve et la dépense parent liée sera supprimée.';
+      const confirmed = typeof window !== 'undefined' ? window.confirm(msg) : true;
+      if (confirmed) {
+        doDelete();
+      }
+      return;
+    }
+
     // Alerte native de confirmation
     Alert.alert(
       // Titre
@@ -209,14 +235,7 @@ export default function FamilyFinancesScreen() {
         {
           text: isRTL ? 'حذف' : 'Supprimer',
           style: 'destructive',
-          onPress: () => {
-            // Suppression atomique
-            actions.deleteAllocation(editingAlloc.id);
-            // Fermeture du modal
-            setEditingAlloc(null);
-            // Notification de succès
-            Alert.alert('Supprimée', 'L’allocation a été supprimée avec succès.');
-          },
+          onPress: doDelete,
         },
       ]
     );

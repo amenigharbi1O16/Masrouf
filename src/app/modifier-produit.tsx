@@ -26,7 +26,7 @@
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 // Conteneur d'écran avec retour arrière et gestion du défilement
 import { Screen } from '@/components/Screen';
@@ -77,7 +77,7 @@ export default function EditProductScreen() {
   // Contrôle d'affichage de la modal de sélection de source photo (Caméra vs Galerie)
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '');
-  const [unit, setUnit] = useState(product?.unit ?? 'L');
+  const [unit, setUnit] = useState(product?.unit ?? '');
   const [error, setError] = useState('');
 
   // Sécurité : si le produit a été supprimé ou est introuvable
@@ -93,12 +93,19 @@ export default function EditProductScreen() {
     );
   }
 
-  // Filtrage des catégories éligibles (rayons de type 'product' uniquement)
-  const cats = db.categories.filter(
-    (c) =>
-      c.kind === 'product' &&
-      (me?.categoryIds.includes(c.id) || c.id === product.categoryId)
-  );
+  // Filtrage de toutes les catégories sélectionnées par l'utilisateur pour le type d'achat produits
+  const availableCats = useMemo(() => {
+    const productCats = db.categories.filter((c) => c.kind === 'product');
+    const userCatSet = new Set((me?.categoryIds ?? []).map((cid) => String(cid).toLowerCase()));
+    if (product?.categoryId) userCatSet.add(String(product.categoryId).toLowerCase());
+    const selected = productCats.filter(
+      (c) =>
+        userCatSet.has(String(c.id).toLowerCase()) ||
+        userCatSet.has(c.name.toLowerCase()) ||
+        (me?.id && c.userId === me.id)
+    );
+    return selected.length > 0 ? selected : productCats;
+  }, [db.categories, me?.categoryIds, me?.id, product?.categoryId]);
 
   /**
    * MISSION DE LA FONCTION :
@@ -117,7 +124,7 @@ export default function EditProductScreen() {
       brand: brand.trim(),
       photo,
       categoryId,
-      unit,
+      unit: (unit || '').trim(),
     });
     router.back();
   };
@@ -220,7 +227,7 @@ export default function EditProductScreen() {
       <SelectField
         label={t('categorie_produit_label')}
         value={categoryId}
-        options={cats.map((c) => ({ value: c.id, label: traduireCategorie(c.name) }))}
+        options={availableCats.map((c) => ({ value: c.id, label: traduireCategorie(c.name) }))}
         onChange={setCategoryId}
       />
 

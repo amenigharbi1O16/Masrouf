@@ -38,8 +38,8 @@ export function useAuth() {
     // Le rôle parent ou administrateur a accès aux fonctionnalités familiales
     isAdmin: me?.role === 'parent' || me?.role === 'admin',
     // Booléens pratiques pour distinguer les rôles
-    isParent: me?.role === 'parent',
-    isChild: me?.role === 'child',
+    isParent: me?.role === 'parent' || me?.role === 'admin' || me?.accountType === 'family',
+    isChild: me?.role === 'child' || me?.accountType === 'child',
     login: actions.login,
     register: actions.register,
     logout: actions.logout,

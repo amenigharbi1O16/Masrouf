@@ -107,29 +107,59 @@ export function detectLanguage(text: string): 'ar' | 'fr' | 'en' {
     return 'ar';
   }
 
-  // 2. Détection de termes arabizi tunisiens typiques
   const lower = trimmed.toLowerCase();
+
+  // 2. Détection de termes arabizi tunisiens typiques
   const arabiziIndicators = [
     'chrit', 'chrina', 'khallast', 'dfa3t', '9assit', 'a3tit', 'madit',
-    '7lib', 'khobz', 'l7am', 'djej', '7out', 'fatoura', 'flous', 'masrouf',
-    'alfin', 'dnanir', 'zouz'
+    '7lib', 'khobz', 'l7am', 'djej', '7out', 'khodhra', 'ghalla', 'jben',
+    'zit', 'skar', '9ahwa', 'tmate', 'tmatem', '9adhya', 'kosksi', 'yaghort',
+    '3dham', 'fatoura', 'fatouret', 'dhaw', 'steg', 'sonede', 'flous',
+    'masrouf', 'alfin', 'elfin', 'alaf', 'dnanir', 'dinarat', 'zouz'
   ];
-  if (arabiziIndicators.some((word) => lower.includes(word))) {
+  if (arabiziIndicators.some((word) => new RegExp(`\\b${word}\\b`, 'i').test(lower) || lower.includes(word))) {
     return 'ar';
   }
 
   // 3. Détection de mots anglais fréquents
-  const englishIndicators = [
-    'bought', 'spent', 'donate', 'donated', 'donation', 'charity', 'gave',
-    'paid', 'groceries', 'supermarket', 'pharmacy', 'yesterday', 'today',
-    'money', 'allowance', 'for', 'with', 'from', 'milk', 'bread', 'water'
+  const englishWords = [
+    'i', 'bought', 'buy', 'purchased', 'purchase', 'spent', 'spend', 'paid', 'pay',
+    'groceries', 'grocery', 'supermarket', 'market', 'pharmacy', 'yesterday', 'today',
+    'money', 'allowance', 'for', 'with', 'from', 'milk', 'bread', 'water', 'cheese',
+    'meat', 'chicken', 'fish', 'eggs', 'sugar', 'coffee', 'juice', 'food', 'fruit',
+    'fruits', 'vegetables', 'bill', 'bills', 'electricity', 'gas', 'phone', 'wifi',
+    'taxi', 'bus', 'doctor', 'shoes', 'clothes', 'donation', 'donated', 'charity',
+    'at', 'the', 'and', 'my', 'child', 'son', 'daughter', 'kids', 'dinars', 'dinar'
   ];
-  const englishMatches = englishIndicators.filter((w) => new RegExp(`\\b${w}\\b`, 'i').test(lower));
-  if (englishMatches.length >= 1) {
+  let englishScore = 0;
+  for (const w of englishWords) {
+    if (new RegExp(`\\b${w}\\b`, 'i').test(lower)) {
+      englishScore++;
+    }
+  }
+
+  // 4. Détection de mots français
+  const frenchWords = [
+    "j'ai", 'je', 'acheté', 'achete', 'acheter', 'achat', 'achats', 'dépensé', 'depense',
+    'dépense', 'payé', 'paye', 'payer', 'courses', 'supermarché', 'marche', 'marché',
+    'pharmacie', 'hier', "aujourd'hui", 'argent', 'allocation', 'pour', 'avec', 'de',
+    'du', 'des', 'le', 'la', 'les', 'lait', 'pain', 'eau', 'fromage', 'viande', 'poulet',
+    'poisson', 'oeufs', 'œufs', 'sucre', 'café', 'cafe', 'jus', 'nourriture', 'fruits',
+    'legumes', 'légumes', 'facture', 'factures', 'electricite', 'électricité', 'gaz',
+    'telephone', 'téléphone', 'docteur', 'medecin', 'chaussures', 'vetements', 'vêtements',
+    'don', 'dons', 'charité', 'charite', 'et', 'mon', 'enfant', 'fils', 'fille', 'enfants'
+  ];
+  let frenchScore = 0;
+  for (const w of frenchWords) {
+    if (new RegExp(`\\b${w}\\b`, 'i').test(lower) || lower.includes(w)) {
+      frenchScore++;
+    }
+  }
+
+  if (englishScore > frenchScore && englishScore > 0) {
     return 'en';
   }
 
-  // 4. Par défaut : Français
   return 'fr';
 }
 
@@ -287,11 +317,127 @@ export function extractStore(text: string): string {
 }
 
 /**
+ * MISSION DE LA FONCTION : extractPurchaseName
+ * Extrait le nom exact de l'article ou de l'achat à partir de la phrase dictée ou saisie,
+ * en éliminant les verbes d'action, le montant et le lieu, et en le formatant dans la langue appropriée.
+ * Assure que le libellé contient le véritable nom du produit (ex: "Lait et pain", "Milk and bread", "حليب وخبز").
+ */
+export function extractPurchaseName(
+  text: string,
+  lang: 'ar' | 'fr' | 'en',
+  matchedAmountText?: string,
+  matchedStore?: string
+): string {
+  if (!text || !text.trim()) return '';
+
+  let cleaned = text.trim();
+
+  // 1. Suppression du montant textuel détecté s'il est fourni
+  if (matchedAmountText && matchedAmountText.trim()) {
+    cleaned = cleaned.replace(matchedAmountText, ' ');
+  }
+
+  // Suppression des devises et chiffres résiduels (ex: "pour 45 dinars", "b- 2 dinars", "20 DT", etc.)
+  cleaned = cleaned
+    .replace(/(?:pour|à|a|de|for|at|b-|بـ|ب)\s*\d+(?:[.,]\d+)?\s*(?:dinars?|دنانير|دينار|د\.ت|dt|tnd)?/gi, ' ')
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:dinars?|دنانير|دينار|د\.ت|dt|tnd)\b/gi, ' ')
+    .replace(/\b(?:ألفين|الفين|زوز|آلاف|الاف)\b/gi, ' ');
+
+  // 2. Suppression des magasins connus s'ils apparaissent
+  if (matchedStore && matchedStore !== 'Commerce') {
+    const storeRegex = new RegExp(`(?:chez|au|at|from|dans|من|في)?\\s*${matchedStore}`, 'gi');
+    cleaned = cleaned.replace(storeRegex, ' ');
+  }
+  cleaned = cleaned
+    .replace(/(?:chez|au|at|from|من|في)\s*(?:monoprix|carrefour|magasin|supermarché|supermarket|epicerie|épicerie|boucher|boulangerie|pharmacie|pharmacy|مونوبري|كارفور|عطار|سوق|مرشي)/gi, ' ');
+
+  // 3. Suppression des marqueurs temporels (hier, today, البارح...)
+  cleaned = cleaned.replace(/\b(?:hier|avant-hier|aujourd'hui|ce matin|yesterday|today|this morning|البارح|اليوم|أول البارح)\b/gi, ' ');
+
+  if (lang === 'ar') {
+    // Suppression des verbes et formules d'achat en arabe
+    cleaned = cleaned
+      .replace(/\b(?:شريت|شرينا|اشتريت|شراء|خديت|مديت|قضيت)\b/g, ' ')
+      .replace(/^[\s،,و\-_]+/g, '')
+      .replace(/[\s،,و\-_]+$/g, '')
+      .trim();
+
+    return cleaned || 'شراء منتج';
+  }
+
+  if (lang === 'en') {
+    // Suppression des verbes d'achat en anglais
+    cleaned = cleaned
+      .replace(/\b(?:i\s+have\s+bought|i\s+bought|i\s+purchased|i\s+got|bought|purchased|purchase\s+of|purchase|buy|got)\b/gi, ' ')
+      .replace(/^\s*(?:some|a|an|the|of)\s+/gi, '')
+      .replace(/^[\s,.\-_]+/g, '')
+      .replace(/[\s,.\-_]+$/g, '')
+      .trim();
+
+    if (!cleaned) return 'Purchase';
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+
+  // Par défaut : Français
+  cleaned = cleaned
+    .replace(/\b(?:j'ai\s+acheté|j'ai\s+achete|j'ai\s+pris|achat\s+de|achat\s+d'|achat|acheté|achete|acheter|j'ai\s+payé|j'ai\s+paye|payé|paye|pris)\b/gi, ' ')
+    .replace(/^\s*(?:du|de\s+la|des|d'|d’|un|une|le|la|les)\s+/gi, '')
+    .replace(/^[\s,.\-_]+/g, '')
+    .replace(/[\s,.\-_]+$/g, '')
+    .trim();
+
+  if (!cleaned) return 'Achat de produit';
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/**
+ * MISSION DE LA FONCTION : extractExpenseName
+ * Extrait le libellé d'une dépense directe (ex: facture, transport, soin).
+ */
+export function extractExpenseName(
+  text: string,
+  lang: 'ar' | 'fr' | 'en',
+  matchedAmountText?: string,
+  defaultName?: string
+): string {
+  if (!text || !text.trim()) return defaultName || 'Dépense';
+  let cleaned = text.trim();
+  if (matchedAmountText && matchedAmountText.trim()) {
+    cleaned = cleaned.replace(matchedAmountText, ' ');
+  }
+  cleaned = cleaned
+    .replace(/(?:pour|à|a|de|for|at|b-|بـ|ب)\s*\d+(?:[.,]\d+)?\s*(?:dinars?|دنانير|دينار|د\.ت|dt|tnd)?/gi, ' ')
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:dinars?|دنانير|دينار|د\.ت|dt|tnd)\b/gi, ' ');
+
+  if (lang === 'ar') {
+    cleaned = cleaned.replace(/\b(?:دفعت|خلصت|قصيت)\b/g, ' ').trim();
+    return cleaned || defaultName || 'دفع مصاريف';
+  }
+  if (lang === 'en') {
+    cleaned = cleaned
+      .replace(/\b(?:i\s+paid|i\s+spent|paid|spent|pay)\b/gi, ' ')
+      .replace(/^\s*(?:the|a|an|for)\s+/gi, '')
+      .trim();
+    if (!cleaned) return defaultName || 'Expense';
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+  cleaned = cleaned
+    .replace(/\b(?:j'ai\s+payé|j'ai\s+paye|j'ai\s+reglé|j'ai\s+regle|payé|paye|reglé|regle)\b/gi, ' ')
+    .replace(/^\s*(?:la|le|les|l'|un|une|de|du|des)\s+/gi, '')
+    .trim();
+  if (!cleaned) return defaultName || 'Dépense';
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/**
  * MISSION PRINCIPALE DU MODULE : parseVoiceInput
  * Analyse la phrase (voix ou saisie libre) et retourne un objet structuré et modifiable.
  *
  * RÈGLES DE CLASSEMENT :
  * - Détection automatique de la langue (Arabe/Derja, Français, Anglais).
+ * - Retranscription de la phrase dans les lettres de la langue parlée.
+ * - Détection et sélection automatique du type 'purchase' (Achat) pour tout achat/produit.
+ * - Extraction du nom exact de l'achat dans son libellé (Ex: "Lait et pain", "حليب وخبز").
  * - Compte Parent :
  *   « J'ai donné 20 DT à mon enfant Youssef » -> don à Youssef (reconnaissance du prénom).
  *   « J'ai donné 20 DT à mon enfant » (sans prénom) -> si 1 enfant, auto-sélection ; si plusieurs, demande le choix.
@@ -307,12 +453,12 @@ export function parseVoiceInput(
   children: User[] = [],
   isParentAccount: boolean = true
 ): ParsedVoiceTransaction & { hasAmount: boolean } {
-  // 1. Détection de la langue de saisie
+  // 1. Détection de la langue de saisie (Français, Arabe ou Anglais)
   const lang = detectLanguage(rawText);
 
-  // 2. Transcription adaptée :
-  // Si Arabe ou Derja tunisienne : transcription normalisée 100% en lettres arabes
-  // Si Français ou Anglais : conservation de la langue d'origine
+  // 2. Retranscription dans les lettres de cette langue :
+  // Si Arabe ou Derja tunisienne : retranscription normalisée 100% en lettres arabes
+  // Si Français ou Anglais : conservation intégrale de l'alphabet latin de la langue parlée
   const formattedTranscript = lang === 'ar' ? toArabicScript(rawText) : rawText.trim();
   const lowerCombined = `${rawText} ${formattedTranscript}`.toLowerCase();
 
@@ -375,46 +521,56 @@ export function parseVoiceInput(
   } else if (isParentAccount && mentionsChildDonation) {
     // CAS PARENT : Gestion des allocations familiales
     if (matchedChild) {
-      // Cas A : Prénom reconnu dans la phrase -> Don à cet enfant
       type = 'allocation';
       needsChildSelection = false;
     } else if (children.length === 1) {
-      // Cas B : Sans prénom, mais un seul enfant dans la famille -> Sélection automatique
       matchedChild = children[0];
       type = 'allocation';
       needsChildSelection = false;
     } else if (children.length > 1) {
-      // Cas C : Sans prénom et plusieurs enfants -> Demande au parent de choisir dans la liste
       type = 'allocation';
       needsChildSelection = true;
       matchedChild = undefined;
     } else {
-      // Aucun enfant créé -> dépense simple en catégorie Enfant
       type = 'expense';
       needsChildSelection = false;
     }
   } else if (!isParentAccount && mentionsChildDonation) {
-    // CAS UTILISATEUR NORMAL : « J'ai donné 20 DT à mon enfant » -> Dépense catégorie Enfant (pas de don)
     type = 'expense';
     needsChildSelection = false;
   } else {
-    // Achat ou dépense standard
-    const isPurchase =
+    // Vérification explicite des verbes et mots d'achat dans les 3 langues (FR, AR, EN)
+    const isExplicitPurchase =
+      // Verbes en Arabe / Derja
       lowerCombined.includes('شريت') ||
+      lowerCombined.includes('شرينا') ||
       lowerCombined.includes('اشتريت') ||
       lowerCombined.includes('شراء') ||
+      lowerCombined.includes('قضيت') ||
+      lowerCombined.includes('قضية') ||
+      lowerCombined.includes('خديت') ||
+      // Verbes en Français
       lowerCombined.includes('acheté') ||
       lowerCombined.includes('achete') ||
+      lowerCombined.includes('acheter') ||
       lowerCombined.includes('achat') ||
+      lowerCombined.includes('achats') ||
       lowerCombined.includes('courses') ||
+      lowerCombined.includes("j'ai pris") ||
+      // Verbes en Anglais
       lowerCombined.includes('bought') ||
-      lowerCombined.includes('purchase');
+      lowerCombined.includes('buy') ||
+      lowerCombined.includes('purchased') ||
+      lowerCombined.includes('purchase') ||
+      lowerCombined.includes('shopping') ||
+      lowerCombined.includes('groceries');
 
-    type = isPurchase ? 'purchase' : 'expense';
+    type = isExplicitPurchase ? 'purchase' : 'expense';
   }
 
-  // 6. Extraction du montant en Dinars
-  const { amount, hasAmount } = extractAmount(formattedTranscript || rawText);
+  // 6. Extraction du montant en Dinars Tunisiens
+  const amountResult = extractAmount(formattedTranscript || rawText);
+  const { amount, hasAmount } = amountResult;
 
   // 7. Classification de la catégorie via le module centralisé
   const isAllocationOp = type === 'allocation' || mentionsChildDonation;
@@ -438,6 +594,24 @@ export function parseVoiceInput(
   if (!finalCategory) {
     finalCategory = categories[0];
   }
+
+  // Si la catégorie reconnue est de type 'product' (ex: Alimentation, Vêtements) et qu'il ne s'agit pas d'une facture/service,
+  // s'assurer que le type d'achat 'purchase' est sélectionné
+  if (
+    type === 'expense' &&
+    finalCategory &&
+    finalCategory.kind === 'product' &&
+    !lowerCombined.includes('facture') &&
+    !lowerCombined.includes('bill') &&
+    !lowerCombined.includes('فاتورة') &&
+    !lowerCombined.includes('steg') &&
+    !lowerCombined.includes('sonede') &&
+    !lowerCombined.includes('transport') &&
+    !lowerCombined.includes('taxi')
+  ) {
+    type = 'purchase';
+  }
+
   const isUncertain = matchResult.isUncertain;
 
   // 8. Extraction du magasin et des détails pour un achat
@@ -445,18 +619,23 @@ export function parseVoiceInput(
   const quantity = type === 'purchase' ? 1 : undefined;
   const unit = type === 'purchase' ? 'pièce' : undefined;
 
-  // 9. Libellé de la transaction adapté à la langue
+  // 9. Libellé de la transaction : le nom de l'achat doit obligatoirement être écrit dans son libellé
   let label = formattedTranscript || rawText;
   if (type === 'allocation') {
     if (matchedChild) {
-      label = lang === 'ar' ? `مصروف إلى ${matchedChild.name}` : `Allocation à ${matchedChild.name}`;
+      label = lang === 'ar' ? `مصروف إلى ${matchedChild.name}` : lang === 'en' ? `Allowance to ${matchedChild.name}` : `Allocation à ${matchedChild.name}`;
     } else {
-      label = lang === 'ar' ? 'مصروف للأبناء' : 'Allocation pour enfant';
+      label = lang === 'ar' ? 'مصروف للأبناء' : lang === 'en' ? 'Allowance for child' : 'Allocation pour enfant';
     }
   } else if (type === 'donation') {
-    label = lang === 'ar' ? 'تبرع وصدقة' : 'Don & Charité';
-  } else if (finalCategory) {
-    label = finalCategory.name;
+    label = lang === 'ar' ? 'تبرع وصدقة' : lang === 'en' ? 'Donation & Charity' : 'Don & Charité';
+  } else if (type === 'purchase') {
+    // EXTRACTION PRÉCISE DU NOM DE L'ACHAT DANS LE LIBELLÉ
+    const purchaseName = extractPurchaseName(formattedTranscript, lang, amountResult.matchedText, store);
+    label = purchaseName;
+  } else if (type === 'expense') {
+    const expenseName = extractExpenseName(formattedTranscript, lang, amountResult.matchedText, finalCategory?.name);
+    label = expenseName;
   }
 
   // 10. Date de la transaction (support de "hier" / "yesterday" / "البارح")

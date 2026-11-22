@@ -145,31 +145,34 @@ export default function FamilyDashboard() {
   };
 
   const executeAllocation = async (num: number) => {
-    if (!targetChild) return;
+    if (!targetChild || giveBusy) return;
     setGiveBusy(true);
     setGiveError('');
 
-    const res = await actions.allocateMoney(targetChild.id, num, giveNote.trim() || undefined);
-    setGiveBusy(false);
+    try {
+      const res = await actions.allocateMoney(targetChild.id, num, giveNote.trim() || undefined);
 
-    if (!res.ok) {
-      setGiveError(res.error ?? 'Erreur lors de l’allocation.');
-    } else {
-      setGiveMoneyModal(false);
-      setShowOverBudgetWarning(false);
-      const isExceeded = (catEnfantBudget > 0 && currentEnfantSpent + num > catEnfantBudget) || catEnfantBudget === 0;
-      Alert.alert(
-        isRTL ? 'تأكيد العملية' : 'Succès',
-        isRTL
-          ? `تم تحويل ${formatTND(num)} بنجاح إلى ${targetChild.name}.${isExceeded ? ' تم تسجيل التحويل مع تجاوز الميزانية وسيعرض باللون الأحمر في التحليلات.' : ''}`
-          : `${formatTND(num)} ont été alloués avec succès à ${targetChild.name}.${isExceeded ? ' (Dépassement de budget enregistré et marqué en rouge dans les analyses)' : ''}`
-      );
+      if (!res.ok) {
+        setGiveError(res.error ?? 'Erreur lors de l’allocation.');
+      } else {
+        setGiveMoneyModal(false);
+        setShowOverBudgetWarning(false);
+        const isExceeded = (catEnfantBudget > 0 && currentEnfantSpent + num > catEnfantBudget) || catEnfantBudget === 0;
+        Alert.alert(
+          isRTL ? 'تأكيد العملية' : 'Succès',
+          isRTL
+            ? `تم تحويل ${formatTND(num)} بنجاح إلى ${targetChild.name}.${isExceeded ? ' تم تسجيل التحويل مع تجاوز الميزانية وسيعرض باللون الأحمر في التحليلات.' : ''}`
+            : `${formatTND(num)} ont été alloués avec succès à ${targetChild.name}.${isExceeded ? ' (Dépassement de budget enregistré et marqué en rouge dans les analyses)' : ''}`
+        );
+      }
+    } finally {
+      setGiveBusy(false);
     }
   };
 
   // Soumission de l'allocation d'argent
   const submitGiveMoney = async () => {
-    if (!targetChild) return;
+    if (!targetChild || giveBusy) return;
     const num = parseFloat(giveAmount.replace(',', '.'));
     if (isNaN(num) || num <= 0) {
       setGiveError(isRTL ? 'الرجاء إدخال مبلغ صحيح أكبر من صفر.' : 'Veuillez entrer un montant valide supérieur à 0.');
@@ -660,6 +663,7 @@ export default function FamilyDashboard() {
                 variant={showOverBudgetWarning ? 'danger' : 'primary'}
                 onPress={submitGiveMoney}
                 loading={giveBusy}
+                disabled={giveBusy}
               />
               <Button
                 label={showOverBudgetWarning ? (isRTL ? 'تعديل المبلغ' : 'Modifier le montant') : (isRTL ? 'Annuler' : 'Annuler')}

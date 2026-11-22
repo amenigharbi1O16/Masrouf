@@ -46,11 +46,13 @@ interface VoiceTransactionModalProps {
   onSuccess?: () => void;
 }
 
-// Phrases de test multilingues (Dialecte tunisien, Arabe standard, Français, Anglais, Dons, Allocations enfants)
+// Phrases de test multilingues (Français, Arabe, Anglais, Dialecte tunisien, Allocations enfants, Dons)
 const SAMPLE_PHRASES = [
-  "شريت حليب وخبز بألفين", // Tunisien (100% caractères arabes)
-  "دفعت فاتورة الكهرباء 75 دينار", // Arabe standard (100% caractères arabes)
+  "شريت حليب وخبز بألفين", // Arabe / Tunisien (Achat)
+  "J'ai acheté du lait et du pain pour 3 dinars", // Français (Achat)
+  "I bought milk and bread for 5 dinars", // Anglais (Achat)
   "J'ai acheté des courses pour 45 dinars", // Français (Achat)
+  "دفعت فاتورة الكهرباء 75 دينار", // Arabe standard (Dépense)
   "I paid the internet bill 30 dinars", // Anglais (Dépense)
   "أعطيت 20 دينار ليوسف مصروف", // Don / argent donné à un enfant (Arabe)
   "J'ai donné 25 DT à mon enfant", // Argent donné à un enfant (Français)
@@ -64,18 +66,30 @@ export function VoiceTransactionModal({
   onSuccess,
 }: VoiceTransactionModalProps) {
   const { db, me, actions } = useStore();
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, langue } = useTranslation();
 
   // Enfants du foyer pour la détection des allocations
   const childrenList = db.users.filter(
     (u) => u.role === 'child' && (u.parentId === me?.id || u.familyId === me?.familyId)
   );
 
+  const [selectedVoiceLang, setSelectedVoiceLang] = useState<'auto' | 'fr' | 'ar' | 'en'>('auto');
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [parsed, setParsed] = useState<ParsedVoiceTransaction | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  // Détermination du code BCP-47 pour la reconnaissance vocale
+  const getRecognitionLangCode = (pref: 'auto' | 'fr' | 'ar' | 'en') => {
+    if (pref === 'fr') return 'fr-FR';
+    if (pref === 'ar') return 'ar-TN';
+    if (pref === 'en') return 'en-US';
+    // Mode Auto : se caler sur la langue d'interface active
+    if (langue === 'ar') return 'ar-TN';
+    if (langue === 'en') return 'en-US';
+    return 'fr-FR';
+  };
 
   // Animation pulsante de l'icône microphone
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -113,15 +127,16 @@ export function VoiceTransactionModal({
         const recognition = new SpeechRecognition();
         recognition.continuous = false;
         recognition.interimResults = true;
-        // Détection et reconnaissance vocale ciblée sur le dialecte tunisien et l'arabe
-        recognition.lang = 'ar-TN';
+        recognition.lang = getRecognitionLangCode(selectedVoiceLang);
 
         recognition.onresult = (event: any) => {
           const current = event.resultIndex;
           const rawTranscript = event.results[current][0].transcript;
-          // Normalisation obligatoire : tunisien et arabe retranscrits obligatoirement en caractères arabes
-          const lang = detectLanguage(rawTranscript);
-          const formatted = lang === 'ar' ? toArabicScript(rawTranscript) : rawTranscript;
+          // Détection de la langue parlée (FR, AR, EN)
+          const detected = selectedVoiceLang !== 'auto' ? selectedVoiceLang : detectLanguage(rawTranscript);
+          // Si arabe : retranscription en caractères arabes (convertit l'arabizi si présent)
+          // Si français ou anglais : conservation intégrale de l'alphabet latin de la langue parlée
+          const formatted = detected === 'ar' ? toArabicScript(rawTranscript) : rawTranscript;
           setTranscript(formatted);
           analyzeText(formatted);
         };
@@ -157,7 +172,7 @@ export function VoiceTransactionModal({
         recognitionRef.current = recognition;
       }
     }
-  }, [isRTL]);
+  }, [isRTL, selectedVoiceLang, langue]);
 
   // Déclenchement de l'analyse sémantique dès que le texte change
   const analyzeText = (text: string) => {
@@ -165,8 +180,8 @@ export function VoiceTransactionModal({
       setParsed(null);
       return;
     }
-    const lang = detectLanguage(text);
-    const normalized = lang === 'ar' ? toArabicScript(text) : text;
+    const detected = selectedVoiceLang !== 'auto' ? selectedVoiceLang : detectLanguage(text);
+    const normalized = detected === 'ar' ? toArabicScript(text) : text;
     const result = parseVoiceInput(normalized, db.categories, childrenList);
     if (result && !result.initialAllocationPercent) {
       result.initialAllocationPercent = 5;
@@ -201,6 +216,7 @@ export function VoiceTransactionModal({
       setIsListening(true);
       if (recognitionRef.current) {
         try {
+          recognitionRef.current.lang = getRecognitionLangCode(selectedVoiceLang);
           recognitionRef.current.start();
         } catch {
           setIsListening(false);
@@ -277,7 +293,9 @@ export function VoiceTransactionModal({
               <Text
                 style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}
               >
-                Parlez en Français, Arabe ou Derja tunisienne
+                {isRTL
+                  ? 'تحدث بالفرنسية، العربية أو الإنجليزية (FR / AR / EN)'
+                  : 'Parlez en Français, Arabe ou Anglais (FR / AR / EN)'}
               </Text>
             </View>
 
@@ -297,6 +315,46 @@ export function VoiceTransactionModal({
             {error ? (
               <AlertBanner tone="danger" title={t('erreur')} detail={error} />
             ) : null}
+
+            {/* SÉLECTEUR RAPIDE DE LANGUE VOCALE (AUTO, FR, AR, EN) */}
+            <View style={[styles.langPillRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              <TouchableOpacity
+                style={[styles.langPill, selectedVoiceLang === 'auto' && styles.langPillActive]}
+                onPress={() => setSelectedVoiceLang('auto')}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.langPillText, selectedVoiceLang === 'auto' && styles.langPillTextActive]}>
+                  ✨ Auto
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.langPill, selectedVoiceLang === 'fr' && styles.langPillActive]}
+                onPress={() => setSelectedVoiceLang('fr')}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.langPillText, selectedVoiceLang === 'fr' && styles.langPillTextActive]}>
+                  🇫🇷 Français
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.langPill, selectedVoiceLang === 'ar' && styles.langPillActive]}
+                onPress={() => setSelectedVoiceLang('ar')}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.langPillText, selectedVoiceLang === 'ar' && styles.langPillTextActive]}>
+                  🇹🇳 العربية
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.langPill, selectedVoiceLang === 'en' && styles.langPillActive]}
+                onPress={() => setSelectedVoiceLang('en')}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.langPillText, selectedVoiceLang === 'en' && styles.langPillTextActive]}>
+                  🇬🇧 English
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {/* BOUTON MICROPHONE ET ANIMATION */}
             <View style={styles.micContainer}>
@@ -328,26 +386,46 @@ export function VoiceTransactionModal({
               </TouchableOpacity>
 
               <Text style={styles.micStatusText}>
-                {isListening ? t('ecoute_en_cours') : 'Appuyez pour parler'}
+                {isListening ? t('ecoute_en_cours') : (isRTL ? 'اضغط للتحدث' : 'Appuyez pour parler')}
               </Text>
             </View>
 
             {/* CHAMP TEXTE OU TRANSCRIPTION RECONNUE */}
             <View style={styles.transcriptCard}>
-              <Text style={styles.transcriptLabel}>
-                {t('phrase_reconnue')} :
-              </Text>
+              <View style={[styles.transcriptHeaderRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <Text style={styles.transcriptLabel}>
+                  {t('phrase_reconnue')} :
+                </Text>
+
+                {parsed?.detectedLanguage && (
+                  <View style={[styles.langBadge, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                    <Ionicons name="language-outline" size={13} color={colors.forest} />
+                    <Text style={styles.langBadgeText}>
+                      {parsed.detectedLanguage === 'ar'
+                        ? '🇹🇳 العربية'
+                        : parsed.detectedLanguage === 'en'
+                        ? '🇬🇧 English'
+                        : '🇫🇷 Français'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
               <TextInput
                 style={[
                   styles.transcriptInput,
-                  { textAlign: isRTL ? 'right' : 'left' },
+                  { textAlign: isRTL || parsed?.detectedLanguage === 'ar' ? 'right' : 'left' },
                 ]}
                 value={transcript}
                 onChangeText={(txt) => {
                   setTranscript(txt);
                   analyzeText(txt);
                 }}
-                placeholder="Ex: J'ai acheté du lait pour 2 dinars..."
+                placeholder={
+                  isRTL
+                    ? 'مثال: شريت حليب وخبز بألفين...'
+                    : "Ex: J'ai acheté du lait pour 2 dinars..."
+                }
                 multiline
               />
             </View>
@@ -1017,5 +1095,54 @@ const styles = StyleSheet.create({
   childChipTextActive: {
     color: colors.white,
     fontWeight: '700',
+  },
+  langPillRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  langPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  langPillActive: {
+    backgroundColor: colors.forest,
+    borderColor: colors.forest,
+  },
+  langPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  langPillTextActive: {
+    color: colors.white,
+  },
+  transcriptHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  langBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  langBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.forest,
   },
 });

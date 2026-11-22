@@ -23,9 +23,26 @@ export const CANONICAL_ENFANT_NAME = 'Enfant';
  * Supprime les accents, met en minuscules, compresse les espaces, et
  * harmonise le singulier/pluriel sur les noms courants en retirant le 's' final.
  */
-export function normalizeCategoryKey(name?: string | null): string {
-  if (!name) return '';
-  let s = name
+export function normalizeCategoryKey(name?: unknown): string {
+  if (typeof name !== 'string') {
+    if (!name) return '';
+    if (typeof name === 'number') {
+      name = String(name);
+    } else if (typeof name === 'object' && name !== null) {
+      const obj = name as any;
+      name = typeof obj.name === 'string'
+        ? obj.name
+        : typeof obj.name_key === 'string'
+        ? obj.name_key
+        : typeof obj.nom === 'string'
+        ? obj.nom
+        : '';
+    } else {
+      return '';
+    }
+  }
+  const str = name as string;
+  let s = str
     .trim()
     .toLowerCase()
     .normalize('NFD')
@@ -74,7 +91,7 @@ const CHILDREN_VARIANTS = new Set([
  * à la catégorie réservée aux enfants / famille.
  */
 export function isChildrenCategory(
-  catOrIdOrName?: Category | string | null
+  catOrIdOrName?: unknown
 ): boolean {
   if (!catOrIdOrName) return false;
 
@@ -84,13 +101,19 @@ export function isChildrenCategory(
   if (typeof catOrIdOrName === 'string') {
     id = catOrIdOrName;
     name = catOrIdOrName;
+  } else if (typeof catOrIdOrName === 'number') {
+    id = String(catOrIdOrName);
+    name = String(catOrIdOrName);
+  } else if (typeof catOrIdOrName === 'object' && catOrIdOrName !== null) {
+    const obj = catOrIdOrName as any;
+    id = String(obj.id ?? '');
+    name = String(obj.name ?? obj.name_key ?? obj.nom ?? obj.id ?? '');
   } else {
-    id = catOrIdOrName.id || '';
-    name = catOrIdOrName.name || '';
+    return false;
   }
 
   // Vérification de l'identifiant technique canonique
-  const idLower = id.trim().toLowerCase();
+  const idLower = String(id || '').trim().toLowerCase();
   if (
     idLower === CANONICAL_ENFANT_ID ||
     idLower === 'enfant' ||
@@ -108,7 +131,7 @@ export function isChildrenCategory(
   }
 
   // Vérification des sous-chaînes ou variantes bilingues
-  const rawLower = name.trim().toLowerCase();
+  const rawLower = String(name || '').trim().toLowerCase();
   if (
     rawLower === 'enfant' ||
     rawLower === 'enfants' ||
@@ -130,6 +153,7 @@ export function isChildrenCategory(
 export function findEnfantCategory(
   categories: Category[] = []
 ): Category | undefined {
+  if (!Array.isArray(categories)) return undefined;
   return categories.find((c) => isChildrenCategory(c));
 }
 
@@ -140,8 +164,8 @@ export function findEnfantCategory(
  * - Retourne vrai si leurs noms normalisés sont identiques (insensible casse, accents, singulier/pluriel).
  */
 export function areCategoriesEqual(
-  a?: Category | string | null,
-  b?: Category | string | null
+  a?: Category | string | null | any,
+  b?: Category | string | null | any
 ): boolean {
   if (!a || !b) return false;
 
@@ -150,12 +174,12 @@ export function areCategoriesEqual(
     return true;
   }
 
-  const idA = typeof a === 'string' ? a : a.id;
-  const idB = typeof b === 'string' ? b : b.id;
+  const idA = typeof a === 'string' ? a : String(a?.id ?? '');
+  const idB = typeof b === 'string' ? b : String(b?.id ?? '');
   if (idA && idB && idA === idB) return true;
 
-  const nameA = typeof a === 'string' ? a : a.name;
-  const nameB = typeof b === 'string' ? b : b.name;
+  const nameA = typeof a === 'string' ? a : String(a?.name ?? a?.name_key ?? a?.nom ?? '');
+  const nameB = typeof b === 'string' ? b : String(b?.name ?? b?.name_key ?? b?.nom ?? '');
   const normA = normalizeCategoryKey(nameA);
   const normB = normalizeCategoryKey(nameB);
 
@@ -171,13 +195,18 @@ export function deduplicateCategories(categories: Category[]): {
   deduplicated: Category[];
   remappedIds: Record<string, string>;
 } {
+  if (!Array.isArray(categories)) {
+    return { deduplicated: [], remappedIds: {} };
+  }
   const result: Category[] = [];
   const seenKeys = new Map<string, string>(); // normKey -> primaryId
   const remappedIds: Record<string, string> = {};
 
   for (const cat of categories) {
+    if (!cat) continue;
     const isEnfant = isChildrenCategory(cat);
-    const key = isEnfant ? 'canonical_enfant' : normalizeCategoryKey(cat.name);
+    const catName = typeof cat.name === 'string' ? cat.name : String(cat.name || '');
+    const key = isEnfant ? 'canonical_enfant' : normalizeCategoryKey(catName);
 
     if (seenKeys.has(key)) {
       const primaryId = seenKeys.get(key)!;

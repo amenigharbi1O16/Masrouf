@@ -29,6 +29,7 @@ import { AlertBanner, Body, Button, Hint, Input } from './ui';
 import { UNITS } from '@/constants/units';
 // Magasin d'état global SQLite
 import { useStore } from '@/state/store';
+import { currentBudget } from '@/state/selectors';
 // Fonctions utilitaires de calcul
 import { dt, isValidISO, todayISO, toNum, unitPrice } from '@/utils/format';
 // Système d'internationalisation (FR, EN, AR) et détection RTL
@@ -97,11 +98,24 @@ export function PurchaseForm({
   // Traduction multilingue et orientation bidirectionnelle RTL
   const { t, isRTL } = useTranslation();
 
-  // Vérification stricte : une période doit être sélectionnée et un budget doit lui être alloué
-  const hasBudget = Boolean(selectedBudget && Number(selectedBudget.total) > 0);
+  const isChildUser = me?.role === 'child' || me?.accountType === 'child';
+  const activeBudget = selectedBudget ?? (me ? currentBudget(db, me.id) : null);
+  // Vérification de la présence d'un budget actif ou d'une allocation enfant
+  const hasBudget = Boolean(
+    (selectedBudget && Number(selectedBudget.total) > 0) ||
+    (activeBudget && Number(activeBudget.total) > 0) ||
+    isChildUser ||
+    (me && (
+      (me.balance !== undefined && me.balance > 0) ||
+      (me.allocatedTotal !== undefined && me.allocatedTotal > 0) ||
+      (me.budgetMensuel !== undefined && me.budgetMensuel > 0)
+    ))
+  );
 
-  // Produits appartenant à l'utilisateur connecté
-  const products = db.products.filter((p) => p.userId === me?.id);
+  // Produits appartenant à l'utilisateur connecté ou partagés dans le foyer
+  const products = db.products.filter(
+    (p) => p.userId === me?.id || (isChildUser && (p.userId === me?.parentId || !p.userId || p.userId === '1'))
+  );
 
   // États locaux des champs du formulaire
   // État local de l'identifiant du produit sélectionné
@@ -117,7 +131,7 @@ export function PurchaseForm({
     initial?.quantity !== undefined ? String(initial.quantity) : '1'
   );
   // État local de l'unité de mesure associée
-  const [unit, setUnit] = useState(initial?.unit ?? product?.unit ?? 'L');
+  const [unit, setUnit] = useState(initial?.unit ?? product?.unit ?? '');
   // État local du magasin ou de l'enseigne
   const [store, setStore] = useState(initial?.store ?? '');
 
@@ -156,15 +170,13 @@ export function PurchaseForm({
   const pickProduct = (id: string) => {
     setProductId(id);
     const prod = products.find((x) => x.id === id);
-    if (prod) setUnit(prod.unit);
+    if (prod) setUnit(prod.unit ?? '');
   };
 
   /**
    * Validation et soumission des données saisies.
    */
   const submit = () => {
-    // Blocage strict : achat interdit sans période sélectionnée et budget alloué
-    if (!hasBudget) return setError(t('selectionner_periode_et_budget_dabord'));
     if (!productId) return setError(t('choisir_produit_erreur'));
     if (!Number.isFinite(p) || p < 0) return setError(t('entrer_prix_total_valide'));
     if (!Number.isFinite(q) || q <= 0) return setError(t('quantite_doit_etre_positive'));
@@ -174,7 +186,7 @@ export function PurchaseForm({
       productId,
       price: p,
       quantity: q,
-      unit,
+      unit: (unit || '').trim(),
       store: store.trim(),
       date,
     });
@@ -301,7 +313,13 @@ export function PurchaseForm({
       {/* Ligne prix unitaire calculé automatiquement */}
       <InfoRow
         label={t('prix_unitaire_calcule')}
-        value={up === null ? '—' : `${dt(up)} DT / ${unit}`}
+        value={
+          up === null
+            ? '—'
+            : unit
+            ? `${dt(up)} DT / ${unit}`
+            : `${dt(up)} DT`
+        }
         tone="good"
       />
 
@@ -315,20 +333,27 @@ export function PurchaseForm({
         {t('comparer_avant_sauvegarder')}
       </Hint>
 
-      {/* Alerte si aucun produit n'existe encore dans le catalogue */}
+      {/* Alerte si aucun produit n'existe encore dans le catalogue avec action directe */}
       {products.length === 0 ? (
-        <AlertBanner
-          tone="warning"
-          title={t('aucun_produit_existant')}
-          detail={t('ajouter_produit_dabord')}
-        />
+        <View style={{ gap: 8, marginVertical: 6 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('aucun_produit_existant')}
+            detail={t('ajouter_produit_dabord')}
+          />
+          <Button
+            label={t('nouveau_produit')}
+            variant="secondary"
+            onPress={() => router.push('/nouveau-produit')}
+          />
+        </View>
       ) : null}
 
-      {/* Bouton principal de soumission (bloqué si aucun produit ou aucun budget alloué) */}
+      {/* Bouton principal de soumission */}
       <Button
         label={submitLabel}
         onPress={submit}
-        disabled={products.length === 0 || !hasBudget}
+        disabled={products.length === 0}
       />
 
       {/* Bouton d'annulation */}

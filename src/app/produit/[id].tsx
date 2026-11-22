@@ -123,7 +123,13 @@ export default function ProductDetailsScreen() {
   // Nom traduit de la catégorie de produit
   const catNom = traduireCategorie(categoryName(db, product.categoryId));
   // Sous-ligne Hero combinant catégorie, emballage et unité
-  const heroSubLine = [catNom, packaging, `${last?.quantity ?? 1} ${unit}`]
+  const heroSubLine = [
+    catNom,
+    packaging,
+    last
+      ? `${last.quantity}${last.unit ? ' ' + last.unit : ''}`
+      : (product.unit ? `1 ${product.unit}` : ''),
+  ]
     .filter(Boolean)
     .join('  ·  ');
 
@@ -188,7 +194,11 @@ export default function ProductDetailsScreen() {
             <InfoRow
               plain
               label={t('dernier_prix_unitaire')}
-              value={`${dt(unitOf(last))} DT / ${last.unit}`}
+              value={
+                last.unit
+                  ? `${dt(unitOf(last))} DT / ${last.unit}`
+                  : `${dt(unitOf(last))} DT`
+              }
             />
             {/* Ligne 2 : Date du dernier achat */}
             <InfoRow

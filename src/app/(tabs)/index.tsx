@@ -54,6 +54,8 @@ export default function HomeScreen() {
 
   // Contrôle d'ouverture de la modale de création d'une nouvelle catégorie
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  // Message de succès après ajout d'une catégorie
+  const [categorySuccess, setCategorySuccess] = useState<string | null>(null);
 
   // Contrôle d'ouverture de la modale de saisie vocale intelligente
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
@@ -72,13 +74,13 @@ export default function HomeScreen() {
   const defaultRangeText = fmtRange(currentMonthStart, currentMonthEnd, langue);
 
   // Valeurs budgétaires garanties réelles (0 lorsqu'aucun budget n'a été attribué)
-  const isChild = me?.role === 'child';
+  const isChild = me?.role === 'child' || me?.accountType === 'child';
   const childBudget = isChild ? (budget || db.budgets.find((b) => b.userId === me.id)) : null;
   const childSpent = isChild
     ? db.purchases.filter((p) => p.userId === me.id).reduce((s, p) => s + p.price, 0) +
       db.expenses.filter((e) => e.userId === me.id).reduce((s, e) => s + e.amount, 0)
     : 0;
-  const childTotal = isChild ? (childBudget?.total || me?.allocatedTotal || me?.balance || 0) : 0;
+  const childTotal = isChild ? (childBudget?.total || me?.allocatedTotal || me?.balance || me?.budgetMensuel || 0) : 0;
   const childAvailable = isChild
     ? (me?.balance !== undefined ? me.balance : Math.max(0, childTotal - childSpent))
     : 0;
@@ -187,11 +189,10 @@ export default function HomeScreen() {
     return [...myPurchases, ...myExpenses].sort((a, b) => b.date.localeCompare(a.date));
   }, [db, me, budget, currentMonthStart, currentMonthEnd]);
 
-  if (!me) return null;
-
   // Liste des catégories à afficher sur le tableau de bord :
   // Priorité aux catégories suivies par l'utilisateur (me.categoryIds),
   // complétées par toute catégorie présente dans l'enveloppe du budget actif
+  // Placé AVANT tout return conditionnel pour respecter strictement les règles des Hooks React
   const displayCategoryIds = useMemo(() => {
     const followed = me?.categoryIds ?? [];
     if (!budget) return followed;
@@ -206,6 +207,9 @@ export default function HomeScreen() {
   const restAlloc = rest.reduce((a, id) => a + (budget?.allocations[id] ?? 0), 0);
 
   const displayMonthDate = budget ? parseISO(budget.start) : now;
+
+  // Sécurité : si aucun utilisateur n'est connecté
+  if (!me) return null;
 
   return (
     <Screen
@@ -259,6 +263,17 @@ export default function HomeScreen() {
           }
         }}
       />
+
+      {/* Message de succès après ajout d'une catégorie */}
+      {categorySuccess ? (
+        <View style={{ marginTop: 8, marginBottom: 4 }}>
+          <AlertBanner
+            tone="success"
+            title={isRTL ? 'نجاح' : 'Succès'}
+            detail={categorySuccess}
+          />
+        </View>
+      ) : null}
 
       {/* 3. Bouton "Ajouter une catégorie" positionné exactement sous le cadre vert du budget, à droite */}
       <View
@@ -766,6 +781,13 @@ export default function HomeScreen() {
       <CustomCategoryModal
         visible={categoryModalOpen}
         onClose={() => setCategoryModalOpen(false)}
+        onSuccess={(cat) => {
+          const msg = isRTL
+            ? `تمت إضافة فئة "${traduireCategorie(cat.name)}" بنجاح!`
+            : `La catégorie "${traduireCategorie(cat.name)}" a été ajoutée avec succès !`;
+          setCategorySuccess(msg);
+          setTimeout(() => setCategorySuccess(null), 6000);
+        }}
         scope={me.role === 'parent' || me.role === 'admin' ? 'family' : 'personal'}
       />
 

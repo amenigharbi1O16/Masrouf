@@ -26,7 +26,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 // Composants natifs pour alertes et boutons tactiles
-import { Alert, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, Text, TouchableOpacity, View } from 'react-native';
 // Formulaire modulaire de saisie d'une dépense directe
 import { ExpenseForm } from '@/components/ExpenseForm';
 // Conteneur d'écran avec retour arrière et gestion du défilement
@@ -78,6 +78,24 @@ export default function EditExpenseScreen() {
 
   // Fonction de suppression de la dépense avec confirmation préalable
   const handleDelete = () => {
+    const doDelete = () => {
+      // Suppression effective de la dépense dans SQLite et le store
+      actions.deleteExpense(expense.id);
+      // Retour fluide à l'écran précédent
+      router.back();
+    };
+
+    if (Platform.OS === 'web') {
+      const msg = isRTL
+        ? 'هل أنت متأكد من حذف هذا المصروف؟ لا يمكن التراجع عن هذه العملية.'
+        : 'Êtes-vous sûr de vouloir supprimer cette dépense ? Cette action est irréversible.';
+      const confirmed = typeof window !== 'undefined' ? window.confirm(msg) : true;
+      if (confirmed) {
+        doDelete();
+      }
+      return;
+    }
+
     // Alerte de confirmation native empêchant toute suppression accidentelle
     Alert.alert(
       // Titre de l'alerte
@@ -93,12 +111,7 @@ export default function EditExpenseScreen() {
         {
           text: isRTL ? 'حذف' : 'Supprimer',
           style: 'destructive',
-          onPress: () => {
-            // Suppression effective de la dépense dans SQLite et le store
-            actions.deleteExpense(expense.id);
-            // Retour fluide à l'écran précédent
-            router.back();
-          },
+          onPress: doDelete,
         },
       ]
     );

@@ -103,6 +103,7 @@ export function CustomCategoryModal({
   const [allocationPercent, setAllocationPercent] = useState<string>('5');
 
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
   // Catégories déjà suivies par l'utilisateur connecté
@@ -149,6 +150,7 @@ export function CustomCategoryModal({
       setSelectedIcon(initialKind === 'product' ? 'basket-outline' : 'receipt-outline');
       setAllocationPercent('5');
       setError('');
+      setSuccessMessage('');
     }
   }, [visible, initialKind]);
 
@@ -252,12 +254,22 @@ export function CustomCategoryModal({
         }
 
         setBusy(false);
+        const catName = traduireCategorie(targetCat.name);
+        const successMsg = isRTL
+          ? `تمت إضافة فئة "${catName}" بنجاح!`
+          : `La catégorie "${catName}" a été ajoutée avec succès !`;
+        setSuccessMessage(successMsg);
         Alert.alert(
-          'Catégorie ajoutée',
-          `La catégorie "${traduireCategorie(targetCat.name)}" a été ajoutée avec succès avec une allocation de ${numAllocPercent}%.`
+          isRTL ? 'تمت إضافة الفئة' : 'Catégorie ajoutée',
+          isRTL
+            ? `تمت إضافة فئة "${catName}" بنجاح مع تخصيص ${numAllocPercent}%.`
+            : `La catégorie "${catName}" a été ajoutée avec succès avec une allocation de ${numAllocPercent}%.`
         );
         if (onSuccess) onSuccess(targetCat);
-        onClose();
+        setTimeout(() => {
+          setSuccessMessage('');
+          onClose();
+        }, 1200);
       } else {
         // --- CAS 2 : SAISIE MANUELLE D'UN NOUVEAU NOM ---
         const trimmed = manualName.trim();
@@ -324,12 +336,21 @@ export function CustomCategoryModal({
         }
 
         setBusy(false);
+        const successMsg = isRTL
+          ? `تم إنشاء وإضافة فئة "${newCat.name}" بنجاح!`
+          : `La catégorie "${newCat.name}" a été créée et ajoutée avec succès !`;
+        setSuccessMessage(successMsg);
         Alert.alert(
-          'Nouvelle catégorie enregistrée',
-          `La catégorie "${newCat.name}" a été créée et ajoutée avec une allocation de ${numAllocPercent}%.`
+          isRTL ? 'فئة جديدة' : 'Nouvelle catégorie enregistrée',
+          isRTL
+            ? `تم إنشاء فئة "${newCat.name}" وإضافتها بنجاح مع تخصيص ${numAllocPercent}%.`
+            : `La catégorie "${newCat.name}" a été créée et ajoutée avec une allocation de ${numAllocPercent}%.`
         );
         if (onSuccess) onSuccess(newCat);
-        onClose();
+        setTimeout(() => {
+          setSuccessMessage('');
+          onClose();
+        }, 1200);
       }
     } catch (err: any) {
       setBusy(false);
@@ -437,6 +458,9 @@ export function CustomCategoryModal({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.body}
           >
+            {successMessage ? (
+              <AlertBanner tone="success" title={isRTL ? 'نجاح' : 'Succès'} detail={successMessage} />
+            ) : null}
             {error ? (
               <AlertBanner tone="danger" title={t('erreur')} detail={error} />
             ) : null}

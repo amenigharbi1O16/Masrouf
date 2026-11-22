@@ -26,7 +26,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 // Composants natifs pour alertes et boutons tactiles
-import { Alert, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, Text, TouchableOpacity, View } from 'react-native';
 // Formulaire modulaire de saisie d'achat de produit
 import { PurchaseForm } from '@/components/PurchaseForm';
 // Conteneur d'écran avec retour arrière et gestion du défilement
@@ -66,6 +66,24 @@ export default function EditPurchaseScreen() {
 
   // Fonction de suppression de l'achat avec confirmation
   const handleDelete = () => {
+    const doDelete = () => {
+      // Suppression effective dans SQLite et dans le store
+      actions.deletePurchase(purchase!.id);
+      // Retour fluide
+      router.back();
+    };
+
+    if (Platform.OS === 'web') {
+      const msg = isRTL
+        ? 'هل أنت متأكد من حذف عملية الشراء هذه؟ لا يمكن التراجع عن هذه العملية.'
+        : 'Êtes-vous sûr de vouloir supprimer cet achat ? Cette action est irréversible.';
+      const confirmed = typeof window !== 'undefined' ? window.confirm(msg) : true;
+      if (confirmed) {
+        doDelete();
+      }
+      return;
+    }
+
     // Alerte de confirmation native
     Alert.alert(
       // Titre
@@ -81,12 +99,7 @@ export default function EditPurchaseScreen() {
         {
           text: isRTL ? 'حذف' : 'Supprimer',
           style: 'destructive',
-          onPress: () => {
-            // Suppression effective dans SQLite et dans le store
-            actions.deletePurchase(purchase!.id);
-            // Retour fluide
-            router.back();
-          },
+          onPress: doDelete,
         },
       ]
     );

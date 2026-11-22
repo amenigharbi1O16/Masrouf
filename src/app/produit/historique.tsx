@@ -110,7 +110,9 @@ export default function PurchaseHistoryScreen() {
   const eyebrowText = [
     product.name.toUpperCase(),
     product.brand,
-    last ? `${last.quantity} ${last.unit}` : product.unit,
+    last
+      ? `${last.quantity}${last.unit ? ' ' + last.unit : ''}`
+      : (product.unit || ''),
   ]
     .filter(Boolean)
     .join(' · ');
@@ -198,7 +200,7 @@ export default function PurchaseHistoryScreen() {
               </Text>
               {/* Enseigne et quantité achetée */}
               <Text style={styles.purchaseDetail}>
-                {p.store || '—'} · {p.quantity} {p.unit}
+                {p.store || '—'} · {p.quantity}{p.unit ? ' ' + p.unit : ''}
               </Text>
             </View>
 
@@ -213,8 +215,8 @@ export default function PurchaseHistoryScreen() {
       {/* Graphique vectoriel SVG d'évolution du prix unitaire */}
       {list.length > 0 && (
         <PriceChart
-          title={`${t('prix_unitaire')} · DT / ${unit}`}
-          unit={`DT / ${unit}`}
+          title={unit ? `${t('prix_unitaire')} · DT / ${unit}` : `${t('prix_unitaire')} · DT`}
+          unit={unit ? `DT / ${unit}` : 'DT'}
           points={series}
         />
       )}

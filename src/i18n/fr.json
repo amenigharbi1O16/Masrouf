@@ -777,6 +777,7 @@
   "solde_enfant": "Solde disponible",
   "argent_de_poche": "Argent de poche",
   "compte_enfant": "Compte Enfant",
+  "budget_alloue": "Budget alloué par le parent",
   "budget_alloue_par_parent": "Votre budget mensuel est alloué par votre parent et ne peut pas être modifié depuis ce compte.",
   "reinitialiser_mot_de_passe": "Réinitialiser mot de passe",
   "part_parent": "Part du parent",
@@ -821,5 +822,9 @@
   "confirmer_virement": "Confirmer le virement",
   "saisie_libre": "Saisie libre",
   "dons_et_charite": "Dons & Charité",
-  "prevu_vs_realise": "Prévu vs Réalisé"
+  "prevu_vs_realise": "Prévu vs Réalisé",
+  "succes": "Succès",
+  "categorie_ajoutee_succes": "Catégorie ajoutée avec succès !",
+  "categories_enregistrees_succes": "Catégories enregistrées avec succès !",
+  "langue_detectee": "Langue détectée"
 }
