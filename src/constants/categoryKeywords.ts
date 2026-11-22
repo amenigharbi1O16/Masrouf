@@ -13,6 +13,7 @@
  */
 
 import type { Category } from '@/state/types';
+import { findEnfantCategory, isChildrenCategory } from '@/utils/categoryMatching';
 
 /**
  * Dictionnaire exhaustif de correspondances sémantiques par catégorie officielle :
@@ -183,12 +184,7 @@ export function matchCategoryFromText(
 
   // 1. Cas prioritaire : Si c'est une allocation parentale -> catégorie "Enfant"
   if (isAllocation) {
-    const childCat = categories.find((c) =>
-      c.id === 'children' ||
-      c.name.toLowerCase() === 'enfant' ||
-      c.name.toLowerCase() === 'enfants' ||
-      c.name.toLowerCase() === 'children'
-    );
+    const childCat = findEnfantCategory(categories) || categories.find((c) => isChildrenCategory(c));
     if (childCat) {
       return { category: childCat, isUncertain: false, confidence: 1.0 };
     }

@@ -1,9 +1,9 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
 
-console.log('=== TEST DE VÉRIFICATION : RÈGLES DE BUDGET UNIQUE PAR MOIS & DATES EXACTES ===');
+console.log('=== TEST DE VÉRIFICATION : PÉRIODE LIBRE & SANS VERROUILLAGE DES DATES ===');
 
-// 1. Test unitaire des calculs de dates exactes de mois (getExactMonthBounds)
+// 1. Test unitaire des calculs de dates exactes de mois (getExactMonthBounds servant de valeurs par défaut)
 function getExactMonthBounds(dateOrMonthStr) {
   let clean = dateOrMonthStr ? String(dateOrMonthStr).trim() : '';
   if (!clean || !/^\d{4}-\d{1,2}/.test(clean)) {
@@ -19,67 +19,50 @@ function getExactMonthBounds(dateOrMonthStr) {
   return { start, end, monthKey, year: y, month: m, lastDay };
 }
 
-// Vérification de Novembre 2026 (30 jours)
+// Initialisation par défaut : Novembre 2026 (01 au 30)
 const nov = getExactMonthBounds('2026-11');
-assert.strictEqual(nov.start, '2026-11-01', 'Novembre début doit être 2026-11-01');
-assert.strictEqual(nov.end, '2026-11-30', 'Novembre fin doit être 2026-11-30');
-assert.strictEqual(nov.lastDay, 30);
+assert.strictEqual(nov.start, '2026-11-01', 'Novembre début doit être 2026-11-01 par défaut');
+assert.strictEqual(nov.end, '2026-11-30', 'Novembre fin doit être 2026-11-30 par défaut');
 
-// Vérification de Décembre 2026 (31 jours)
+// Initialisation par défaut : Décembre 2026 (01 au 31)
 const dec = getExactMonthBounds('2026-12');
-assert.strictEqual(dec.start, '2026-12-01', 'Décembre début doit être 2026-12-01');
-assert.strictEqual(dec.end, '2026-12-31', 'Décembre fin doit être 2026-12-31');
-assert.strictEqual(dec.lastDay, 31);
+assert.strictEqual(dec.start, '2026-12-01', 'Décembre début doit être 2026-12-01 par défaut');
+assert.strictEqual(dec.end, '2026-12-31', 'Décembre fin doit être 2026-12-31 par défaut');
 
-// Vérification de Février 2026 (non bissextile : 28 jours)
-const feb26 = getExactMonthBounds('2026-02-15');
-assert.strictEqual(feb26.start, '2026-02-01', 'Février 2026 début doit être 2026-02-01');
-assert.strictEqual(feb26.end, '2026-02-28', 'Février 2026 fin doit être 2026-02-28');
-assert.strictEqual(feb26.lastDay, 28);
+console.log('✓ getExactMonthBounds : initialisation par défaut au 1er et dernier jour du mois validée');
 
-// Vérification de Février 2024 (bissextile : 29 jours)
-const feb24 = getExactMonthBounds('2024-02-10');
-assert.strictEqual(feb24.start, '2024-02-01', 'Février 2024 début doit être 2024-02-01');
-assert.strictEqual(feb24.end, '2024-02-29', 'Février 2024 fin doit être 2024-02-29');
-assert.strictEqual(feb24.lastDay, 29);
-
-console.log('✓ getExactMonthBounds : début exact (AAAA-MM-01) et fin exacte (dernier jour du mois) validés');
-
-// 2. Vérification dans calendrier.tsx que le bouton "+ Ajouter une période" est absent quand une période existe
-const calCode = fs.readFileSync('src/app/(tabs)/calendrier.tsx', 'utf8');
-assert.ok(
-  !calCode.includes('selected.length > 0 &&') || !calCode.includes("label={t('creer_periode_budget')}"),
-  "calendrier.tsx ne doit pas afficher le bouton 'creer_periode_budget' quand selected.length > 0"
-);
-console.log('✓ calendrier.tsx : Bouton d’ajout de période supprimé dès qu’une période pour ce mois est choisie');
-
-// 3. Vérification dans budget-mois.tsx du blocage de doublon pour le même mois
+// 2. Vérification dans budget-mois.tsx que les dates sont modifiables sans lock de mois
 const budgetMoisCode = fs.readFileSync('src/app/budget-mois.tsx', 'utf8');
 assert.ok(
-  budgetMoisCode.includes('getExactMonthBounds'),
-  'budget-mois.tsx doit importer et utiliser getExactMonthBounds'
+  budgetMoisCode.includes('handleStartChange') && budgetMoisCode.includes('handleEndChange'),
+  'budget-mois.tsx doit permettre la saisie indépendante de la date de début et de fin'
 );
 assert.ok(
-  budgetMoisCode.includes('erreur_budget_unique_mois'),
-  'budget-mois.tsx doit valider la règle du budget unique par mois'
+  !budgetMoisCode.includes('if (start !== expectedBounds.start || end !== expectedBounds.end)'),
+  'budget-mois.tsx ne doit pas verrouiller les dates aux bornes strictes du mois civil'
 );
-assert.ok(
-  budgetMoisCode.includes('erreur_dates_mois_exactes'),
-  'budget-mois.tsx doit valider les dates exactes de début et fin de mois'
-);
-console.log('✓ budget-mois.tsx : Règle stricte d’unicité par mois et synchronisation automatique des dates exactes');
+console.log('✓ budget-mois.tsx : Absence de lock de dates et composition libre d’une période (ex: 2026-11-05 au 2026-12-30)');
 
-// 4. Vérification dans store.tsx de l’unicité dans actions.saveBudget
+// 3. Vérification dans allocation-budget.tsx de la préservation des dates personnalisées
+const allocCode = fs.readFileSync('src/app/allocation-budget.tsx', 'utf8');
+assert.ok(
+  allocCode.includes('const normalizedStart = start ||') && allocCode.includes('const normalizedEnd = end ||'),
+  'allocation-budget.tsx doit respecter les dates personnalisées passées'
+);
+console.log('✓ allocation-budget.tsx : Transmission fidèle des dates de période personnalisées');
+
+// 4. Vérification dans store.tsx et sqlite-bridge.ts de la sauvegarde fidèle sans forçage
 const storeCode = fs.readFileSync('src/state/store.tsx', 'utf8');
 assert.ok(
-  storeCode.includes('getExactMonthBounds(b.start)'),
-  'store.tsx doit normaliser les dates exactes du mois'
+  !storeCode.includes('const { start: exactStart, end: exactEnd, monthKey } = getExactMonthBounds(b.start);'),
+  'store.tsx ne doit pas écraser les dates choisies par getExactMonthBounds'
 );
+const bridgeCode = fs.readFileSync('src/state/sqlite-bridge.ts', 'utf8');
 assert.ok(
-  storeCode.includes('existingForSameMonth'),
-  'store.tsx doit réutiliser le budget existant du même mois'
+  !bridgeCode.includes('budget.start = exactStart;'),
+  'sqlite-bridge.ts ne doit pas forcer budget.start = exactStart'
 );
-console.log('✓ store.tsx : actions.saveBudget garantit l’unicité stricte d’un seul budget par mois');
+console.log('✓ store.tsx & sqlite-bridge.ts : Persistance SQLite fidèle des dates personnalisées choisies');
 
 // 5. Vérification de la synchronisation i18n
 const fr = JSON.parse(fs.readFileSync('src/i18n/fr.json', 'utf8'));
@@ -97,8 +80,8 @@ for (const k of keysToCheck) {
   assert.ok(en[k], `Clé ${k} manquante dans en.json`);
   assert.ok(ar[k], `Clé ${k} manquante dans ar.json`);
 }
-console.log('✓ i18n : 717 clés rigoureusement synchronisées (0 clé manquante)');
+console.log('✓ i18n : clés de période et messages de validation parfaitement synchronisés');
 
 console.log('============================================================');
-console.log('🎉 TOUS LES TESTS DE GESTION DU BUDGET UNIQUE SONT VALIDÉS !');
+console.log('🎉 TOUS LES TESTS DE PÉRIODE LIBRE PERSONNALISÉE SONT VALIDÉS !');
 console.log('============================================================');

@@ -47,7 +47,7 @@ const CATS: [string, string, 'product' | 'expense', number][] = [
   ['bills', 'Bills', 'expense', 14],
   ['education', 'Education', 'expense', 4],
   ['entertainment', 'Entertainment', 'expense', 5],
-  ['children', 'Children', 'expense', 3],
+  ['children', 'Enfant', 'expense', 3],
   ['family', 'Family support', 'expense', 3],
   ['savings', 'Savings', 'expense', 4],
   ['donations', 'Donations', 'expense', 1],

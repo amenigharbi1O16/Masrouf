@@ -27,8 +27,14 @@ import { Screen } from '@/components/Screen';
 import { AlertBanner, Body, Button, Eyebrow, SectionTitle } from '@/components/ui';
 import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
-import { formatTND } from '@/utils/format';
+import { formatTND, todayISO } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
+import {
+  isChildrenCategory,
+  findEnfantCategory,
+  CANONICAL_ENFANT_ID,
+  CANONICAL_ENFANT_NAME,
+} from '@/utils/categoryMatching';
 
 type FilterTab = 'pending' | 'approved' | 'rejected';
 
@@ -53,17 +59,57 @@ export default function MoneyRequestsScreen() {
     totalAllocated: 0,
   };
 
-  const handleResponse = async (reqId: string, approve: boolean) => {
+  // Calcul dynamique de l'enveloppe budgétaire catégorie « Enfants » pour le parent
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const startOfMonth = `${currentMonthKey}-01`;
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const endOfMonth = `${currentMonthKey}-${String(lastDay).padStart(2, '0')}`;
+
+  const catEnfant = findEnfantCategory(db.categories);
+  const catEnfantId = catEnfant?.id || CANONICAL_ENFANT_ID;
+
+  const activeBudget =
+    db.budgets.find((b) => b.userId === me?.id && b.start.slice(0, 7) === currentMonthKey) ||
+    db.budgets.find((b) => b.userId === me?.id && b.start <= todayISO() && b.end >= todayISO()) ||
+    db.budgets.find((b) => b.userId === me?.id);
+
+  const familyBudget = db.familyBudgets?.find(
+    (b) => b.parentId === me?.id && (b.month === currentMonthKey || b.start === startOfMonth)
+  );
+
+  // Somme des allocations réservées à la catégorie Enfant
+  const catEnfantBudget = React.useMemo(() => {
+    let sum = 0;
+    const allocs = activeBudget?.allocations || familyBudget?.allocations || {};
+    for (const [k, v] of Object.entries(allocs)) {
+      if (k === catEnfantId || isChildrenCategory(k) || isChildrenCategory(db.categories.find((c) => c.id === k))) {
+        sum += Number(v) || 0;
+      }
+    }
+    return sum;
+  }, [activeBudget, familyBudget, catEnfantId, db.categories]);
+
+  // Dépenses actuelles dans la catégorie Enfant ce mois-ci
+  const currentEnfantSpent = React.useMemo(() => {
+    return db.expenses
+      .filter(
+        (e) =>
+          e.userId === me?.id &&
+          (e.categoryId === catEnfantId ||
+            isChildrenCategory(e.categoryId) ||
+            isChildrenCategory(db.categories.find((c) => c.id === e.categoryId))) &&
+          e.date >= startOfMonth &&
+          e.date <= endOfMonth
+      )
+      .reduce((sum, e) => sum + e.amount, 0);
+  }, [db.expenses, me?.id, catEnfantId, db.categories, startOfMonth, endOfMonth]);
+
+  const remainingEnfantBudget = Math.max(0, catEnfantBudget - currentEnfantSpent);
+
+  const processResponse = async (reqId: string, approve: boolean) => {
     const req = allRequests.find((r) => r.id === reqId);
     if (!req) return;
-
-    if (approve && req.amount > familyFund.balance) {
-      Alert.alert(
-        'Fonds insuffisants',
-        `La réserve familiale (${formatTND(familyFund.balance)}) ne permet pas de couvrir cette demande de ${formatTND(req.amount)}.`
-      );
-      return;
-    }
 
     setBusyId(reqId);
     const res = await actions.respondToMoneyRequest(reqId, approve);
@@ -79,6 +125,36 @@ export default function MoneyRequestsScreen() {
           : `La demande de ${req.childName} a été refusée.`
       );
     }
+  };
+
+  const handleResponse = async (reqId: string, approve: boolean) => {
+    const req = allRequests.find((r) => r.id === reqId);
+    if (!req) return;
+
+    if (approve) {
+      const projectedSpent = currentEnfantSpent + req.amount;
+      const willExceed = (catEnfantBudget > 0 && projectedSpent > catEnfantBudget) || catEnfantBudget === 0;
+
+      if (willExceed) {
+        Alert.alert(
+          isRTL ? 'تنبيه تجاوز الميزانية' : 'Dépassement du budget Enfant',
+          isRTL
+            ? `الموافقة على هذا الطلب (${formatTND(req.amount)}) تتجاوز الميزانية المخصصة للأطفال (المتبقي: ${formatTND(remainingEnfantBudget)}). هل تريد تأكيد التحويل وتجاوز الميزانية؟`
+            : `L'approbation de cette demande de ${formatTND(req.amount)} dépasse le budget alloué à la catégorie « Enfant » (Budget restant : ${formatTND(remainingEnfantBudget)} / Prévu : ${formatTND(catEnfantBudget)}).\n\nSouhaitez-vous confirmer l'allocation malgré le dépassement ? L'opération sera marquée en rouge dans vos analyses.`,
+          [
+            { text: isRTL ? 'إلغاء' : 'Annuler', style: 'cancel' },
+            {
+              text: isRTL ? 'تأكيد الموافقة' : 'Confirmer et approuver',
+              style: 'destructive',
+              onPress: () => processResponse(reqId, true),
+            },
+          ]
+        );
+        return;
+      }
+    }
+
+    await processResponse(reqId, approve);
   };
 
   const pendingCount = allRequests.filter((r) => r.status === 'pending').length;

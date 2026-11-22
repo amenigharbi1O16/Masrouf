@@ -33,6 +33,11 @@ interface LanguageSelectorProps {
    * Indique si le sélecteur est affiché dans le tiroir utilisateur (taille de police légèrement augmentée pour lisibilité)
    */
   isUserDrawer?: boolean;
+  /**
+   * Mode sombre pour affichage sur arrière-plan foncé (ex: tiroir administrateur vert forêt).
+   * La langue choisie se colore en blanc (texte vert forêt) et les langues non sélectionnées restent en blanc (texte et bordure blanche, sans fond blanc).
+   */
+  dark?: boolean;
 }
 
 /**
@@ -43,7 +48,12 @@ interface LanguageSelectorProps {
  *    - En mode 'drawer' : une ligne discrète « عربي / FR / ANG » en bas du menu latéral.
  *    - Lorsqu'on clique sur une langue, l'ensemble de l'interface change de langue instantanément et bascule en mode RTL si l'arabe est sélectionné.
  */
-export function LanguageSelector({ style, variant = 'pills', isUserDrawer = false }: LanguageSelectorProps) {
+export function LanguageSelector({
+  style,
+  variant = 'pills',
+  isUserDrawer = false,
+  dark = false,
+}: LanguageSelectorProps) {
   // Récupération de la langue active, de la fonction de bascule et du sens d'écriture
   // Hook d'internationalisation : code langue courant, fonction de changement et drapeau RTL
   const { langue, changerLangue, isRTL } = useTranslation();
@@ -158,7 +168,9 @@ export function LanguageSelector({ style, variant = 'pills', isUserDrawer = fals
             onPress={() => changerLangue(cfg.code)}
             style={({ pressed }) => [
               styles.pill,
-              active ? styles.pillActive : styles.pillInactive,
+              dark
+                ? (active ? styles.pillActiveDark : styles.pillInactiveDark)
+                : (active ? styles.pillActive : styles.pillInactive),
               pressed && { opacity: 0.8 },
             ]}
             accessibilityRole="button"
@@ -170,7 +182,9 @@ export function LanguageSelector({ style, variant = 'pills', isUserDrawer = fals
               style={[
                 styles.label,
                 { fontSize: isSmall ? 12 : 14 },
-                active ? styles.labelActive : styles.labelInactive,
+                dark
+                  ? (active ? styles.labelActiveDark : styles.labelInactiveDark)
+                  : (active ? styles.labelActive : styles.labelInactive),
               ]}
               numberOfLines={1}
               adjustsFontSizeToFit
@@ -231,6 +245,16 @@ const styles = StyleSheet.create({
     // Bordure grise discrète
     borderColor: colors.border,
   },
+  // Style de la pastille active en mode sombre (ex: tiroir Admin) : pastille blanche éclatante
+  pillActiveDark: {
+    backgroundColor: colors.white,
+    borderColor: colors.white,
+  },
+  // Style des pastilles inactives en mode sombre : translucide avec bordure blanche fine
+  pillInactiveDark: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+  },
   label: {
     fontSize: 14,
     fontWeight: '600',
@@ -247,6 +271,16 @@ const styles = StyleSheet.create({
     // Texte vert forêt sur fond blanc
     color: colors.forest,
     fontWeight: '500',
+  },
+  // Typographie du texte de la pastille active en mode sombre : texte vert forêt sur pastille blanche
+  labelActiveDark: {
+    color: colors.forest,
+    fontWeight: '700',
+  },
+  // Typographie du texte des pastilles inactives en mode sombre : texte blanc lisible
+  labelInactiveDark: {
+    color: colors.white,
+    fontWeight: '600',
   },
 
   // Styles spécifiques au tiroir latéral (fond vert foncé)

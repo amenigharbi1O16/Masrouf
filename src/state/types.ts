@@ -87,6 +87,9 @@ export interface User {
   allocatedTotal?: number;
   /** Nom de la famille ou nom de foyer (ex: "Famille Ben Ali") */
   familyName?: string;
+  /** Budget mensuel attribué (ex: pour un enfant ou plafond personnel) */
+  budgetMensuel?: number;
+  budget_mensuel?: number;
 }
 
 /**
@@ -307,6 +310,7 @@ export interface ParsedVoiceTransaction {
   needsClarification?: boolean;
   clarificationReason?: string;
   detectedLanguage?: 'ar' | 'fr' | 'en';
+  initialAllocationPercent?: number;
 }
 
 /**

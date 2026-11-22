@@ -37,8 +37,6 @@ import { MasroufLogo } from '@/components/MasroufLogo';
 import { TransactionRow } from '@/components/Cards';
 // Sélecteur visuel de catégories réutilisable
 import { CategoryPicker } from '@/components/CategoryPicker';
-// Modal de sélection et création de catégorie personnalisée
-import { CustomCategoryModal } from '@/components/CustomCategoryModal';
 // Conteneur d'écran avec retour conditionnel
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
@@ -79,9 +77,9 @@ export default function OnboardingScreen() {
   // État local : numéro de l'étape en cours (1: Découverte, 2: Sélection, 3: Récapitulatif)
   const [step, setStep] = useState<1 | 2 | 3>(1);
   // État local : tableau des identifiants des catégories sélectionnées
-  const [selected, setSelected] = useState<string[]>([]);
-  // État local : affichage du modal d'ajout / création de catégorie
-  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>(
+    me?.categoryIds && me.categoryIds.length > 0 ? me.categoryIds : []
+  );
 
   /**
    * MISSION DE LA FONCTION :
@@ -218,7 +216,7 @@ export default function OnboardingScreen() {
             02 / 03 · {t('choisir_ce_que_vous_suivez').toUpperCase()}
           </Eyebrow>
 
-          {/* Titre de la section de sélection des catégories et bouton d'ajout de catégorie */}
+          {/* Titre de la section de sélection des catégories */}
           <View
             style={{
               flexDirection: isRTL ? 'row-reverse' : 'row',
@@ -231,24 +229,6 @@ export default function OnboardingScreen() {
             <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 0, flex: 1 }}>
               {t('vie_quotidienne_organisee')}
             </SectionTitle>
-
-            <TouchableOpacity
-              onPress={() => setCategoryModalOpen(true)}
-              style={{
-                flexDirection: isRTL ? 'row-reverse' : 'row',
-                alignItems: 'center',
-                backgroundColor: colors.mint,
-                paddingVertical: 6,
-                paddingHorizontal: 10,
-                borderRadius: 20,
-              }}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="add" size={16} color={colors.forest} style={{ marginHorizontal: 2 }} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.forest }}>
-                {t('ajouter_categorie')}
-              </Text>
-            </TouchableOpacity>
           </View>
 
           {/* Sous-titre expliquant que la sélection est modifiable à tout moment */}
@@ -261,15 +241,6 @@ export default function OnboardingScreen() {
             categories={db.categories}
             selected={selected}
             onToggle={toggle}
-          />
-
-          {/* Modal interactif d'ajout et création de catégorie */}
-          <CustomCategoryModal
-            visible={categoryModalOpen}
-            onClose={() => setCategoryModalOpen(false)}
-            onSuccess={(newCat) => {
-              setSelected((prev) => Array.from(new Set([...prev, newCat.id])));
-            }}
           />
 
           {/* Bouton vert de transition vers le récapitulatif avec compteur d'éléments */}

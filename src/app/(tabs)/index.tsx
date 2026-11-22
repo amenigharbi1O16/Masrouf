@@ -11,7 +11,7 @@ import { VoiceTransactionModal } from '@/components/VoiceTransactionModal';
 import { Screen } from '@/components/Screen';
 import { AlertBanner, Button, EmptyState, Eyebrow, SectionTitle } from '@/components/ui';
 import { colors, radius, space } from '@/constants/theme';
-import { categoryName, pointsFor, summarize } from '@/state/selectors';
+import { categoryConsumptionStats, categoryName, pointsFor, summarize } from '@/state/selectors';
 import { useStore } from '@/state/store';
 import { fmtDateLocale, fmtRange, money, monthNameLocale, parseISO, short } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
@@ -22,7 +22,7 @@ import { getCategoryIcon } from '@/utils/categoryIcons';
  *   Écran d'accueil principal et tableau de bord central de Masrouf (`/(tabs)`).
  *   Fournit une vue d'ensemble complète et unifiée des finances du foyer ou de l'utilisateur :
  *   1. Carte de budget principale : démarre à 0.000 DT lorsqu'aucun budget n'a été attribué.
- *   2. Bouton "Ajouter une catégorie +" placé exactement sous le cadre vert à droite.
+ *   2. Bouton "Ajouter une catégorie" placé exactement sous le cadre vert à droite.
  *   3. Deux actions clairement distinctes sans duplication :
  *      - "Ajouter un achat / produit"
  *      - "Ajouter une dépense"
@@ -72,10 +72,21 @@ export default function HomeScreen() {
   const defaultRangeText = fmtRange(currentMonthStart, currentMonthEnd, langue);
 
   // Valeurs budgétaires garanties réelles (0 lorsqu'aucun budget n'a été attribué)
-  const availableAmount = sum ? sum.left : 0;
-  const spentAmount = sum ? sum.spent : 0;
-  const totalBudgetAmount = sum ? sum.total : 0;
-  const consumedPct = sum ? sum.pct : 0;
+  const isChild = me?.role === 'child';
+  const childBudget = isChild ? (budget || db.budgets.find((b) => b.userId === me.id)) : null;
+  const childSpent = isChild
+    ? db.purchases.filter((p) => p.userId === me.id).reduce((s, p) => s + p.price, 0) +
+      db.expenses.filter((e) => e.userId === me.id).reduce((s, e) => s + e.amount, 0)
+    : 0;
+  const childTotal = isChild ? (childBudget?.total || me?.allocatedTotal || me?.balance || 0) : 0;
+  const childAvailable = isChild
+    ? (me?.balance !== undefined ? me.balance : Math.max(0, childTotal - childSpent))
+    : 0;
+
+  const availableAmount = isChild ? childAvailable : (sum ? sum.left : 0);
+  const spentAmount = isChild ? (sum ? sum.spent : childSpent) : (sum ? sum.spent : 0);
+  const totalBudgetAmount = isChild ? childTotal : (sum ? sum.total : 0);
+  const consumedPct = totalBudgetAmount > 0 ? Math.round((spentAmount / totalBudgetAmount) * 100) : 0;
   const displayRange = budget ? fmtRange(budget.start, budget.end, langue) : defaultRangeText;
 
   // Liste des enfants rattachés au parent
@@ -178,13 +189,20 @@ export default function HomeScreen() {
 
   if (!me) return null;
 
-  // Liste des catégories ayant une allocation dans le budget actif
-  const allocCats = budget
-    ? Object.keys(budget.allocations).filter((id) => (budget.allocations[id] ?? 0) > 0)
-    : [];
+  // Liste des catégories à afficher sur le tableau de bord :
+  // Priorité aux catégories suivies par l'utilisateur (me.categoryIds),
+  // complétées par toute catégorie présente dans l'enveloppe du budget actif
+  const displayCategoryIds = useMemo(() => {
+    const followed = me?.categoryIds ?? [];
+    if (!budget) return followed;
+    const allocKeys = Object.keys(budget.allocations).filter(
+      (id) => (budget.allocations[id] ?? 0) > 0
+    );
+    return Array.from(new Set([...followed, ...allocKeys]));
+  }, [me?.categoryIds, budget]);
 
-  const shown = expanded ? allocCats : allocCats.slice(0, 3);
-  const rest = allocCats.slice(3);
+  const shown = expanded ? displayCategoryIds : displayCategoryIds.slice(0, 3);
+  const rest = displayCategoryIds.slice(3);
   const restAlloc = rest.reduce((a, id) => a + (budget?.allocations[id] ?? 0), 0);
 
   const displayMonthDate = budget ? parseISO(budget.start) : now;
@@ -242,7 +260,7 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* 3. Bouton "Ajouter une catégorie +" positionné exactement sous le cadre vert du budget, à droite */}
+      {/* 3. Bouton "Ajouter une catégorie" positionné exactement sous le cadre vert du budget, à droite */}
       <View
         // Disposition horizontale inversée en arabe (RTL)
         style={{
@@ -293,9 +311,9 @@ export default function HomeScreen() {
             color={colors.forest}
             style={{ marginHorizontal: 4 }}
           />
-          {/* Libellé 'Ajouter une catégorie +' */}
+          {/* Libellé 'Ajouter une catégorie' */}
           <Text style={{ fontSize: 13, fontWeight: '700', color: colors.forest }}>
-            {t('ajouter_categorie')} +
+            {t('ajouter_categorie')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -313,8 +331,10 @@ export default function HomeScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', marginBottom: 10 }}>
-            {isRTL ? 'لم يتم تحديد أي ميزانية لهذا الشهر.' : 'Aucun budget défini pour ce mois.'}
+          <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', marginBottom: me.role === 'child' ? 0 : 10 }}>
+            {me.role === 'child'
+              ? (isRTL ? 'لم يتم تعيين أي ميزانية لك بعد من قِبل والدك.' : 'Aucun budget ne vous a encore été alloué par votre parent.')
+              : (isRTL ? 'لم يتم تحديد أي ميزانية لهذا الشهر.' : 'Aucun budget défini pour ce mois.')}
           </Text>
           {me.role !== 'child' && (
             <Button
@@ -427,11 +447,29 @@ export default function HomeScreen() {
       </View>
 
       {/* 6. Section Vos Catégories */}
-      {allocCats.length > 0 && (
+      {displayCategoryIds.length > 0 ? (
         <View style={{ marginTop: 8, marginBottom: 8 }}>
-          <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-            {t('vos_categories')}
-          </SectionTitle>
+          <View
+            style={{
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 4,
+            }}
+          >
+            <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 0 }}>
+              {t('vos_categories')}
+            </SectionTitle>
+            <Pressable
+              onPress={() => router.push('/gerer-categories')}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.forest }}>
+                {isRTL ? 'إدارة الفئات' : 'Gérer'} {isRTL ? '‹' : '›'}
+              </Text>
+            </Pressable>
+          </View>
 
           {shown.map((id) => {
             const rawCatName = categoryName(db, id);
@@ -447,11 +485,9 @@ export default function HomeScreen() {
             const catSpent = txns
               .filter((tx) => tx.categoryId === id)
               .reduce((s, tx) => s + tx.amount, 0);
-            // Total dépensé ce mois-ci
-            const userTotalSpent = sum?.spent ?? 0;
-            // Pourcentage réel consommé : (dépense catégorie / total des dépenses) * 100
-            const actualPct =
-              userTotalSpent > 0 ? Math.round((catSpent / userTotalSpent) * 100) : 0;
+            // Pourcentage réalisé : rapport strict entre la consommation réelle et le budget alloué de cette catégorie
+            const stats = categoryConsumptionStats(catSpent, catAlloc);
+            const actualPct = Math.round(stats.pct);
 
             return (
               <CategoryCard
@@ -487,9 +523,11 @@ export default function HomeScreen() {
               >
                 {rest.map((id) => traduireCategorie(categoryName(db, id))).join(' · ')}
               </Text>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.forest }}>
-                {short(restAlloc)} DT
-              </Text>
+              {restAlloc > 0 && (
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.forest }}>
+                  {short(restAlloc)} DT
+                </Text>
+              )}
             </Pressable>
           )}
 
@@ -504,6 +542,49 @@ export default function HomeScreen() {
               </Text>
             </Pressable>
           )}
+        </View>
+      ) : (
+        <View
+          style={{
+            backgroundColor: colors.white,
+            borderRadius: radius.card,
+            padding: 16,
+            marginVertical: 8,
+            borderWidth: 1,
+            borderColor: colors.border,
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <Ionicons name="pricetags-outline" size={30} color={colors.forest} />
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: colors.forest,
+              textAlign: 'center',
+            }}
+          >
+            {isRTL
+              ? 'لم تحدد أي فئات للمتابعة بعد.'
+              : 'Aucune catégorie suivie pour le moment.'}
+          </Text>
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.muted,
+              textAlign: 'center',
+            }}
+          >
+            {isRTL
+              ? 'حدد الفئات التي تهمك لتنظيم ميزانيتك وتتبع مصاريفك بدقة.'
+              : 'Choisissez les catégories qui vous intéressent pour organiser votre budget et répartir vos dépenses.'}
+          </Text>
+          <Button
+            label={isRTL ? 'اختيار فئاتي' : 'Choisir mes catégories'}
+            variant="secondary"
+            onPress={() => router.push('/gerer-categories')}
+          />
         </View>
       )}
 

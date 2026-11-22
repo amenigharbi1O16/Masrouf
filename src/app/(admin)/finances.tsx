@@ -29,8 +29,14 @@ import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/compo
 import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
 import type { MoneyAllocation, User } from '@/state/types';
-import { formatTND } from '@/utils/format';
+import { formatTND, todayISO } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
+import {
+  isChildrenCategory,
+  findEnfantCategory,
+  CANONICAL_ENFANT_ID,
+  CANONICAL_ENFANT_NAME,
+} from '@/utils/categoryMatching';
 
 export default function FamilyFinancesScreen() {
   const router = useRouter();
@@ -50,12 +56,64 @@ export default function FamilyFinancesScreen() {
   const [allocError, setAllocError] = useState('');
   const [allocBusy, setAllocBusy] = useState(false);
 
+  // Modal de confirmation obligatoire avant enregistrement de l'allocation
+  const [confirmModal, setConfirmModal] = useState(false);
+  const [pendingAlloc, setPendingAlloc] = useState<{ child: User; amount: number; note: string } | null>(null);
+
   // Données de la réserve familiale
   const familyFund = db.familyFunds.find((f) => f.parentId === me?.id) || {
     balance: 0,
     totalAdded: 0,
     totalAllocated: 0,
   };
+
+  // Calcul dynamique de l'enveloppe budgétaire catégorie « Enfants » pour le parent
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const startOfMonth = `${currentMonthKey}-01`;
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const endOfMonth = `${currentMonthKey}-${String(lastDay).padStart(2, '0')}`;
+
+  const catEnfant = findEnfantCategory(db.categories);
+  const catEnfantId = catEnfant?.id || CANONICAL_ENFANT_ID;
+
+  const activeBudget =
+    db.budgets.find((b) => b.userId === me?.id && b.start.slice(0, 7) === currentMonthKey) ||
+    db.budgets.find((b) => b.userId === me?.id && b.start <= todayISO() && b.end >= todayISO()) ||
+    db.budgets.find((b) => b.userId === me?.id);
+
+  const familyBudget = db.familyBudgets?.find(
+    (b) => b.parentId === me?.id && (b.month === currentMonthKey || b.start === startOfMonth)
+  );
+
+  // Somme des allocations réservées à la catégorie Enfant
+  const catEnfantBudget = React.useMemo(() => {
+    let sum = 0;
+    const allocs = activeBudget?.allocations || familyBudget?.allocations || {};
+    for (const [k, v] of Object.entries(allocs)) {
+      if (k === catEnfantId || isChildrenCategory(k) || isChildrenCategory(db.categories.find((c) => c.id === k))) {
+        sum += Number(v) || 0;
+      }
+    }
+    return sum;
+  }, [activeBudget, familyBudget, catEnfantId, db.categories]);
+
+  // Dépenses actuelles dans la catégorie Enfant ce mois-ci
+  const currentEnfantSpent = React.useMemo(() => {
+    return db.expenses
+      .filter(
+        (e) =>
+          e.userId === me?.id &&
+          (e.categoryId === catEnfantId ||
+            isChildrenCategory(e.categoryId) ||
+            isChildrenCategory(db.categories.find((c) => c.id === e.categoryId))) &&
+          e.date >= startOfMonth &&
+          e.date <= endOfMonth
+      )
+      .reduce((sum, e) => sum + e.amount, 0);
+  }, [db.expenses, me?.id, catEnfantId, db.categories, startOfMonth, endOfMonth]);
+
+  const remainingEnfantBudget = Math.max(0, catEnfantBudget - currentEnfantSpent);
 
   // Liste des enfants du parent
   const childrenList = db.users.filter(
@@ -190,8 +248,8 @@ export default function FamilyFinancesScreen() {
     }
   };
 
-  // Effectuer une allocation vers un enfant
-  const submitAllocation = async () => {
+  // 1. Validation initiale et ouverture obligatoire du modal de confirmation avant enregistrement
+  const initiateAllocation = () => {
     if (!selectedChildId) {
       setAllocError('Veuillez sélectionner un enfant destinataire.');
       return;
@@ -203,33 +261,56 @@ export default function FamilyFinancesScreen() {
       return;
     }
 
-    if (num > familyFund.balance) {
-      setAllocError(
-        `Fonds insuffisants dans la réserve. Solde disponible : ${formatTND(familyFund.balance)}`
-      );
+    const child = childrenList.find((c) => c.id === selectedChildId);
+    if (!child) {
+      setAllocError('Enfant destinataire non trouvé.');
       return;
     }
+
+    setAllocError('');
+    setPendingAlloc({
+      child,
+      amount: num,
+      note: allocNote.trim(),
+    });
+    setConfirmModal(true);
+  };
+
+  // 2. Enregistrement unique et irréversible après confirmation explicite
+  const handleConfirmAllocation = async () => {
+    if (!pendingAlloc || allocBusy) return;
 
     setAllocBusy(true);
     setAllocError('');
 
-    const child = childrenList.find((c) => c.id === selectedChildId);
-    const res = await actions.allocateMoney(
-      selectedChildId,
-      num,
-      allocNote.trim() || undefined
-    );
-    setAllocBusy(false);
-
-    if (!res.ok) {
-      setAllocError(res.error ?? 'Erreur lors de l’allocation.');
-    } else {
-      setAllocAmount('');
-      setAllocNote('');
-      Alert.alert(
-        'Allocation confirmée',
-        `${formatTND(num)} ont été alloués avec succès à ${child?.name}.`
+    try {
+      const res = await actions.allocateMoney(
+        pendingAlloc.child.id,
+        pendingAlloc.amount,
+        pendingAlloc.note || undefined
       );
+
+      if (!res.ok) {
+        setAllocError(res.error ?? 'Erreur lors de l’allocation.');
+        setConfirmModal(false);
+      } else {
+        const childName = pendingAlloc.child.name;
+        const formattedAmount = formatTND(pendingAlloc.amount);
+        const isExceeded = (catEnfantBudget > 0 && currentEnfantSpent + pendingAlloc.amount > catEnfantBudget) || catEnfantBudget === 0;
+        setConfirmModal(false);
+        setPendingAlloc(null);
+        setAllocAmount('');
+        setAllocNote('');
+        setSelectedChildId('');
+        Alert.alert(
+          isRTL ? 'تأكيد العملية' : 'Allocation confirmée',
+          isRTL
+            ? `تم تحويل ${formattedAmount} بنجاح إلى ${childName}.${isExceeded ? ' تم تسجيل المبلغ مع تجاوز ميزانية فئة الأطفال وسيعرض باللون الأحمر في التحليلات.' : ''}`
+            : `${formattedAmount} ont été alloués avec succès à ${childName}.${isExceeded ? ' (Dépassement du budget catégorie Enfant enregistré et marqué en rouge dans les analyses)' : ''}`
+        );
+      }
+    } finally {
+      setAllocBusy(false);
     }
   };
 
@@ -317,10 +398,20 @@ export default function FamilyFinancesScreen() {
           <SectionTitle style={{ marginBottom: 4 }}>
             {t('donner_argent')}
           </SectionTitle>
-          <Body style={{ marginBottom: 14 }}>
+          <Body style={{ marginBottom: 10 }}>
             Sélectionnez l'enfant, saisissez le montant en dinars et validez le
             transfert instantané.
           </Body>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.warm, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginBottom: 14 }}>
+            <Ionicons name="pie-chart-outline" size={16} color={colors.forest} />
+            <Text style={{ fontSize: 12, color: colors.forest, fontWeight: '600' }}>
+              {isRTL ? 'ميزانية فئة الأطفال : ' : 'Budget catégorie Enfants : '}
+              <Text style={{ fontWeight: '800' }}>{formatTND(catEnfantBudget)}</Text>
+              {` · ${isRTL ? 'المتبقي : ' : 'Disponible : '}`}
+              <Text style={{ fontWeight: '800', color: remainingEnfantBudget > 0 ? colors.forest : colors.coral }}>{formatTND(remainingEnfantBudget)}</Text>
+            </Text>
+          </View>
 
           {allocError ? (
             <AlertBanner tone="danger" title={t('erreur')} detail={allocError} />
@@ -410,7 +501,7 @@ export default function FamilyFinancesScreen() {
 
           <Button
             label="Transférer les fonds à l’enfant"
-            onPress={submitAllocation}
+            onPress={initiateAllocation}
             loading={allocBusy}
             disabled={childrenList.length === 0 || !selectedChildId}
           />
@@ -466,6 +557,150 @@ export default function FamilyFinancesScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* MODAL DE CONFIRMATION OBLIGATOIRE DU TRANSFERT D'ARGENT À L'ENFANT */}
+      <Modal
+        visible={confirmModal && pendingAlloc !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!allocBusy) {
+            setConfirmModal(false);
+            setPendingAlloc(null);
+          }
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>
+                  {isRTL ? 'تأكيد إعطاء المصروف' : 'Confirmer l’opération'}
+                </Text>
+                <Text style={styles.modalSub}>
+                  {isRTL
+                    ? 'يرجى مراجعة تفاصيل التحويل قبل التسجيل الفعلي'
+                    : 'Vérifiez les informations avant d’enregistrer définitivement.'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!allocBusy) {
+                    setConfirmModal(false);
+                    setPendingAlloc(null);
+                  }
+                }}
+                style={styles.modalClose}
+                disabled={allocBusy}
+              >
+                <Ionicons name="close" size={20} color={colors.forest} />
+              </TouchableOpacity>
+            </View>
+
+            {pendingAlloc && (
+              <View style={{ gap: 12, marginVertical: 8 }}>
+                <View style={{ backgroundColor: '#F9FAFB', padding: 14, borderRadius: 12, gap: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 13, color: colors.muted }}>
+                      {isRTL ? 'الطفل المستفيد :' : 'Enfant bénéficiaire :'}
+                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.forest }}>
+                      {pendingAlloc.child.name}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 13, color: colors.muted }}>
+                      {isRTL ? 'المبلغ المطلوب تحويله :' : 'Montant à allouer :'}
+                    </Text>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: colors.forest }}>
+                      {formatTND(pendingAlloc.amount)}
+                    </Text>
+                  </View>
+
+                  {pendingAlloc.note ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 13, color: colors.muted }}>
+                        {isRTL ? 'الملاحظة :' : 'Motif :'}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: colors.gray, flex: 1, textAlign: isRTL ? 'left' : 'right', marginLeft: 10 }}>
+                        {pendingAlloc.note}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {pendingAlloc && ((catEnfantBudget > 0 && currentEnfantSpent + pendingAlloc.amount > catEnfantBudget) || catEnfantBudget === 0) ? (
+                  <View
+                    style={{
+                      backgroundColor: '#FEF2F2',
+                      borderColor: colors.coral,
+                      borderWidth: 1,
+                      borderRadius: 10,
+                      padding: 12,
+                      flexDirection: isRTL ? 'row-reverse' : 'row',
+                      gap: 10,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Ionicons name="warning" size={20} color={colors.coral} />
+                    <Text style={{ fontSize: 12, color: '#991B1B', flex: 1, lineHeight: 17, fontWeight: '600' }}>
+                      {catEnfantBudget > 0
+                        ? (isRTL
+                            ? `تنبيه : هذا المبلغ يتجاوز الميزانية المخصصة لفئة الأطفال (المتبقي: ${formatTND(remainingEnfantBudget)} / المخطط: ${formatTND(catEnfantBudget)}). سيتم تسجيله باللون الأحمر في التحليلات.`
+                            : `Attention : Ce montant dépasse le budget alloué à la catégorie « Enfant » (Budget restant : ${formatTND(remainingEnfantBudget)} / Prévu : ${formatTND(catEnfantBudget)}). L'allocation sera enregistrée et marquée en rouge dans vos analyses.`)
+                        : (isRTL
+                            ? `لم يتم تحديد ميزانية لفئة الأطفال هذا الشهر (0.000 د.ت). سيتم تسجيل هذا المبلغ كتجاوز باللون الأحمر.`
+                            : `Aucun budget n'a été alloué à la catégorie « Enfant » ce mois-ci (0.000 DT). Ce montant sera enregistré et mis en évidence en rouge dans vos analyses.`)}
+                    </Text>
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      backgroundColor: 'rgba(27, 67, 50, 0.06)',
+                      borderRadius: 10,
+                      padding: 12,
+                      flexDirection: isRTL ? 'row-reverse' : 'row',
+                      gap: 10,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Ionicons name="information-circle" size={20} color={colors.forest} />
+                    <Text style={{ fontSize: 12, color: colors.forest, flex: 1, lineHeight: 17 }}>
+                      {isRTL
+                        ? 'سيتم خصم هذا المبلغ فورًا من ميزانيتك الشهرية الإجمالية وإضافته إلى الرصيد المتاح للطفل.'
+                        : 'Ce montant sera déduit de votre budget mensuel global et ajouté au solde disponible de l’enfant.'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            <View style={styles.modalBtnGroup}>
+              <Button
+                label={
+                  pendingAlloc && ((catEnfantBudget > 0 && currentEnfantSpent + pendingAlloc.amount > catEnfantBudget) || catEnfantBudget === 0)
+                    ? (isRTL ? 'تأكيد التحويل رغم التجاوز' : 'Confirmer malgré le dépassement')
+                    : (isRTL ? 'تأكيد وتحويل الأموال' : 'Confirmer et transférer')
+                }
+                variant={pendingAlloc && ((catEnfantBudget > 0 && currentEnfantSpent + pendingAlloc.amount > catEnfantBudget) || catEnfantBudget === 0) ? 'danger' : 'primary'}
+                onPress={handleConfirmAllocation}
+                loading={allocBusy}
+                disabled={allocBusy}
+              />
+              <Button
+                label={isRTL ? 'إلغاء' : 'Annuler'}
+                variant="secondary"
+                onPress={() => {
+                  setConfirmModal(false);
+                  setPendingAlloc(null);
+                }}
+                disabled={allocBusy}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* MODAL APPROVISIONNEMENT DE RÉSERVE */}
       <Modal

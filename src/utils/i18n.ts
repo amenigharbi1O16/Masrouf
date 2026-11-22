@@ -41,6 +41,7 @@ import en from '../i18n/en.json';
 // Accès au magasin global et requêtes SQLite
 import { useStore } from '../state/store';
 import { updateLangue } from '../db/queries';
+import { isChildrenCategory } from './categoryMatching';
 
 // ------------------------------------------------------------
 // TYPES ET DÉFINITIONS DES LANGUES (RÉ-EXPORTÉS DEPUIS languageStorage POUR ÉVITER LE CYCLE)
@@ -90,7 +91,10 @@ const NOMS_CATEGORIES_LOCALISES: Record<string, Record<Langue, string>> = {
   'Factures': { fr: 'Factures', en: 'Bills', ar: 'فواتير' },
   'Éducation': { fr: 'Éducation', en: 'Education', ar: 'تعليم' },
   'Loisirs': { fr: 'Loisirs', en: 'Entertainment', ar: 'ترفيه' },
-  'Enfants': { fr: 'Enfants', en: 'Children', ar: 'أطفال' },
+  'Enfant': { fr: 'Enfant', en: 'Children', ar: 'أطفال' },
+  'Enfants': { fr: 'Enfant', en: 'Children', ar: 'أطفال' },
+  'Children': { fr: 'Enfant', en: 'Children', ar: 'أطفال' },
+  'Child': { fr: 'Enfant', en: 'Children', ar: 'أطفال' },
   'Aide familiale': { fr: 'Aide familiale', en: 'Family support', ar: 'مساعدة عائلية' },
   'Épargne': { fr: 'Épargne', en: 'Savings', ar: 'ادخار' },
   'Dons': { fr: 'Dons', en: 'Donations', ar: 'تبرعات' },
@@ -113,6 +117,9 @@ const NOMS_CATEGORIES_LOCALISES: Record<string, Record<Langue, string>> = {
  *   dans la langue courante (ex: 'تغذية' en arabe ou 'Food' en anglais).
  */
 export function traduireNomCategorie(nom: string, langue: Langue): string {
+  if (isChildrenCategory(nom)) {
+    return langue === 'ar' ? 'أطفال' : langue === 'en' ? 'Children' : 'Enfant';
+  }
   const match = NOMS_CATEGORIES_LOCALISES[nom];
   if (match && match[langue]) {
     return match[langue];

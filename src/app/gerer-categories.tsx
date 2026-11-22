@@ -30,8 +30,6 @@ import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 // Composant réutilisable de sélection de catégories avec cartes tactiles et boutons bascule
 import { CategoryPicker } from '@/components/CategoryPicker';
-// Modal de création et édition de catégories personnalisées
-import { CustomCategoryModal } from '@/components/CustomCategoryModal';
 // Conteneur d'écran avec retour arrière et gestion du défilement
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
@@ -58,27 +56,12 @@ export default function ManageCategoriesScreen() {
 
   // État local : tableau contenant les IDs des catégories actuellement sélectionnées par l'utilisateur
   const [selected, setSelected] = useState<string[]>(me?.categoryIds ?? []);
-  // État local modal création/édition de catégorie
-  const [modalVisible, setModalVisible] = useState(false);
-  const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null);
   const [deleteError, setDeleteError] = useState('');
 
   const toggle = (id: string) =>
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
-
-  const handleOpenAdd = () => {
-    setCategoryToEdit(null);
-    setDeleteError('');
-    setModalVisible(true);
-  };
-
-  const handleEdit = (category: Category) => {
-    setCategoryToEdit(category);
-    setDeleteError('');
-    setModalVisible(true);
-  };
 
   const handleDelete = (id: string) => {
     const cat = db.categories.find((c) => c.id === id);
@@ -105,13 +88,6 @@ export default function ManageCategoriesScreen() {
     );
   };
 
-  const handleCategorySuccess = (cat: Category) => {
-    // Si c'est une nouvelle catégorie, on la coche automatiquement
-    if (!selected.includes(cat.id)) {
-      setSelected((prev) => [...prev, cat.id]);
-    }
-  };
-
   const handleSave = () => {
     actions.setUserCategories(selected);
     router.back();
@@ -125,36 +101,16 @@ export default function ManageCategoriesScreen() {
         {t('choisissez_ce_que_vous_suivez')}
       </Eyebrow>
 
-      {/* Titre de la section et bouton d'ajout de catégorie */}
+      {/* Titre de la section */}
       <View
-        // Disposition de l'en-tête de section adaptée au sens de lecture
         style={[
           styles.headerRow,
           { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' },
         ]}
       >
-        {/* Titre de section 'Vos catégories' */}
         <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', flex: 1, marginBottom: 0 }}>
           {t('vos_categories')}
         </SectionTitle>
-
-        <TouchableOpacity
-          onPress={handleOpenAdd}
-          style={{
-            flexDirection: isRTL ? 'row-reverse' : 'row',
-            alignItems: 'center',
-            backgroundColor: colors.mint,
-            paddingVertical: 6,
-            paddingHorizontal: 10,
-            borderRadius: 20,
-          }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={16} color={colors.forest} style={{ marginHorizontal: 2 }} />
-          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.forest }}>
-            {t('ajouter_categorie')}
-          </Text>
-        </TouchableOpacity>
       </View>
 
       {/* Explication rassurante */}
@@ -176,17 +132,7 @@ export default function ManageCategoriesScreen() {
         categories={db.categories}
         selected={selected}
         onToggle={toggle}
-        onEditCategory={handleEdit}
         onDeleteCategory={handleDelete}
-      />
-
-      {/* Modal d'ajout / modification de catégorie */}
-      <CustomCategoryModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        onSuccess={handleCategorySuccess}
-        categoryToEdit={categoryToEdit}
-        scope="personal"
       />
 
       {/* Bannière d'avertissement jaune si aucune catégorie n'est cochée */}

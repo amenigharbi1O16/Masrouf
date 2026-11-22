@@ -27,6 +27,7 @@
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
+import { View } from 'react-native';
 // Conteneur d'écran avec flèche de retour arrière et gestion du défilement
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
@@ -92,51 +93,63 @@ export default function BudgetPeriodScreen() {
   // Une période existante dont la date de fin est antérieure à aujourd'hui est clôturée (lecture seule)
   const isClosedPeriod = !!(editing && existing && existing.end < today);
 
-  // Bornes exactes de début (AAAA-MM-01) et fin (dernier jour du mois)
+  // Bornes exactes de début (AAAA-MM-01) et fin (dernier jour du mois) servant d'initialisation par défaut
   const initialBounds = useMemo(() => {
     const seed = existing?.start ?? defaultStart ?? today;
     return getExactMonthBounds(seed);
   }, [existing, defaultStart, today]);
 
-  // État local de la date de début (toujours le 1er jour exact du mois)
+  // État local de la date de début (initialisé par défaut au 1er jour du mois choisi, modifiable librement selon les besoins)
   const [start, setStart] = useState(existing?.start ?? defaultStart ?? initialBounds.start);
-  // État local de la date de fin (toujours le dernier jour exact du mois)
+  // État local de la date de fin (initialisé par défaut au dernier jour du mois choisi, modifiable librement selon les besoins)
   const [end, setEnd] = useState(existing?.end ?? defaultEnd ?? initialBounds.end);
   // État local du montant total en Dinars Tunisiens (chaîne de caractères pour saisie fluide)
   const [total, setTotal] = useState(existing ? String(existing.total) : '');
 
-  const monthKey = start.slice(0, 7);
-
-  // Détection stricte d'un budget préexistant pour ce même mois (Règle : un seul budget par mois civil)
+  // Détection d'un budget préexistant pour ces mêmes dates exactes
   const duplicateBudget = useMemo(() => {
     if (editing || !me) return null;
     return (
       db.budgets.find(
         (b) =>
           b.userId === me.id &&
-          (b.start.slice(0, 7) === monthKey || (b.start === start && b.end === end))
+          b.start === start &&
+          b.end === end
       ) ?? null
     );
-  }, [editing, me, db.budgets, monthKey, start, end]);
+  }, [editing, me, db.budgets, start, end]);
 
-  // Synchronisation automatique et stricte des bornes du mois lors de toute saisie
-  const handleDateChange = (text: string) => {
+  // Modification libre de la date de début selon les besoins
+  const handleStartChange = (text: string) => {
     setError('');
-    if (/^\d{4}-\d{1,2}/.test(text.trim())) {
-      const b = getExactMonthBounds(text.trim());
-      setStart(b.start);
-      setEnd(b.end);
-    } else {
-      setStart(text);
-    }
+    setStart(text.trim());
   };
 
+  // Modification libre de la date de fin selon les besoins
+  const handleEndChange = (text: string) => {
+    setError('');
+    setEnd(text.trim());
+  };
+
+  // Catégories concernées en mode édition : union des catégories suivies par l'utilisateur et de celles déjà allouées
+  const editCategoryIds = useMemo(() => {
+    const fromAlloc = Object.keys(existing?.allocations ?? {});
+    const fromUser = me?.categoryIds ?? [];
+    const combined = Array.from(new Set([...fromUser, ...fromAlloc]));
+    return combined.length > 0 ? combined : fromAlloc;
+  }, [existing?.allocations, me?.categoryIds]);
+
   // État local des montants alloués par catégorie en mode édition
-  const [alloc, setAlloc] = useState<Record<string, string>>(
-    Object.fromEntries(
-      Object.entries(existing?.allocations ?? {}).map(([k, v]) => [k, String(v)])
-    )
-  );
+  const [alloc, setAlloc] = useState<Record<string, string>>(() => {
+    const existingMap = existing?.allocations ?? {};
+    const fromUser = me?.categoryIds ?? [];
+    const allIds = Array.from(new Set([...fromUser, ...Object.keys(existingMap)]));
+    const initialMap: Record<string, string> = {};
+    for (const cid of allIds) {
+      initialMap[cid] = existingMap[cid] !== undefined ? String(existingMap[cid]) : '0';
+    }
+    return initialMap;
+  });
   // État local du message d'erreur de validation
   const [error, setError] = useState('');
 
@@ -214,15 +227,10 @@ export default function BudgetPeriodScreen() {
     if (end < start) {
       return t('erreur_date_fin_anterieure');
     }
-    // Règle stricte : la date de début doit être exactement le 1er du mois et la fin le dernier jour du mois
-    const expectedBounds = getExactMonthBounds(start);
-    if (start !== expectedBounds.start || end !== expectedBounds.end) {
-      return t('erreur_dates_mois_exactes');
-    }
     if (!Number.isFinite(totalN) || totalN <= 0) {
       return t('erreur_total_positif');
     }
-    // Règle stricte d'unicité : interdiction absolue de créer un second budget pour le même mois
+    // Règle d'unicité : un budget ne peut pas être dupliqué avec les mêmes dates exactes
     if (!editing && duplicateBudget) {
       return t('erreur_budget_unique_mois');
     }
@@ -323,28 +331,28 @@ export default function BudgetPeriodScreen() {
         />
       ) : null}
 
-      {/* Bannière de règle stricte : un seul budget mensuel civil exact */}
+      {/* Bannière d'information sur la période budgétaire personnalisée */}
       <AlertBanner
         tone="info"
         title={t('budget_unique_mois_info')}
         detail={validRange ? `${fmtRange(start, end, langue)} · ${daysBetween(start, end)} ${t('jours')}` : t('choisir_dates_debut_fin')}
       />
 
-      {/* Champ de saisie de la date de début au format standard AAAA-MM-01 (1er du mois exact) */}
+      {/* Champ de saisie de la date de début (format standard AAAA-MM-JJ, modifiable librement) */}
       <Input
-        label={`${t('date_debut_label')} (AAAA-MM-01)`}
+        label={`${t('date_debut_label')} (AAAA-MM-JJ)`}
         value={start}
-        onChangeText={handleDateChange}
-        placeholder="YYYY-MM-01"
+        onChangeText={handleStartChange}
+        placeholder="YYYY-MM-DD"
         keyboardType="numbers-and-punctuation"
       />
 
-      {/* Champ de saisie de la date de fin au format standard AAAA-MM-XX (dernier jour exact du mois) */}
+      {/* Champ de saisie de la date de fin (format standard AAAA-MM-JJ, modifiable librement) */}
       <Input
-        label={`${t('date_fin_label')} (AAAA-MM-XX)`}
+        label={`${t('date_fin_label')} (AAAA-MM-JJ)`}
         value={end}
-        onChangeText={handleDateChange}
-        placeholder="YYYY-MM-XX"
+        onChangeText={handleEndChange}
+        placeholder="YYYY-MM-DD"
         keyboardType="numbers-and-punctuation"
       />
 
@@ -363,17 +371,50 @@ export default function BudgetPeriodScreen() {
       {/* Affichage conditionnel selon le mode d'édition ou de création */}
       {editing ? (
         <>
-          {/* Titre de la section de réallocation */}
-          <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
-            {t('repartition_par_categorie')}
-          </SectionTitle>
+          {/* Titre de la section de réallocation avec répartition automatique */}
+          <View
+            style={{
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: 10,
+              marginBottom: 8,
+            }}
+          >
+            <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 0 }}>
+              {t('repartition_par_categorie')}
+            </SectionTitle>
+            <Button
+              label={isRTL ? 'توزيع 100%' : 'Répartir (100%)'}
+              variant="secondary"
+              onPress={() => {
+                if (!Number.isFinite(totalN) || totalN <= 0) return;
+                const catsToDistribute = db.categories.filter((c) => editCategoryIds.includes(c.id));
+                const sumPct = catsToDistribute.reduce((acc, c) => acc + (db.defaultPercentages[c.id] || 5), 0) || 1;
+                let runningSum = 0;
+                const nextAlloc: Record<string, string> = {};
+                catsToDistribute.forEach((c, idx) => {
+                  if (idx === catsToDistribute.length - 1) {
+                    const rem = Math.max(0, Math.round((totalN - runningSum) * 1000) / 1000);
+                    nextAlloc[c.id] = String(rem);
+                  } else {
+                    const weight = (db.defaultPercentages[c.id] || 5) / sumPct;
+                    const amt = Math.round(totalN * weight * 1000) / 1000;
+                    runningSum += amt;
+                    nextAlloc[c.id] = String(amt);
+                  }
+                });
+                setAlloc((prev) => ({ ...prev, ...nextAlloc }));
+              }}
+            />
+          </View>
 
           {/* Liste des champs d'enveloppe pour chaque catégorie active */}
-          {Object.keys(alloc).map((cid) => (
+          {editCategoryIds.map((cid) => (
             <Input
               key={cid}
               label={traduireCategorie(db.categories.find((c) => c.id === cid)?.name ?? cid)}
-              value={alloc[cid]}
+              value={alloc[cid] ?? '0'}
               onChangeText={(text) =>
                 setAlloc((prev) => ({ ...prev, [cid]: text }))
               }

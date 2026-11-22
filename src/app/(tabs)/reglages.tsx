@@ -32,6 +32,7 @@ import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/compo
 import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
 import { useTranslation } from '@/utils/i18n';
+import { getCategoryIcon } from '@/utils/categoryIcons';
 import { ouvrirManuelUtilisation } from '@/utils/pdf';
 
 /**
@@ -123,16 +124,21 @@ function Row({
 export default function SettingsScreen() {
   // Outil de routage déclaratif Expo Router pour les transitions d'écran
   const router = useRouter();
-  // Données de l'utilisateur connecté et actions de mise à jour du profil et déconnexion
-  const { me, actions } = useStore();
+  // Données de l'utilisateur connecté, catalogue de base et actions
+  const { db, me, actions } = useStore();
   // Hook de traduction multilingue, détection RTL et langue courante
-  const { t, isRTL, langue } = useTranslation();
+  const { t, isRTL, langue, traduireCategorie } = useTranslation();
   // État local du champ nom complet synchronisé avec le profil utilisateur
   const [name, setName] = useState(me?.name ?? '');
   // État local indiquant si la confirmation de sauvegarde doit être affichée
   const [saved, setSaved] = useState(false);
 
   if (!me) return null;
+
+  // Catégories suivies par l'utilisateur
+  const userCategories = (me.categoryIds ?? [])
+    .map((cid) => db.categories.find((c) => c.id === cid))
+    .filter((c): c is NonNullable<typeof c> => Boolean(c));
 
   return (
     <Screen title={t('reglages')}>
@@ -163,6 +169,129 @@ export default function SettingsScreen() {
           setSaved(true);
         }}
       />
+
+      {/* Section : Vos Catégories Suivies dans le Profil */}
+      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
+        {t('vos_categories')}
+      </SectionTitle>
+
+      <View
+        style={{
+          backgroundColor: colors.white,
+          borderRadius: radius.card,
+          padding: 16,
+          marginBottom: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 12,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Ionicons name="pricetags-outline" size={20} color={colors.forest} />
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.forest }}>
+              {isRTL ? 'الفئات المحددة' : 'Catégories sélectionnées'}
+            </Text>
+          </View>
+          <View
+            style={{
+              backgroundColor: colors.mint,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: radius.pill,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.forest }}>
+              {userCategories.length} {isRTL ? 'فئات' : 'suivies'}
+            </Text>
+          </View>
+        </View>
+
+        {userCategories.length > 0 ? (
+          <View
+            style={{
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+              flexWrap: 'wrap',
+              gap: 8,
+              marginBottom: 12,
+            }}
+          >
+            {userCategories.map((c) => {
+              const iconName = getCategoryIcon(c.name, c.icon);
+              return (
+                <View
+                  key={c.id}
+                  style={{
+                    flexDirection: isRTL ? 'row-reverse' : 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: '#F4F7F5',
+                    borderRadius: radius.pill,
+                    paddingVertical: 6,
+                    paddingHorizontal: 10,
+                    borderWidth: 1,
+                    borderColor: '#E2EBE5',
+                  }}
+                >
+                  <Ionicons name={iconName} size={15} color={colors.forest} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.forest }}>
+                    {traduireCategorie(c.name)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <Text
+            style={{
+              fontSize: 13,
+              color: colors.muted,
+              textAlign: isRTL ? 'right' : 'left',
+              marginBottom: 10,
+            }}
+          >
+            {isRTL
+              ? 'لم تحدد أي فئات بعد في ملفك الشخصي.'
+              : 'Aucune catégorie suivie pour le moment.'}
+          </Text>
+        )}
+
+        <Pressable
+          onPress={() => router.push('/gerer-categories')}
+          style={{
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingTop: 10,
+            borderTopWidth: 1,
+            borderTopColor: '#F0F4F8',
+          }}
+          accessibilityRole="button"
+        >
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.forest }}>
+            {isRTL ? 'تعديل الفئات ومتابعتها' : 'Modifier ma sélection de catégories'}
+          </Text>
+          <Ionicons
+            name={isRTL ? 'chevron-back' : 'chevron-forward'}
+            size={16}
+            color={colors.forest}
+          />
+        </Pressable>
+      </View>
 
       <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
         {t('preferences')}

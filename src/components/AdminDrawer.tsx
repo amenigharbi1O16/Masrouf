@@ -324,7 +324,7 @@ export function AdminDrawer() {
 
             {/* Pied du tiroir : Sélecteur de langue et Déconnexion */}
             <View style={styles.footerWrap}>
-              <LanguageSelector />
+              <LanguageSelector dark />
 
               <TouchableOpacity
                 style={[

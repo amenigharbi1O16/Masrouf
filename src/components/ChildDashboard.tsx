@@ -237,7 +237,7 @@ export function ChildDashboard() {
           activeOpacity={0.8}
         >
           <Ionicons name="add-circle" size={20} color={colors.white} />
-          <Text style={styles.actionBtnLabel}>+ Nouvelle Dépense</Text>
+          <Text style={styles.actionBtnLabel}>Nouvelle Dépense</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

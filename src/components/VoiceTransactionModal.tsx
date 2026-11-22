@@ -38,7 +38,7 @@ import { useStore } from '@/state/store';
 import type { ParsedVoiceTransaction } from '@/state/types';
 import { formatTND } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
-import { parseVoiceInput } from '@/utils/voiceParser';
+import { detectLanguage, parseVoiceInput, toArabicScript } from '@/utils/voiceParser';
 
 interface VoiceTransactionModalProps {
   visible: boolean;
@@ -46,14 +46,16 @@ interface VoiceTransactionModalProps {
   onSuccess?: () => void;
 }
 
-// Phrases de test en dialecte tunisien et en arabe garanties 100% en lettres arabes
+// Phrases de test multilingues (Dialecte tunisien, Arabe standard, Français, Anglais, Dons, Allocations enfants)
 const SAMPLE_PHRASES = [
-  "شريت حليب وخبز بألفين",
-  "خلصت فاتورة الضو 75 دينار",
-  "قصيت تاكسي بـ 4 دنانير",
-  "أعطيت 20 دينار ليوسف مصروف",
-  "شريت قهوة بـ 3 دنانير",
-  "شريت دواء من الصيدلية 15 دينار",
+  "شريت حليب وخبز بألفين", // Tunisien (100% caractères arabes)
+  "دفعت فاتورة الكهرباء 75 دينار", // Arabe standard (100% caractères arabes)
+  "J'ai acheté des courses pour 45 dinars", // Français (Achat)
+  "I paid the internet bill 30 dinars", // Anglais (Dépense)
+  "أعطيت 20 دينار ليوسف مصروف", // Don / argent donné à un enfant (Arabe)
+  "J'ai donné 25 DT à mon enfant", // Argent donné à un enfant (Français)
+  "تبرعت بـ 15 دينار للجمعية", // Don caritatif (Arabe)
+  "Donation of 10 dinars for charity", // Don caritatif (Anglais)
 ];
 
 export function VoiceTransactionModal({
@@ -117,9 +119,11 @@ export function VoiceTransactionModal({
         recognition.onresult = (event: any) => {
           const current = event.resultIndex;
           const rawTranscript = event.results[current][0].transcript;
-          // Normalisation obligatoire : la phrase reconnue s'écrit toujours en lettres arabes
-          setTranscript(rawTranscript);
-          analyzeText(rawTranscript);
+          // Normalisation obligatoire : tunisien et arabe retranscrits obligatoirement en caractères arabes
+          const lang = detectLanguage(rawTranscript);
+          const formatted = lang === 'ar' ? toArabicScript(rawTranscript) : rawTranscript;
+          setTranscript(formatted);
+          analyzeText(formatted);
         };
 
         recognition.onend = () => {
@@ -161,7 +165,12 @@ export function VoiceTransactionModal({
       setParsed(null);
       return;
     }
-    const result = parseVoiceInput(text, db.categories, childrenList);
+    const lang = detectLanguage(text);
+    const normalized = lang === 'ar' ? toArabicScript(text) : text;
+    const result = parseVoiceInput(normalized, db.categories, childrenList);
+    if (result && !result.initialAllocationPercent) {
+      result.initialAllocationPercent = 5;
+    }
     setParsed(result);
 
     // Détection d'une phrase sans montant : avertir immédiatement l'utilisateur
@@ -541,6 +550,53 @@ export function VoiceTransactionModal({
                       );
                     })}
                   </ScrollView>
+
+                  {/* Saisie ou modification directe du nom de la catégorie (créée si inexistante) */}
+                  <TextInput
+                    style={[styles.editableInput, { marginTop: 6, textAlign: isRTL ? 'right' : 'left' }]}
+                    value={parsed.categoryName || ''}
+                    onChangeText={(catTxt) => {
+                      const match = db.categories.find(
+                        (c) => c.name.toLowerCase() === catTxt.trim().toLowerCase()
+                      );
+                      setParsed((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              categoryId: match ? match.id : 'custom-voice-cat',
+                              categoryName: catTxt,
+                              isUncertainCategory: false,
+                            }
+                          : null
+                      );
+                    }}
+                    placeholder="Nom exact de la catégorie..."
+                  />
+
+                  {/* Pourcentage d'allocation du budget pour la catégorie ajoutée */}
+                  <View style={[styles.previewRow, { marginTop: 6 }]}>
+                    <Text style={styles.previewFieldLbl}>
+                      {isRTL ? 'نسبة تخصيص الميزانية (%) :' : 'Allocation du budget (%) :'}
+                    </Text>
+                    <TextInput
+                      style={[styles.editableInput, { width: 75, textAlign: 'center' }]}
+                      value={String(parsed.initialAllocationPercent ?? 5)}
+                      keyboardType="numeric"
+                      onChangeText={(pctVal) => {
+                        const val = parseInt(pctVal, 10);
+                        setParsed((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                initialAllocationPercent: isNaN(val)
+                                  ? 5
+                                  : Math.min(100, Math.max(1, val)),
+                              }
+                            : null
+                        );
+                      }}
+                    />
+                  </View>
                 </View>
 
                 {/* 5. Date modifiable */}

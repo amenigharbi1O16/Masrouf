@@ -16,20 +16,15 @@
  * une note pédagogique et les boutons d'action d'enregistrement et d'annulation.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { View } from 'react-native';
 // Composant d'information bicolore
 import { InfoRow } from './Cards';
 // Sélecteur déroulant modal
 import { SelectField } from './SelectField';
 // Composants atomiques d'interface utilisateur
 import { AlertBanner, Body, Button, Hint, Input } from './ui';
-// Modal de saisie vocale
-import { VoiceTransactionModal } from './VoiceTransactionModal';
-// Palette de couleurs Masrouf
-import { colors } from '@/constants/theme';
 // Liste des unités physiques standardisées
 import { UNITS } from '@/constants/units';
 // Magasin d'état global SQLite
@@ -123,7 +118,6 @@ export function PurchaseForm({
   );
   // État local de l'unité de mesure associée
   const [unit, setUnit] = useState(initial?.unit ?? product?.unit ?? 'L');
-  const [voiceOpen, setVoiceOpen] = useState(false);
   // État local du magasin ou de l'enseigne
   const [store, setStore] = useState(initial?.store ?? '');
 
@@ -188,16 +182,6 @@ export function PurchaseForm({
 
   return (
     <>
-      {/* Bouton de saisie vocale rapide */}
-      <TouchableOpacity
-        style={styles.voiceBtn}
-        onPress={() => setVoiceOpen(true)}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="mic" size={18} color={colors.white} />
-        <Text style={styles.voiceBtnText}>Saisie vocale intelligente (FR / عربي)</Text>
-      </TouchableOpacity>
-
       {/* Alerte bloquante si aucune période n'est sélectionnée ou aucun budget alloué */}
       {!hasBudget && (
         <View style={{ gap: 8, marginVertical: 6 }}>
@@ -353,31 +337,6 @@ export function PurchaseForm({
         variant="secondary"
         onPress={onCancel}
       />
-
-      {/* Modal de saisie vocale */}
-      <VoiceTransactionModal
-        visible={voiceOpen}
-        onClose={() => setVoiceOpen(false)}
-      />
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  voiceBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#1E88E5',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  voiceBtnText: {
-    color: colors.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-});

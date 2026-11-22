@@ -40,6 +40,13 @@ import {
 // Importation de la fonction de récupération de langue pré-connexion depuis le module dédié languageStorage (évite le cycle de dépendances)
 import { getLanguePreLogin } from '@/utils/languageStorage';
 import { getExactMonthBounds, todayISO, uid } from '@/utils/format';
+import {
+  isChildrenCategory,
+  findEnfantCategory,
+  CANONICAL_ENFANT_ID,
+  CANONICAL_ENFANT_NAME,
+  areCategoriesEqual,
+} from '@/utils/categoryMatching';
 import { colors } from '@/constants/theme';
 import { buildSeed } from './seed';
 import {
@@ -247,9 +254,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               // B. Fusionner les budgets : si un budget existe dans AsyncStorage mais pas encore dans SQLite
               if (Array.isArray(parsed.budgets)) {
                 for (const b of parsed.budgets) {
-                  const { monthKey } = getExactMonthBounds(b.start);
                   const exists = loaded.budgets.some(
-                    (x) => x.id === b.id || (x.userId === b.userId && x.start.slice(0, 7) === monthKey)
+                    (x) => x.id === b.id || (x.userId === b.userId && x.start === b.start && x.end === b.end)
                   );
                   if (!exists) {
                     loaded.budgets.push(b);
@@ -604,31 +610,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
 
       // 8. Enregistrement d'un budget avec répartition par catégorie
-      // RÈGLE STRICTE : UN SEUL BUDGET PAR PÉRIODE. Si un budget existe pour ces dates, il est mis à jour.
+      // Permet la composition libre de toute période personnalisée selon les besoins de l'utilisateur (ex: 2026-11-05 au 2026-12-30)
       saveBudget(b) {
         const d = dbRef.current!;
         const currentUserId = meId();
 
-        // 1. Normalisation stricte : premier jour exact (01) et dernier jour exact du mois civil
-        const { start: exactStart, end: exactEnd, monthKey } = getExactMonthBounds(b.start);
+        const start = b.start;
+        const end = b.end;
+        const monthKey = start.slice(0, 7);
 
-        // 2. Règle absolue : UN SEUL budget par mois civil et par utilisateur
-        // Recherche de tout budget préexistant pour ce même mois ou ces mêmes dates ou cet ID
-        const existingForSameMonth = d.budgets.find(
+        // Recherche de tout budget préexistant pour ces mêmes dates ou cet ID
+        const existingBudget = d.budgets.find(
           (x) =>
             x.userId === currentUserId &&
-            (x.id === b.id || x.start.slice(0, 7) === monthKey || (x.start === exactStart && x.end === exactEnd))
+            (x.id === b.id || (x.start === start && x.end === end))
         );
 
-        // Si déjà existant pour ce mois, on réutilise son identifiant pour mise à jour sans doublon
-        const idCandidate = existingForSameMonth ? existingForSameMonth.id : (b.id ?? uid());
-        const isCreation = !existingForSameMonth && !b.id;
+        // Si déjà existant pour ces mêmes dates ou cet ID, on réutilise son identifiant
+        const idCandidate = existingBudget ? existingBudget.id : (b.id ?? uid());
+        const isCreation = !existingBudget && !b.id;
 
         const budgetCandidate: Budget = {
           id: idCandidate,
           userId: currentUserId,
-          start: exactStart,
-          end: exactEnd,
+          start,
+          end,
           total: b.total,
           allocations: b.allocations,
         };
@@ -638,15 +644,92 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const budget: Budget = { ...budgetCandidate, id: finalId };
 
         update((state) => {
-          // Filtrer les éventuels doublons pour ce mois afin de garantir l'unicité stricte
+          // Filtrer le budget mis à jour pour éviter tout doublon
           const otherBudgets = state.budgets.filter(
-            (x) => !(x.userId === currentUserId && (x.id === finalId || x.start.slice(0, 7) === monthKey))
+            (x) => !(x.userId === currentUserId && (x.id === finalId || (x.start === start && x.end === end)))
           );
           return {
             ...state,
             budgets: [budget, ...otherBudgets],
           };
         });
+
+        // Si le profil connecté est un parent, synchroniser fidèlement avec familyBudgets et les budgets enfants
+        const currentUserObj = d.users.find((u) => u.id === currentUserId);
+        const childBudgetsToAdd: Budget[] = [];
+
+        if (currentUserObj && (currentUserObj.role === 'parent' || currentUserObj.role === 'admin')) {
+          // 1. Calculer le total alloué à la catégorie Enfant
+          let totalEnfantAllocated = 0;
+          for (const [catId, amount] of Object.entries(b.allocations || {})) {
+            const cat = d.categories.find((c) => c.id === catId);
+            if (isChildrenCategory(cat) || isChildrenCategory(catId)) {
+              totalEnfantAllocated += Number(amount) || 0;
+            }
+          }
+
+          // 2. Trouver tous les enfants du foyer
+          const familyChildren = d.users.filter(
+            (u) => u.role === 'child' && (u.parentId === currentUserId || u.familyId === currentUserObj.familyId)
+          );
+
+          // 3. Assigner automatiquement aux budgets des enfants
+          if (familyChildren.length > 0 && totalEnfantAllocated > 0) {
+            const perChildAmount = Math.round((totalEnfantAllocated / familyChildren.length) * 1000) / 1000;
+            for (const child of familyChildren) {
+              const existingChildBudget = d.budgets.find(
+                (bg) => bg.userId === child.id && (bg.start === start || bg.start.slice(0, 7) === monthKey)
+              );
+              const childBudgetId = existingChildBudget?.id || uid();
+              const childBudget: Budget = {
+                id: childBudgetId,
+                userId: child.id,
+                start,
+                end,
+                total: perChildAmount,
+                allocations: existingChildBudget?.allocations || {},
+              };
+              sqliteSaveBudget(childBudget);
+              childBudgetsToAdd.push(childBudget);
+
+              // Mettre à jour le budget_mensuel dans SQLite pour l'enfant
+              sqliteUpdateUser(child.id, { budget_mensuel: perChildAmount });
+              patchUser(child.id, { budgetMensuel: perChildAmount });
+            }
+          }
+
+          const existingFb = d.familyBudgets.find(
+            (fb) => fb.parentId === currentUserId && (fb.month === monthKey || fb.start === start)
+          );
+          const familyBudget: FamilyBudget = {
+            id: existingFb?.id || uid(),
+            parentId: currentUserId,
+            start: start,
+            end: end,
+            month: monthKey,
+            total: b.total,
+            totalBudget: b.total,
+            allocations: b.allocations || existingFb?.allocations || {},
+            createdAt: todayISO(),
+          };
+          sqliteSaveFamilyBudget(familyBudget);
+          update((st) => {
+            const childIds = familyChildren.map((c) => c.id);
+            const otherBudgets = st.budgets.filter(
+              (x) =>
+                !(x.userId === currentUserId && (x.id === finalId || (x.start === start && x.end === end))) &&
+                !(childIds.includes(x.userId) && (x.start === start || x.start.slice(0, 7) === monthKey))
+            );
+            return {
+              ...st,
+              budgets: [budget, ...childBudgetsToAdd, ...otherBudgets],
+              familyBudgets: [
+                familyBudget,
+                ...(st.familyBudgets || []).filter((fb) => fb.id !== familyBudget.id),
+              ],
+            };
+          });
+        }
 
         // La période enregistrée devient immédiatement la référence centrale active pour tout Masrouf
         setSelectedBudgetIdState(finalId);
@@ -1087,11 +1170,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const d = dbRef.current!;
         const n = name.trim();
         if (!n) return { ok: false, error: 'Enter a category name.' };
-        if (d.categories.some((c) => c.name.toLowerCase() === n.toLowerCase())) {
+        // Si c'est une catégorie pour enfants, vérifier si la catégorie Enfant existe déjà
+        if (isChildrenCategory(n) && d.categories.some((c) => isChildrenCategory(c))) {
+          return { ok: false, error: 'La catégorie Enfant existe déjà.' };
+        }
+        if (d.categories.some((c) => areCategoriesEqual(c, n))) {
           return { ok: false, error: 'This category already exists.' };
         }
-        const candidateId = uid();
-        const catCandidate: Category = { id: candidateId, name: n, kind, active: true };
+        const candidateId = isChildrenCategory(n) ? CANONICAL_ENFANT_ID : uid();
+        const catCandidate: Category = {
+          id: candidateId,
+          name: isChildrenCategory(n) ? CANONICAL_ENFANT_NAME : n,
+          kind,
+          active: true,
+        };
         const insertedId = sqliteAddCategory(catCandidate);
         const finalId = insertedId || candidateId;
         const newCat: Category = { ...catCandidate, id: finalId };
@@ -1107,18 +1199,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (!n) return { ok: false, error: 'Veuillez saisir un nom de catégorie.' };
         const scope = options?.scope || 'personal';
 
-        // Vérifier doublon dans le catalogue
+        // Si la saisie concerne la catégorie Enfant
+        if (isChildrenCategory(n)) {
+          const existingEnfant = findEnfantCategory(d.categories);
+          if (existingEnfant) {
+            // Lier automatiquement à l'utilisateur au lieu de créer un doublon
+            const me = d.users.find((u) => u.id === currentUserId);
+            if (me && !me.categoryIds.includes(existingEnfant.id)) {
+              const updatedCategoryIds = [...me.categoryIds, existingEnfant.id];
+              sqliteSetUserCategories(currentUserId, updatedCategoryIds);
+              patchUser(currentUserId, { categoryIds: updatedCategoryIds });
+            }
+            return { ok: false, error: 'La catégorie Enfant existe déjà dans votre catalogue.' };
+          }
+        }
+
+        // Vérifier doublon dans le catalogue (insensible casse, accents, singulier/pluriel)
         const duplicate = d.categories.some(
-          (c) => c.name.toLowerCase() === n.toLowerCase() && (c.userId === currentUserId || !c.userId)
+          (c) => areCategoriesEqual(c, n) && (c.userId === currentUserId || !c.userId)
         );
         if (duplicate) {
           return { ok: false, error: 'Cette catégorie existe déjà dans votre catalogue.' };
         }
 
-        const candidateId = uid();
+        const candidateId = isChildrenCategory(n) ? CANONICAL_ENFANT_ID : uid();
         const catCandidate: Category = {
           id: candidateId,
-          name: n,
+          name: isChildrenCategory(n) ? CANONICAL_ENFANT_NAME : n,
           kind,
           active: true,
           userId: currentUserId,
@@ -1302,20 +1409,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // Erreur si l'enfant n'est pas trouvé
         if (!child) return { ok: false, error: 'Enfant introuvable dans votre famille.' };
 
-        // Résolution de la catégorie « Enfant » (ex: id: 'children' ou libellé 'Enfants')
-        let catEnfant = d.categories.find(
-          (c) =>
-            c.id === 'children' ||
-            c.name.toLowerCase() === 'enfants' ||
-            c.name.toLowerCase() === 'children' ||
-            c.name.toLowerCase() === 'enfant'
-        );
-        // Si absente, création automatique de la catégorie Enfants
+        // Résolution de la catégorie « Enfant » canonique
+        let catEnfant = findEnfantCategory(d.categories);
+        // Si absente, création automatique de la catégorie Enfant
         if (!catEnfant) {
-          // Création de l'entité catégorie Enfants
           catEnfant = {
-            id: 'children',
-            name: 'Enfants',
+            id: CANONICAL_ENFANT_ID,
+            name: CANONICAL_ENFANT_NAME,
             kind: 'expense',
             active: true,
             color: colors.forest,
@@ -1332,10 +1432,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           fund = { id: uid(), parentId: parent.id, balance: 0, totalContributions: 0, updatedAt: todayISO() };
         }
 
-        // Décrémentation du solde de la réserve familiale
+        // Décrémentation du solde de la réserve familiale et cumul des allocations
         const newFundBalance = Math.max(0, fund.balance - amount);
         // Mise à jour de l'objet réserve
-        fund = { ...fund, balance: newFundBalance, updatedAt: todayISO() };
+        fund = {
+          ...fund,
+          balance: newFundBalance,
+          totalAllocated: (fund.totalAllocated || 0) + amount,
+          updatedAt: todayISO(),
+        };
         // Persistance dans SQLite
         sqliteSaveFamilyFund(fund);
 
@@ -1408,8 +1513,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           date: todayISO(),
           // Catégorie « Enfant »
           categoryId: catEnfant.id,
-          // Nom traduit de la catégorie
-          categoryName: 'Enfants',
+          // Nom officiel de la catégorie
+          categoryName: CANONICAL_ENFANT_NAME,
           // Horodatage ISO
           createdAt: new Date().toISOString(),
         };
@@ -1452,6 +1557,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // Mise à jour atomique de l'état global Zustand
         update((s) => ({
           ...s,
+          categories: s.categories.some((c) => c.id === catEnfant.id)
+            ? s.categories
+            : [...s.categories, catEnfant],
+          users: s.users.map((u) =>
+            u.id === parent.id && !u.categoryIds.includes(catEnfant.id)
+              ? { ...u, categoryIds: [...u.categoryIds, catEnfant.id] }
+              : u
+          ),
           // Réserve mise à jour
           familyFunds: [fund!, ...s.familyFunds.filter((f) => f.id !== fund!.id)],
           // Allocations mises à jour
@@ -1558,7 +1671,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const matchingExpense = d.expenses.find(
           (e) =>
             e.userId === targetAlloc.parentId &&
-            (e.categoryId === 'children' || e.categoryId === targetAlloc.categoryId) &&
+            (isChildrenCategory(e.categoryId) || e.categoryId === targetAlloc.categoryId) &&
             (e.amount === oldAmount || (e.note && e.note.includes(targetAlloc.childName)))
         );
         // Liste des dépenses mise à jour
@@ -1657,7 +1770,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const matchingExpense = d.expenses.find(
           (e) =>
             e.userId === targetAlloc.parentId &&
-            (e.categoryId === 'children' || e.categoryId === targetAlloc.categoryId) &&
+            (isChildrenCategory(e.categoryId) || e.categoryId === targetAlloc.categoryId) &&
             (e.amount === targetAlloc.amount || (e.note && e.note.includes(targetAlloc.childName)))
         );
         // Si trouvée, suppression dans SQLite
@@ -1802,8 +1915,50 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // Persistance dans SQLite
         sqliteSaveFamilyBudget(budget);
 
+        // Recherche des enfants du foyer
+        const familyChildren = d.users.filter(
+          (u) => u.role === 'child' && (u.parentId === parentId || u.familyId === parent?.familyId)
+        );
+        const childUserIds = new Set(familyChildren.map((c) => c.id));
+
+        // Décomposer les allocations : distinguer allocations enfants directes et allocations de catégories
+        let totalEnfantFromCats = 0;
+        const childAllocMap: Record<string, number> = {};
+        const catAllocMap: Record<string, number> = {};
+
+        for (const [key, val] of Object.entries(b.allocations || {})) {
+          const numVal = Number(val) || 0;
+          if (childUserIds.has(key)) {
+            childAllocMap[key] = numVal;
+          } else {
+            catAllocMap[key] = numVal;
+            const cat = d.categories.find((c) => c.id === key);
+            if (isChildrenCategory(cat) || isChildrenCategory(key)) {
+              totalEnfantFromCats += numVal;
+            }
+          }
+        }
+
+        // Si des allocations enfants directes n'étaient pas spécifiées mais que la catégorie Enfant a un budget
+        if (Object.keys(childAllocMap).length === 0 && familyChildren.length > 0 && totalEnfantFromCats > 0) {
+          const perChild = Math.round((totalEnfantFromCats / familyChildren.length) * 1000) / 1000;
+          for (const child of familyChildren) {
+            childAllocMap[child.id] = perChild;
+          }
+        }
+
+        // Si des allocations enfants étaient fournies mais pas la catégorie, synchroniser la catégorie Enfant
+        const totalChildAllocs = Object.values(childAllocMap).reduce((a, b) => a + b, 0);
+        const enfantCat = findEnfantCategory(d.categories);
+        const enfantCatId = enfantCat?.id || CANONICAL_ENFANT_ID;
+        if (totalChildAllocs > 0 && !catAllocMap[enfantCatId]) {
+          catAllocMap[enfantCatId] = totalChildAllocs;
+        }
+
         // Synchronisation du budget du mois pour le compte parent (Budget global unique du foyer)
-        const existingParentBudget = d.budgets.find((bg) => bg.userId === parentId && bg.start === b.start);
+        const existingParentBudget = d.budgets.find(
+          (bg) => bg.userId === parentId && (bg.start === b.start || bg.start.slice(0, 7) === b.start.slice(0, 7))
+        );
         // Identifiant existant ou nouveau
         const parentBudgetId = existingParentBudget?.id || uid();
         // Objet budget parent reflétant fidèlement le Budget du mois global
@@ -1813,7 +1968,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           start: b.start,
           end: b.end,
           total: b.total,
-          allocations: existingParentBudget?.allocations || {},
+          allocations: Object.keys(catAllocMap).length > 0 ? catAllocMap : (existingParentBudget?.allocations || {}),
         };
         // Sauvegarde dans SQLite
         sqliteSaveBudget(parentBudget);
@@ -1821,30 +1976,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // Synchronisation du budget alloué pour chaque enfant rattaché
         const updatedBudgets = [
           parentBudget,
-          ...d.budgets.filter((bg) => bg.id !== parentBudgetId && bg.userId !== parentId),
+          ...d.budgets.filter(
+            (bg) => bg.id !== parentBudgetId && bg.userId !== parentId && !childUserIds.has(bg.userId)
+          ),
         ];
 
-        // Parcours de chaque allocation d'enfant
-        for (const [childId, allocAmount] of Object.entries(b.allocations || {})) {
-          // Montant numérique alloué à l'enfant
-          const numAlloc = Number(allocAmount) || 0;
-          // Recherche du budget existant de l'enfant
-          const existingChildBudget = d.budgets.find((bg) => bg.userId === childId && bg.start === b.start);
-          // Identifiant du budget enfant
+        // Parcours et mise à jour de chaque enfant rattaché
+        for (const child of familyChildren) {
+          const childAllocAmount = childAllocMap[child.id] ?? 0;
+          const existingChildBudget = d.budgets.find(
+            (bg) => bg.userId === child.id && (bg.start === b.start || bg.start.slice(0, 7) === b.start.slice(0, 7))
+          );
           const childBudgetId = existingChildBudget?.id || uid();
-          // Objet budget enfant
           const childBudget: Budget = {
             id: childBudgetId,
-            userId: childId,
+            userId: child.id,
             start: b.start,
             end: b.end,
-            total: numAlloc,
+            total: childAllocAmount > 0 ? childAllocAmount : (existingChildBudget?.total || 0),
             allocations: existingChildBudget?.allocations || {},
           };
-          // Sauvegarde dans SQLite
           sqliteSaveBudget(childBudget);
-          // Ajout à la liste des budgets
           updatedBudgets.push(childBudget);
+
+          if (childAllocAmount > 0) {
+            sqliteUpdateUser(child.id, { budget_mensuel: childAllocAmount });
+            patchUser(child.id, { budgetMensuel: childAllocAmount });
+          }
         }
 
         // Mise à jour de l'état mémoire global
@@ -1853,6 +2011,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           budgets: updatedBudgets,
           familyBudgets: [budget, ...(s.familyBudgets || []).filter((x) => x.id !== candidateId)],
         }));
+        // Règle du budget unique : activation immédiate du budget pour l'accueil, les budgets et les analyses
+        setSelectedBudgetIdState(parentBudgetId);
         // Retourne l'identifiant du budget
         return candidateId;
       },
@@ -1894,11 +2054,46 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }
         if (targetCat) {
           resolvedCategoryId = targetCat.id;
+          const wasNewToUser = !currentUser.categoryIds.includes(targetCat.id);
           // Si l'utilisateur connecté ne suit pas encore cette catégorie, l'ajouter à sa sélection
-          if (currentUser && !currentUser.categoryIds.includes(targetCat.id)) {
+          if (wasNewToUser) {
             const updatedCatIds = [...currentUser.categoryIds, targetCat.id];
             patchUser(currentUser.id, { categoryIds: updatedCatIds });
             sqliteSetUserCategories(currentUser.id, updatedCatIds);
+
+            // Pourcentage d'allocation initial (par défaut 5% ou valeur transmise par le formulaire vocal)
+            const initialPct =
+              v.initialAllocationPercent && v.initialAllocationPercent > 0
+                ? v.initialAllocationPercent
+                : 5;
+            const updatedDefaults = {
+              ...(dbRef.current?.defaultPercentages || {}),
+              [targetCat.id]: initialPct,
+            };
+            act.setDefaultPercentages(updatedDefaults);
+
+            // Mise à jour de l'enveloppe budgétaire dans le budget actif pour affichage immédiat
+            const activeB =
+              dbRef.current?.budgets.find(
+                (b) => b.userId === currentUserId && b.start <= (v.date || todayISO()) && (v.date || todayISO()) <= b.end
+              ) || dbRef.current?.budgets.find((b) => b.userId === currentUserId);
+
+            if (activeB) {
+              const currentAlloc = activeB.allocations || {};
+              if (currentAlloc[targetCat.id] === undefined) {
+                const allocAmount = Math.round(activeB.total * (initialPct / 100));
+                act.saveBudget({
+                  id: activeB.id,
+                  start: activeB.start,
+                  end: activeB.end,
+                  total: activeB.total,
+                  allocations: {
+                    ...currentAlloc,
+                    [targetCat.id]: allocAmount,
+                  },
+                });
+              }
+            }
           }
         }
 

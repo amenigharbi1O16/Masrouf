@@ -319,6 +319,17 @@ export function getExactMonthBounds(dateOrMonthStr?: string): {
 }
 
 /**
+ * Retourne la date de début du mois précédent au format ISO (YYYY-MM-01).
+ */
+export function prevMonthISO(dateOrMonthStr?: string): string {
+  const bounds = getExactMonthBounds(dateOrMonthStr);
+  const prevDate = new Date(Date.UTC(bounds.year, bounds.month - 2, 1));
+  const y = prevDate.getUTCFullYear();
+  const m = prevDate.getUTCMonth() + 1;
+  return `${y}-${pad(m)}-01`;
+}
+
+/**
  * Message d'accueil selon l'heure de la journée.
  */
 export function greeting(): string {

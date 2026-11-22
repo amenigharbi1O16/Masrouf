@@ -173,12 +173,12 @@ export function CategoryCard({
             {isRTL ? 'المخطط : ' : 'Prévu : '}{plannedPct ?? 0}%
           </Text>
 
-          {/* Pourcentage réel consommé par rapport au total des dépenses */}
+          {/* Pourcentage réel consommé par rapport au budget alloué */}
           <Text
             style={{
               fontSize: 11,
               fontWeight: '700',
-              color: (actualPct ?? 0) > (plannedPct ?? 100) && (plannedPct ?? 0) > 0 ? colors.coral : colors.forest,
+              color: (actualPct ?? 0) > 100 || (allocN > 0 && (spent ?? 0) > allocN) ? colors.coral : colors.forest,
             }}
           >
             {isRTL ? 'الفعلي : ' : 'Réalisé : '}{actualPct ?? 0}%

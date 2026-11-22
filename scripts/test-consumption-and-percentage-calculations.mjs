@@ -130,7 +130,7 @@ console.log('\n[TEST 4] Vérification de la transmission dans index.tsx et confi
 
 const homeCode = fs.readFileSync('src/app/(tabs)/index.tsx', 'utf8');
 assert(
-  homeCode.includes('allocation={budget.allocations[id] ?? 0}'),
+  homeCode.includes('allocation={catAlloc}') || homeCode.includes('allocation={budget.allocations[id] ?? 0}') || homeCode.includes('allocation={budget?.allocations[id] ?? 0}'),
   'HomeScreen : CategoryCard reçoit l\'allocation budgétaire de chaque catégorie'
 );
 assert(

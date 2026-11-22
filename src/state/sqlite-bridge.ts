@@ -38,6 +38,11 @@ import type {
 } from './types';
 import { hashPassword } from '@/utils/security';
 import { getExactMonthBounds, todayISO, uid } from '@/utils/format';
+import {
+  isChildrenCategory,
+  CANONICAL_ENFANT_ID,
+  CANONICAL_ENFANT_NAME,
+} from '@/utils/categoryMatching';
 
 /**
  * Charge l'intégralité des données persistées dans la base SQLite locale.
@@ -86,7 +91,7 @@ export async function loadDBFromSQLite(): Promise<DB> {
       ['bills', 'Bills', 'expense', 'receipt-outline', 14],
       ['education', 'Education', 'expense', 'school-outline', 4],
       ['entertainment', 'Entertainment', 'expense', 'game-controller-outline', 5],
-      ['children', 'Children', 'expense', 'happy-outline', 3],
+      ['children', 'Enfant', 'expense', 'happy-outline', 3],
       ['family', 'Family support', 'expense', 'people-outline', 3],
       ['savings', 'Savings', 'expense', 'cash-outline', 4],
       ['donations', 'Donations', 'expense', 'heart-outline', 1],
@@ -110,19 +115,61 @@ export async function loadDBFromSQLite(): Promise<DB> {
     }
   }
 
+  // Déduplication et harmonisation de la catégorie "Enfant" dans SQLite
+  try {
+    const existingCats = db.getAllSync<{ id: number; name_key: string }>('SELECT id, name_key FROM category');
+    const enfantRows = existingCats.filter(
+      (c) => isChildrenCategory(c.name_key) || String(c.id) === CANONICAL_ENFANT_ID
+    );
+    if (enfantRows.length > 0) {
+      const primary = enfantRows[0];
+      const primaryId = primary.id;
+
+      // Fusionner les doublons éventuels vers l'identifiant primaire
+      for (let i = 1; i < enfantRows.length; i++) {
+        const dupId = enfantRows[i].id;
+        try { db.runSync('UPDATE purchase SET category_id = ? WHERE category_id = ?', [primaryId, dupId]); } catch {}
+        try { db.runSync('UPDATE expense SET category_id = ? WHERE category_id = ?', [primaryId, dupId]); } catch {}
+        try { db.runSync('UPDATE product SET category_id = ? WHERE category_id = ?', [primaryId, dupId]); } catch {}
+        try { db.runSync('UPDATE category_budget SET category_id = ? WHERE category_id = ?', [primaryId, dupId]); } catch {}
+        try { db.runSync('DELETE FROM user_category WHERE category_id = ?', [dupId]); } catch {}
+        try { db.runSync('DELETE FROM category WHERE id = ?', [dupId]); } catch {}
+      }
+
+      // Appliquer le libellé officiel strict "Enfant"
+      try {
+        db.runSync("UPDATE category SET name_key = ? WHERE id = ?", [CANONICAL_ENFANT_NAME, primaryId]);
+      } catch {}
+
+      // Recharger catRows si nécessaire
+      try {
+        catRows = db.getAllSync(
+          'SELECT id, name_key, type, icon, default_percent, is_active, user_id, description, color, is_custom, scope, created_at FROM category'
+        );
+      } catch {
+        catRows = db.getAllSync('SELECT id, name_key, type, icon, default_percent, is_active FROM category');
+      }
+    }
+  } catch (err) {
+    console.warn('[SQLite] Erreur harmonisation catégorie Enfant:', err);
+  }
+
   // Transformation des enregistrements SQLite en objets Category du store
-  const categories: Category[] = catRows.map((r: any) => ({
-    id: String(r.id),
-    name: r.name_key,
-    kind: r.type as 'product' | 'expense',
-    active: r.is_active === 1,
-    userId: r.user_id ? String(r.user_id) : undefined,
-    description: r.description || undefined,
-    color: r.color || undefined,
-    isCustom: r.is_custom === 1,
-    scope: (r.scope as 'personal' | 'family') || 'personal',
-    createdAt: r.created_at || undefined,
-  }));
+  const categories: Category[] = catRows.map((r: any) => {
+    const isEnfant = isChildrenCategory(r.name_key) || String(r.id) === CANONICAL_ENFANT_ID;
+    return {
+      id: String(r.id),
+      name: isEnfant ? CANONICAL_ENFANT_NAME : r.name_key,
+      kind: r.type as 'product' | 'expense',
+      active: r.is_active === 1,
+      userId: r.user_id ? String(r.user_id) : undefined,
+      description: r.description || undefined,
+      color: r.color || undefined,
+      isCustom: r.is_custom === 1,
+      scope: (r.scope as 'personal' | 'family') || 'personal',
+      createdAt: r.created_at || undefined,
+    };
+  });
 
   // Dictionnaire des pourcentages par défaut par identifiant de catégorie
   const defaultPercentages = Object.fromEntries(
@@ -272,10 +319,10 @@ export async function loadDBFromSQLite(): Promise<DB> {
 
     // Parcours de chaque ligne de budget trouvée
     for (const b of budgetRows) {
-      // Calcul rigoureux des dates exactes de début (AAAA-MM-01) et fin (dernier jour du mois)
-      const { start, end, monthKey } = getExactMonthBounds(b.start_date || (b.month ? `${b.month}-01` : todayISO()));
-      // Clé mensuelle au format YYYY-MM
-      const monthPrefix = monthKey;
+      // Conservation fidèle des dates de début et fin de période personnalisée
+      const start = b.start_date || (b.month ? `${b.month}-01` : todayISO());
+      const end = b.end_date || getExactMonthBounds(start).end;
+      const monthPrefix = start.slice(0, 7);
       // Tentative de lecture des enveloppes précises pour ce mois dans category_budget
       let allocRows = db.getAllSync<{ category_id: number; amount: number }>(
         'SELECT category_id, amount FROM category_budget WHERE user_id = ? AND month = ?',
@@ -313,9 +360,9 @@ export async function loadDBFromSQLite(): Promise<DB> {
         allocations,
       };
 
-      // Règle stricte : un seul budget alloué par utilisateur et par mois
+      // Un seul budget par identifiant ou par période identique
       const existingIdx = budgets.findIndex(
-        (x) => x.userId === budgetItem.userId && x.start.substring(0, 7) === monthPrefix
+        (x) => x.id === budgetItem.id || (x.userId === budgetItem.userId && x.start === budgetItem.start && x.end === budgetItem.end)
       );
       if (existingIdx >= 0) {
         budgets[existingIdx] = budgetItem;
@@ -654,7 +701,12 @@ export function sqliteAddUser(user: User): string {
  */
 export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
   try {
-    const numId = Number(id);
+    let numId = Number(id);
+    if (!Number.isFinite(numId) || numId <= 0) {
+      const uRow = db.getFirstSync<{ id: number }>('SELECT id FROM user WHERE email = ?', [id]);
+      if (uRow?.id) numId = uRow.id;
+    }
+    if (!Number.isFinite(numId) || numId <= 0) return;
     if (patch.name !== undefined) {
       db.runSync('UPDATE user SET name = ? WHERE id = ?', [patch.name, numId]);
     }
@@ -704,10 +756,23 @@ export function sqliteUpdateUser(id: string, patch: Partial<User>): void {
  */
 export function sqliteSetUserCategories(userId: string, categoryIds: string[]): void {
   try {
-    const numUserId = Number(userId);
+    let numUserId = Number(userId);
+    if (!Number.isFinite(numUserId) || numUserId <= 0) {
+      const uRow = db.getFirstSync<{ id: number }>('SELECT id FROM user WHERE email = ?', [userId]);
+      if (uRow?.id) numUserId = uRow.id;
+    }
+    if (!Number.isFinite(numUserId) || numUserId <= 0) return;
+
     db.runSync('DELETE FROM user_category WHERE user_id = ?', [numUserId]);
     for (const catId of categoryIds) {
-      const numCatId = Number(catId);
+      let numCatId = Number(catId);
+      if (!Number.isFinite(numCatId) || numCatId <= 0) {
+        const row = db.getFirstSync<{ id: number }>(
+          'SELECT id FROM category WHERE name_key = ? COLLATE NOCASE',
+          [catId]
+        );
+        if (row?.id) numCatId = row.id;
+      }
       if (numCatId > 0) {
         db.runSync(
           'INSERT OR IGNORE INTO user_category (user_id, category_id, enabled) VALUES (?, ?, 1)',
@@ -729,35 +794,37 @@ export function sqliteSetUserCategories(userId: string, categoryIds: string[]): 
 export function sqliteSaveBudget(budget: Budget): string {
   try {
     const numUserId = Number(budget.userId);
-    // Normalisation absolue : date de début = 01 du mois, date de fin = dernier jour du mois
-    const { start: exactStart, end: exactEnd, monthKey } = getExactMonthBounds(budget.start);
-    budget.start = exactStart;
-    budget.end = exactEnd;
-    const month = monthKey;
+    // Conservation fidèle des dates exactes de la période choisie par l'utilisateur
+    const start = budget.start;
+    const end = budget.end;
+    const month = start.slice(0, 7);
     let budgetDbId: number | null = Number(budget.id) || null;
 
-    // 1. Table budget (périodes avec dates de début et fin)
-    //    Règle stricte : Un seul budget alloué par utilisateur et par mois
+    // 1. Table budget (périodes personnalisées avec dates libres)
     try {
-      const existing = db.getFirstSync<{ id: number }>(
-        'SELECT id FROM budget WHERE user_id = ? AND (substr(start_date, 1, 7) = ? OR (start_date = ? AND end_date = ?))',
-        [numUserId, month, budget.start, budget.end]
-      );
+      let existing: { id: number } | null = null;
+      if (budgetDbId) {
+        existing = db.getFirstSync<{ id: number }>(
+          'SELECT id FROM budget WHERE id = ?',
+          [budgetDbId]
+        );
+      }
+      if (!existing) {
+        existing = db.getFirstSync<{ id: number }>(
+          'SELECT id FROM budget WHERE user_id = ? AND start_date = ? AND end_date = ?',
+          [numUserId, start, end]
+        );
+      }
       if (existing) {
         budgetDbId = existing.id;
         db.runSync(
           'UPDATE budget SET start_date = ?, end_date = ?, total = ? WHERE id = ?',
-          [budget.start, budget.end, budget.total, existing.id]
-        );
-        // Nettoyage de sécurité : supprimer tout autre doublon éventuel pour ce même mois
-        db.runSync(
-          'DELETE FROM budget WHERE user_id = ? AND substr(start_date, 1, 7) = ? AND id != ?',
-          [numUserId, month, existing.id]
+          [start, end, budget.total, existing.id]
         );
       } else {
         const res = db.runSync(
           'INSERT INTO budget (user_id, start_date, end_date, total) VALUES (?, ?, ?, ?)',
-          [numUserId, budget.start, budget.end, budget.total]
+          [numUserId, start, end, budget.total]
         );
         budgetDbId = res.lastInsertRowId;
       }

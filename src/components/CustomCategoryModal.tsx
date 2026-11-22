@@ -1,79 +1,60 @@
 /**
  * FICHIER : src/components/CustomCategoryModal.tsx
  * IDENTIFIANT INVENTAIRE : FICHIER-043-CUSTOM-CATEGORY
- * COMPOSANT : Modal de Sélection et Création de Catégorie (Parent et Enfant)
+ * COMPOSANT : Modal Distinct d'Ajout de Catégorie avec Formulaires Produits / Dépenses
  *
  * MISSION DU COMPOSANT :
- * Fournir le formulaire interactif d'ajout de catégorie accessible depuis l'accueil :
- * 1. Présenter d'abord la liste des catégories existantes non encore choisies par l'utilisateur.
- * 2. Permettre la sélection directe d'une catégorie existante pour l'ajouter à son profil.
- * 3. Proposer tout en bas l'option 'Créer une catégorie' qui transforme le formulaire en saisie libre.
- * 4. Distinguer clairement les catégories de produits (achats physiques) et de dépenses fixes.
- * 5. Valider rigoureusement : refuser les noms vides et les doublons existants avec des messages explicites.
- * 6. Fonctionner de façon identique et fluide pour les parents et les enfants.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- * Une feuille modale coulissante avec onglets Produit/Dépense, la liste des catégories suggérées non suivies,
- * le bouton 'Créer une catégorie' révélant le champ texte libre, la palette de couleurs et la grille d'icônes.
+ * Formulaire d'ajout d'une catégorie accessible exclusivement depuis l'accueil (sous le cadre vert du budget)
+ * pour les trois profils (Parent, Enfant, Utilisateur normal) :
+ * 1. Deux formulaires d'ajout distincts : Produits (articles physiques) et Dépenses (charges pures).
+ * 2. Maintien de l'accessibilité intégrale de TOUTES les catégories proposées par l'application non sélectionnées initialement.
+ * 3. Ajout d'une SEULE catégorie à la fois : soit choix parmi les suggestions, soit saisie manuelle d'un nouveau nom.
+ * 4. Colonne / champ dédié au pourcentage d'allocation du budget pour la catégorie ajoutée.
+ * 5. Contrôle strict : la somme totale des allocations ne doit JAMAIS dépasser 100 % du budget mensuel.
+ * 6. Enregistrement persistant dans SQLite et mise à jour dynamique immédiate sur l'ensemble des pages.
  */
 
-// Importation des icônes vectorielles Ionicons
 import { Ionicons } from '@expo/vector-icons';
-// Importation de React et des hooks d'état et de cycle de vie
 import React, { useEffect, useMemo, useState } from 'react';
-// Importation des composants graphiques de React Native
 import {
+  Alert,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-// Importation des composants d'interface réutilisables du design system Masrouf
 import { AlertBanner, Button, Input } from '@/components/ui';
-// Importation des couleurs et arrondis du thème
 import { colors, radius } from '@/constants/theme';
-// Importation du store global relié à SQLite
 import { useStore } from '@/state/store';
-// Importation des types Category et CategoryKind
 import type { Category, CategoryKind } from '@/state/types';
-// Importation de l'utilitaire d'icônes par défaut des catégories
 import { getCategoryIcon } from '@/utils/categoryIcons';
-// Importation du hook de traduction multilingue et détection RTL
 import { useTranslation } from '@/utils/i18n';
 
-// Définition des propriétés attendues par le composant modal
 interface CustomCategoryModalProps {
-  // Indicateur de visibilité de la modale
   visible: boolean;
-  // Fonction de fermeture de la modale
   onClose: () => void;
-  // Callback optionnel en cas de succès avec la catégorie ajoutée
   onSuccess?: (category: Category) => void;
-  // Type initial par défaut ('product' ou 'expense')
   initialKind?: CategoryKind;
-  // Catégorie à éditer si en mode modification
-  categoryToEdit?: Category | null;
-  // Périmètre personnel ou familial
   scope?: 'personal' | 'family';
 }
 
-// Palette chromatique officielle harmonisée avec la charte graphique Masrouf
+// Palette chromatique officielle harmonisée
 const COLOR_PALETTE = [
-  colors.forest, // Vert forêt #102B27
-  colors.mint,   // Vert menthe #2EC4B6
-  '#1E88E5',     // Bleu royal
-  '#F59E0B',     // Ambre vif
-  '#8B5CF6',     // Violet moderne
-  '#E11D48',     // Rose corail
-  '#10B981',     // Émeraude
-  '#0284C7',     // Bleu océan
-  '#D97706',     // Bronze
-  '#4B5563',     // Gris ardoise
+  colors.forest,
+  colors.mint,
+  '#1E88E5',
+  '#F59E0B',
+  '#8B5CF6',
+  '#E11D48',
+  '#10B981',
+  '#0284C7',
+  '#D97706',
+  '#4B5563',
 ];
 
-// Bibliothèque d'icônes vectorielles adaptées aux dépenses et courses quotidiennes
 const AVAILABLE_ICONS = [
   'cart-outline',
   'basket-outline',
@@ -93,667 +74,682 @@ const AVAILABLE_ICONS = [
   'cash-outline',
 ] as const;
 
-/**
- * MISSION DE LA FONCTION : CustomCategoryModal
- * Composant principal de la modale de sélection et de création de catégorie.
- * CE QU'ELLE FAIT :
- * Gère le cycle de vie de sélection parmi les catégories existantes non choisies
- * ou la création d'une nouvelle catégorie sur-mesure avec validation des doublons.
- * CE QU'ELLE AFFICHE À L'ÉCRAN :
- * Une fenêtre modale avec sélecteur de type, liste tactile des choix existants,
- * bouton d'expansion libre, sélecteur de couleur et d'icône.
- */
 export function CustomCategoryModal({
   visible,
   onClose,
   onSuccess,
   initialKind = 'product',
-  categoryToEdit,
   scope = 'personal',
 }: CustomCategoryModalProps) {
-  // Accès aux actions et aux données SQLite via le store
-  const { actions, db, me } = useStore();
-  // Fonctions de traduction et sens d'écriture
+  const { actions, db, me, selectedBudget } = useStore();
   const { t, isRTL, traduireCategorie } = useTranslation();
 
-  // Indicateur si la modale est en mode édition d'une catégorie personnalisée existante
-  const isEdit = !!categoryToEdit;
-
-  // Nom textuel de la catégorie
-  const [name, setName] = useState('');
-  // Description optionnelle
-  const [description, setDescription] = useState('');
-  // Type de catégorie : produit ou dépense directe
+  // Onglet de formulaire actif : 'product' pour Produits, 'expense' pour Dépenses
   const [kind, setKind] = useState<CategoryKind>(initialKind);
-  // Couleur sélectionnée dans la palette
+
+  // Mode de sélection : 'proposed' (choisir 1 suggestion) ou 'manual' (saisir nouveau nom)
+  const [mode, setMode] = useState<'proposed' | 'manual'>('proposed');
+
+  // Une seule catégorie proposée sélectionnée
+  const [selectedProposedId, setSelectedProposedId] = useState<string | null>(null);
+
+  // Saisie manuelle d'un nouveau nom de catégorie
+  const [manualName, setManualName] = useState('');
+  const [description, setDescription] = useState('');
   const [selectedColor, setSelectedColor] = useState<string>(colors.forest);
-  // Icône sélectionnée dans la grille
   const [selectedIcon, setSelectedIcon] = useState<string>('cart-outline');
-  // Message d'erreur de validation
+
+  // Colonne dédiée au pourcentage d'allocation du budget pour cette catégorie
+  const [allocationPercent, setAllocationPercent] = useState<string>('5');
+
   const [error, setError] = useState('');
-  // Indicateur de chargement / traitement en cours
   const [busy, setBusy] = useState(false);
-  // Mode de saisie libre (activé si l'utilisateur clique sur 'Créer une catégorie')
-  const [isCreatingCustom, setIsCreatingCustom] = useState(false);
-  // Identifiants des catégories existantes sélectionnées dans la liste (sélection multiple conforme à la maquette)
-  const [selectedExistingIds, setSelectedExistingIds] = useState<string[]>([]);
 
-  // Identifiants des catégories déjà choisies par l'utilisateur connecté
-  const userCategoryIds = useMemo(() => {
-    // Si l'utilisateur a des catégories, les retourner, sinon tableau vide
-    return me?.categoryIds || [];
-  }, [me?.categoryIds]);
+  // Catégories déjà suivies par l'utilisateur connecté
+  const userCategoryIds = useMemo(() => me?.categoryIds || [], [me?.categoryIds]);
 
-  // Liste des catégories existantes dans SQLite non encore choisies par l'utilisateur pour le type actif
-  const unchosenCategories = useMemo(() => {
-    // Filtrage des catégories de la base selon le type (produit/dépense), actives et non suivies
+  // TOUTES les catégories proposées par l'application pour ce type qui ne sont PAS encore sélectionnées
+  const unselectedProposedCategories = useMemo(() => {
     return db.categories.filter(
       (c) => c.kind === kind && c.active && !userCategoryIds.includes(c.id)
     );
   }, [db.categories, kind, userCategoryIds]);
 
-  // Réinitialisation des champs à l'ouverture ou au changement de cible
+  // Calcul du cumul actuel des pourcentages d'allocation pour l'utilisateur
+  const currentTotalAllocatedPct = useMemo(() => {
+    if (!selectedBudget || !selectedBudget.total || selectedBudget.total <= 0) {
+      // Si aucun budget défini, calcul basé sur db.defaultPercentages
+      return userCategoryIds.reduce((sum, cid) => sum + (db.defaultPercentages[cid] || 0), 0);
+    }
+    // Calcul basé sur les allocations réelles du budget actif
+    const totalB = selectedBudget.total;
+    let sum = 0;
+    for (const cid of userCategoryIds) {
+      const amount = selectedBudget.allocations[cid] || 0;
+      sum += (amount / totalB) * 100;
+    }
+    return Math.round(sum * 10) / 10;
+  }, [selectedBudget, userCategoryIds, db.defaultPercentages]);
+
+  // Pourcentage saisi converti en nombre
+  const numAllocPercent = parseFloat(allocationPercent.replace(',', '.')) || 0;
+  // Nouveau total projeté si la catégorie est ajoutée
+  const projectedTotalPercent = Math.round((currentTotalAllocatedPct + numAllocPercent) * 10) / 10;
+  const isOver100 = projectedTotalPercent > 100;
+
+  // Réinitialisation de l'état lors de l'ouverture ou du basculement d'onglet
   useEffect(() => {
-    // Si on édite une catégorie existante
-    if (categoryToEdit) {
-      // Préremplissage du nom
-      setName(categoryToEdit.name);
-      // Préremplissage de la description
-      setDescription(categoryToEdit.description ?? '');
-      // Préremplissage du type
-      setKind(categoryToEdit.kind);
-      // Préremplissage de la couleur
-      setSelectedColor(categoryToEdit.color ?? colors.forest);
-      // Préremplissage de l'icône
-      setSelectedIcon(categoryToEdit.icon ?? 'cart-outline');
-      // Activation directe du mode saisie libre pour l'édition
-      setIsCreatingCustom(true);
-      // Réinitialisation du choix existant
-      setSelectedExistingIds([]);
-    } else {
-      // Réinitialisation du nom
-      setName('');
-      // Réinitialisation de la description
-      setDescription('');
-      // Type initial demandé
+    if (visible) {
       setKind(initialKind);
-      // Couleur par défaut vert forêt
+      setMode(unselectedProposedCategories.length > 0 ? 'proposed' : 'manual');
+      setSelectedProposedId(null);
+      setManualName('');
+      setDescription('');
       setSelectedColor(colors.forest);
-      // Icône par défaut selon le type
       setSelectedIcon(initialKind === 'product' ? 'basket-outline' : 'receipt-outline');
-      // Mode saisie libre désactivé si des catégories non choisies sont disponibles
-      setIsCreatingCustom(unchosenCategories.length === 0);
-      // Sélection existante vide
-      setSelectedExistingIds([]);
+      setAllocationPercent('5');
+      setError('');
     }
-    // Réinitialisation du message d'erreur
-    setError('');
-  }, [categoryToEdit, initialKind, visible, unchosenCategories.length]);
+  }, [visible, initialKind]);
 
-  /**
-   * MISSION DE LA FONCTION : handleSave
-   * Valide les données saisies ou sélectionnées et enregistre dans SQLite.
-   * CE QU'ELLE FAIT :
-   * - Vérifie l'absence de nom vide et de doublon de nom.
-   * - Si catégorie(s) existante(s) choisie(s) : ajoute leurs IDs à la liste de l'utilisateur.
-   * - Si nouvelle catégorie créée : l'insère dans SQLite et l'attache à l'utilisateur.
-   * CE QU'ELLE AFFICHE À L'ÉCRAN :
-   * Affiche une alerte rouge en cas d'erreur ou ferme la modale avec confirmation.
-   */
+  // Quand on bascule entre formulaire Produits et Dépenses
+  const handleSwitchKind = (newKind: CategoryKind) => {
+    setKind(newKind);
+    setError('');
+    setSelectedProposedId(null);
+    setManualName('');
+    const available = db.categories.filter(
+      (c) => c.kind === newKind && c.active && !userCategoryIds.includes(c.id)
+    );
+    setMode(available.length > 0 ? 'proposed' : 'manual');
+    setSelectedIcon(newKind === 'product' ? 'basket-outline' : 'receipt-outline');
+    // Récupération d'un pourcentage par défaut suggéré raisonnable
+    setAllocationPercent(newKind === 'product' ? '10' : '5');
+  };
+
+  // Sélection d'une catégorie proposée
+  const handleSelectProposed = (catId: string) => {
+    setSelectedProposedId(catId);
+    setError('');
+    // Pré-remplir la colonne de pourcentage avec le pourcentage par défaut de cette catégorie
+    const defaultPct = db.defaultPercentages[catId];
+    if (defaultPct && defaultPct > 0) {
+      setAllocationPercent(String(defaultPct));
+    } else {
+      setAllocationPercent('5');
+    }
+  };
+
+  // Enregistrement de la catégorie et de son allocation dans la BDD
   const handleSave = async () => {
-    // Réinitialisation de l'erreur précédente
     setError('');
 
-    // CAS 1 : L'utilisateur a sélectionné une ou plusieurs catégories existantes non encore choisies
-    if (!isCreatingCustom && !isEdit) {
-      // Vérification qu'au moins une catégorie a bien été cochée
-      if (selectedExistingIds.length === 0) {
-        // Message d'erreur explicite invitant à choisir ou créer
-        setError(
-          isRTL
-            ? 'يرجى اختيار فئة واحدة على الأقل من القائمة أو الضغط على "إنشاء فئة جديدة".'
-            : 'Veuillez sélectionner au moins une catégorie dans la liste ou cliquer sur "Créer une catégorie".'
-        );
-        return;
-      }
-
-      // Activation du témoin de chargement
-      setBusy(true);
-      // Mise à jour de la liste des catégories suivies par l'utilisateur
-      const updatedIds = Array.from(new Set([...userCategoryIds, ...selectedExistingIds]));
-      // Sauvegarde durable dans SQLite
-      actions.setUserCategories(updatedIds);
-      // Fin du chargement
-      setBusy(false);
-
-      // Notification du parent en cas de callback fourni
-      if (onSuccess) {
-        const firstAdded = db.categories.find((c) => selectedExistingIds.includes(c.id));
-        if (firstAdded) {
-          onSuccess(firstAdded);
-        }
-      }
-      // Fermeture de la modale
-      onClose();
-      return;
-    }
-
-    // CAS 2 : Saisie libre d'une catégorie (nouvelle ou édition)
-    const trimmedName = name.trim();
-    // Validation du nom non vide
-    if (!trimmedName) {
-      // Message d'erreur spécifique nom obligatoire
+    // Vérification de validité du pourcentage d'allocation
+    if (numAllocPercent <= 0) {
       setError(
         isRTL
-          ? 'اسم الفئة مطلوب ولا يمكن أن يكون فارغًا.'
-          : 'Le nom de la catégorie est obligatoire et ne peut pas être vide.'
+          ? 'يرجى تحديد نسبة مئوية لتخصيص الميزانية أكبر من 0%.'
+          : 'Veuillez saisir un pourcentage d’allocation du budget supérieur à 0%.'
       );
       return;
     }
 
-    // Vérification stricte des doublons : même nom (insensible à la casse) dans le même type
-    const normalizedName = trimmedName.toLowerCase();
-    // Détection si une catégorie identique existe déjà dans la base
-    const duplicate = db.categories.find(
-      (c) =>
-        c.kind === kind &&
-        c.name.trim().toLowerCase() === normalizedName &&
-        c.id !== categoryToEdit?.id
-    );
-
-    // Si doublon détecté, refus avec message précis
-    if (duplicate) {
-      // Si la catégorie existe déjà et est déjà suivie par l'utilisateur
-      if (userCategoryIds.includes(duplicate.id)) {
-        setError(
-          isRTL
-            ? 'هذه الفئة موجودة ومحددة بالفعل في حسابك.'
-            : 'Cette catégorie existe déjà et fait déjà partie de vos catégories suivies.'
-        );
-      } else {
-        // La catégorie existe déjà dans le catalogue global : proposer de l'activer directement
-        setError(
-          isRTL
-            ? `توجد فئة بهذا الاسم بالفعل (${duplicate.name}). يمكنك اختيارها مباشرة من القائمة.`
-            : `Une catégorie portant le nom "${duplicate.name}" existe déjà dans le système. Choisissez-la dans la liste ci-dessus.`
-        );
-      }
+    if (isOver100) {
+      setError(
+        isRTL
+          ? `المجموع (${projectedTotalPercent}%) يتجاوز 100% من الميزانية. يرجى تخفيض النسبة المحددة.`
+          : `Le total des allocations (${projectedTotalPercent}%) dépasse 100% du budget mensuel. Veuillez ajuster le pourcentage.`
+      );
       return;
     }
 
-    // Activation du témoin de traitement
     setBusy(true);
 
     try {
-      // Mode édition d'une catégorie personnalisée
-      if (isEdit && categoryToEdit) {
-        // Mise à jour dans SQLite
-        const res = actions.updateCustomCategory(categoryToEdit.id, {
-          name: trimmedName,
-          description: description.trim() || undefined,
-          color: selectedColor,
-          icon: selectedIcon,
-        });
-
-        // Gestion de l'échec de mise à jour
-        if (!res.ok) {
-          setError(res.error ?? t('erreur'));
+      if (mode === 'proposed') {
+        // --- CAS 1 : CHOIX D'UNE CATÉGORIE PROPOSÉE ---
+        if (!selectedProposedId) {
+          setError(
+            isRTL
+              ? 'يرجى اختيار فئة مقترحة واحدة من القائمة.'
+              : 'Veuillez sélectionner une catégorie proposée dans la liste.'
+          );
           setBusy(false);
           return;
         }
 
-        // Notification du callback avec la catégorie modifiée
-        const updated = db.categories.find((c) => c.id === categoryToEdit.id);
-        if (updated && onSuccess) {
-          onSuccess(updated);
+        const targetCat = db.categories.find((c) => c.id === selectedProposedId);
+        if (!targetCat) {
+          setError('Catégorie introuvable.');
+          setBusy(false);
+          return;
         }
+
+        // 1. Ajouter l'ID à la liste des catégories suivies par l'utilisateur
+        const updatedCategoryIds = Array.from(new Set([...userCategoryIds, targetCat.id]));
+        actions.setUserCategories(updatedCategoryIds);
+
+        // 2. Mettre à jour son pourcentage d'allocation
+        const updatedDefaultPcts = {
+          ...db.defaultPercentages,
+          [targetCat.id]: numAllocPercent,
+        };
+        actions.setDefaultPercentages(updatedDefaultPcts);
+
+        // 3. Mettre à jour l'enveloppe du budget actif s'il existe
+        if (selectedBudget) {
+          const allocAmount = selectedBudget.total > 0
+            ? Math.round(((selectedBudget.total * numAllocPercent) / 100) * 1000) / 1000
+            : 0;
+          const updatedAllocations = {
+            ...selectedBudget.allocations,
+            [targetCat.id]: allocAmount,
+          };
+          actions.saveBudget({
+            ...selectedBudget,
+            allocations: updatedAllocations,
+          });
+        }
+
+        setBusy(false);
+        Alert.alert(
+          'Catégorie ajoutée',
+          `La catégorie "${traduireCategorie(targetCat.name)}" a été ajoutée avec succès avec une allocation de ${numAllocPercent}%.`
+        );
+        if (onSuccess) onSuccess(targetCat);
+        onClose();
       } else {
-        // Mode création d'une nouvelle catégorie sur-mesure
-        const res = actions.addCustomCategory(trimmedName, kind, {
+        // --- CAS 2 : SAISIE MANUELLE D'UN NOUVEAU NOM ---
+        const trimmed = manualName.trim();
+        if (!trimmed) {
+          setError(
+            isRTL
+              ? 'يرجى إدخال اسم الفئة الجديدة.'
+              : 'Veuillez saisir le nom de la nouvelle catégorie.'
+          );
+          setBusy(false);
+          return;
+        }
+
+        // Vérification de doublon
+        const duplicate = db.categories.find(
+          (c) => c.kind === kind && c.name.trim().toLowerCase() === trimmed.toLowerCase()
+        );
+        if (duplicate) {
+          setError(
+            isRTL
+              ? `هذه الفئة موجودة بالفعل (${duplicate.name}). اخترها من القائمة المقترحة.`
+              : `Une catégorie portant le nom "${duplicate.name}" existe déjà. Veuillez la choisir dans la liste proposée.`
+          );
+          setBusy(false);
+          return;
+        }
+
+        // Création de la catégorie sur-mesure dans SQLite
+        const res = actions.addCustomCategory(trimmed, kind, {
           description: description.trim() || undefined,
           color: selectedColor,
           icon: selectedIcon,
           scope,
         });
 
-        // Gestion de l'erreur d'insertion SQLite
-        if (!res.ok) {
-          setError(res.error ?? t('erreur_categorie_existe'));
+        if (!res.ok || !res.data) {
+          setError(res.error || 'Erreur lors de la création de la catégorie.');
           setBusy(false);
           return;
         }
 
-        // Notification du callback avec la nouvelle catégorie créée
-        if (res.data && onSuccess) {
-          onSuccess(res.data);
-        }
-      }
+        const newCat = res.data;
 
-      // Désactivation du témoin
+        // Mettre à jour le pourcentage d'allocation
+        const updatedDefaultPcts = {
+          ...db.defaultPercentages,
+          [newCat.id]: numAllocPercent,
+        };
+        actions.setDefaultPercentages(updatedDefaultPcts);
+
+        // Mettre à jour l'enveloppe du budget actif s'il existe
+        if (selectedBudget) {
+          const allocAmount = selectedBudget.total > 0
+            ? Math.round(((selectedBudget.total * numAllocPercent) / 100) * 1000) / 1000
+            : 0;
+          const updatedAllocations = {
+            ...selectedBudget.allocations,
+            [newCat.id]: allocAmount,
+          };
+          actions.saveBudget({
+            ...selectedBudget,
+            allocations: updatedAllocations,
+          });
+        }
+
+        setBusy(false);
+        Alert.alert(
+          'Nouvelle catégorie enregistrée',
+          `La catégorie "${newCat.name}" a été créée et ajoutée avec une allocation de ${numAllocPercent}%.`
+        );
+        if (onSuccess) onSuccess(newCat);
+        onClose();
+      }
+    } catch (err: any) {
       setBusy(false);
-      // Fermeture de la modale
-      onClose();
-    } catch {
-      // Capture d'erreur inattendue
-      setError(t('erreur'));
-      setBusy(false);
+      setError(err?.message || 'Erreur inattendue.');
     }
   };
 
   return (
-    // Fenêtre modale native avec glissement depuis le bas
     <Modal
       visible={visible}
       transparent
       animationType="slide"
       onRequestClose={onClose}
     >
-      {/* Arrière-plan semi-transparent cliquable */}
       <View style={styles.backdrop}>
-        {/* Conteneur principal de la feuille modale */}
-        <View style={styles.sheetContainer}>
-          {/* En-tête de la modale avec titre dynamique et bouton de fermeture */}
+        <View style={styles.sheet}>
+          {/* EN-TÊTE MODAL */}
           <View
             style={[
-              styles.sheetHeader,
+              styles.header,
               { flexDirection: isRTL ? 'row-reverse' : 'row' },
             ]}
           >
-            {/* Zone de titre et sous-titre */}
             <View style={{ flex: 1 }}>
-              {/* Titre 'Nouvelle catégorie' ou 'Modifier la catégorie' */}
               <Text
-                style={[
-                  styles.sheetTitle,
-                  { textAlign: isRTL ? 'right' : 'left' },
-                ]}
+                style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}
               >
-                {isEdit ? t('modifier') : t('ajouter_categorie')}
+                {t('ajouter_categorie')}
               </Text>
-              {/* Sous-titre rassurant */}
               <Text
-                style={[
-                  styles.sheetSub,
-                  { textAlign: isRTL ? 'right' : 'left' },
-                ]}
+                style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}
               >
-                {isCreatingCustom
-                  ? t('nouvelle_categorie')
-                  : t('choisir_ce_que_vous_suivez')}
+                Ajouter une catégorie avec son allocation budgétaire
               </Text>
             </View>
 
-            {/* Bouton croix pour fermer */}
             <TouchableOpacity
               onPress={onClose}
               style={styles.closeBtn}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel={t('fermer')}
+              accessibilityLabel="Fermer"
             >
-              <Ionicons name="close" size={22} color={colors.forest} />
+              <Ionicons name="close" size={20} color={colors.forest} />
             </TouchableOpacity>
           </View>
 
-          {/* Défilement du corps du formulaire */}
+          {/* SÉLECTEUR DES DEUX FORMULAIRES DISTINCTS (PRODUITS VS DÉPENSES) */}
+          <View
+            style={[
+              styles.kindTabs,
+              { flexDirection: isRTL ? 'row-reverse' : 'row' },
+            ]}
+          >
+            <TouchableOpacity
+              style={[
+                styles.kindTab,
+                kind === 'product' && styles.kindTabActive,
+                { flexDirection: isRTL ? 'row-reverse' : 'row' },
+              ]}
+              onPress={() => handleSwitchKind('product')}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="basket-outline"
+                size={16}
+                color={kind === 'product' ? colors.white : colors.forest}
+              />
+              <Text
+                style={[
+                  styles.kindTabText,
+                  kind === 'product' && styles.kindTabTextActive,
+                ]}
+              >
+                Produits (Achats)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.kindTab,
+                kind === 'expense' && styles.kindTabActive,
+                { flexDirection: isRTL ? 'row-reverse' : 'row' },
+              ]}
+              onPress={() => handleSwitchKind('expense')}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="receipt-outline"
+                size={16}
+                color={kind === 'expense' ? colors.white : colors.forest}
+              />
+              <Text
+                style={[
+                  styles.kindTabText,
+                  kind === 'expense' && styles.kindTabTextActive,
+                ]}
+              >
+                Dépenses directes
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollBody}
+            contentContainerStyle={styles.body}
           >
-            {/* Bannière d'alerte rouge en cas d'erreur de saisie ou doublon */}
             {error ? (
               <AlertBanner tone="danger" title={t('erreur')} detail={error} />
             ) : null}
 
-            {/* Onglets de distinction : Catégorie Produit vs Catégorie Dépense */}
-            {!isEdit && (
-              <View style={styles.sectionWrap}>
-                {/* Libellé de section */}
+            {/* CHOIX DU MODE : PROPOSÉE OU MANUELLE */}
+            <View style={styles.modeSelector}>
+              <TouchableOpacity
+                style={[
+                  styles.modeOption,
+                  mode === 'proposed' && styles.modeOptionActive,
+                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                ]}
+                onPress={() => {
+                  setMode('proposed');
+                  setError('');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={mode === 'proposed' ? 'radio-button-on' : 'radio-button-off'}
+                  size={18}
+                  color={mode === 'proposed' ? colors.forest : colors.gray}
+                />
                 <Text
                   style={[
-                    styles.fieldLabel,
-                    { textAlign: isRTL ? 'right' : 'left' },
+                    styles.modeOptionText,
+                    mode === 'proposed' && styles.modeOptionTextActive,
                   ]}
                 >
-                  {t('type_categorie')}
+                  Choisir parmi les catégories proposées ({unselectedProposedCategories.length})
                 </Text>
-                {/* Sélecteur à deux boutons pour basculer le type */}
-                <View
-                  style={[
-                    styles.kindSelector,
-                    { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                  ]}
-                >
-                  {/* Onglet Catégorie de Produit (courses et articles physiques) */}
-                  <TouchableOpacity
-                    style={[
-                      styles.kindTab,
-                      kind === 'product' && styles.kindTabActive,
-                    ]}
-                    onPress={() => {
-                      setKind('product');
-                      setSelectedIcon('basket-outline');
-                      setSelectedExistingIds([]);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons
-                      name="basket-outline"
-                      size={18}
-                      color={kind === 'product' ? colors.forest : colors.gray}
-                    />
-                    <Text
-                      style={[
-                        styles.kindTabText,
-                        kind === 'product' && styles.kindTabTextActive,
-                      ]}
-                    >
-                      {t('articles_et_produits')}
-                    </Text>
-                  </TouchableOpacity>
+              </TouchableOpacity>
 
-                  {/* Onglet Catégorie de Dépense (factures et charges fixes) */}
-                  <TouchableOpacity
-                    style={[
-                      styles.kindTab,
-                      kind === 'expense' && styles.kindTabActive,
-                    ]}
-                    onPress={() => {
-                      setKind('expense');
-                      setSelectedIcon('receipt-outline');
-                      setSelectedExistingIds([]);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons
-                      name="receipt-outline"
-                      size={18}
-                      color={kind === 'expense' ? colors.forest : colors.gray}
-                    />
-                    <Text
-                      style={[
-                        styles.kindTabText,
-                        kind === 'expense' && styles.kindTabTextActive,
-                      ]}
-                    >
-                      {t('depenses_et_services')}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* =========================================================================
-                SECTION 1 : LISTE DES CATÉGORIES NON ENCORE CHOISIES (SI DISPONIBLES)
-                ========================================================================= */}
-            {!isEdit && !isCreatingCustom && (
-              <View style={styles.sectionWrap}>
-                {/* Libellé invitant à choisir dans les catégories existantes */}
+              <TouchableOpacity
+                style={[
+                  styles.modeOption,
+                  mode === 'manual' && styles.modeOptionActive,
+                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                ]}
+                onPress={() => {
+                  setMode('manual');
+                  setSelectedProposedId(null);
+                  setError('');
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={mode === 'manual' ? 'radio-button-on' : 'radio-button-off'}
+                  size={18}
+                  color={mode === 'manual' ? colors.forest : colors.gray}
+                />
                 <Text
                   style={[
-                    styles.fieldLabel,
-                    { textAlign: isRTL ? 'right' : 'left' },
+                    styles.modeOptionText,
+                    mode === 'manual' && styles.modeOptionTextActive,
                   ]}
                 >
-                  {unchosenCategories.length > 0
-                    ? t('vos_categories')
-                    : t('aucune_categorie_suggeree')}
+                  Saisir manuellement un nouveau nom
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* CONTENU SELON LE MODE */}
+            {mode === 'proposed' ? (
+              <View style={styles.proposedSection}>
+                <Text style={[styles.sectionSubtitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+                  Sélectionnez une seule catégorie proposée :
                 </Text>
 
-                {/* Rendu des catégories non encore choisies */}
-                {unchosenCategories.length > 0 ? (
-                  <View style={styles.existingList}>
-                    {unchosenCategories.map((cat) => {
-                      // Détermination si cette catégorie est actuellement sélectionnée
-                      const isSelected = selectedExistingIds.includes(cat.id);
-                      // Traduction du libellé de la catégorie
-                      const label = traduireCategorie(cat.name);
+                {unselectedProposedCategories.length === 0 ? (
+                  <View style={styles.emptyNotice}>
+                    <Ionicons name="checkmark-done-circle" size={32} color={colors.mint} />
+                    <Text style={styles.emptyNoticeText}>
+                      Toutes les catégories proposées de ce type font déjà partie de votre profil.
+                    </Text>
+                    <Text style={styles.emptyNoticeSub}>
+                      Basculez sur « Saisir manuellement un nouveau nom » pour en créer une sur mesure.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.proposedGrid}>
+                    {unselectedProposedCategories.map((c) => {
+                      const isSelected = selectedProposedId === c.id;
+                      const iconName = getCategoryIcon(c.name);
+                      const defaultPct = db.defaultPercentages[c.id] || 0;
 
                       return (
                         <TouchableOpacity
-                          key={cat.id}
+                          key={c.id}
                           style={[
-                            styles.existingItem,
-                            isSelected && styles.existingItemSelected,
+                            styles.proposedCard,
+                            isSelected && styles.proposedCardSelected,
                             { flexDirection: isRTL ? 'row-reverse' : 'row' },
                           ]}
-                          onPress={() => {
-                            setSelectedExistingIds((prev) =>
-                              prev.includes(cat.id)
-                                ? prev.filter((id) => id !== cat.id)
-                                : [...prev, cat.id]
-                            );
-                            setError('');
-                          }}
+                          onPress={() => handleSelectProposed(c.id)}
                           activeOpacity={0.7}
                         >
-                          {/* Icône de la catégorie */}
+                          <Ionicons
+                            name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                            size={18}
+                            color={isSelected ? colors.forest : colors.gray}
+                          />
                           <View
                             style={[
-                              styles.itemIconWrap,
-                              { backgroundColor: isSelected ? colors.mint : '#F0F4F8' },
+                              styles.proposedIconBox,
+                              isSelected && { backgroundColor: colors.forest },
                             ]}
                           >
                             <Ionicons
-                              name={getCategoryIcon(cat.name, cat.kind)}
+                              name={iconName as any}
                               size={18}
-                              color={colors.forest}
+                              color={isSelected ? colors.mint : colors.forest}
                             />
                           </View>
-
-                          {/* Nom et description de la catégorie */}
-                          <View style={{ flex: 1, marginHorizontal: 8 }}>
+                          <View style={{ flex: 1 }}>
                             <Text
                               style={[
-                                styles.itemName,
-                                isSelected && styles.itemNameSelected,
+                                styles.proposedCardName,
+                                isSelected && styles.proposedCardNameSelected,
                                 { textAlign: isRTL ? 'right' : 'left' },
                               ]}
                             >
-                              {label}
+                              {traduireCategorie(c.name)}
                             </Text>
-                            {cat.description ? (
-                              <Text
-                                style={[
-                                  styles.itemDesc,
-                                  { textAlign: isRTL ? 'right' : 'left' },
-                                ]}
-                              >
-                                {cat.description}
-                              </Text>
-                            ) : null}
-                          </View>
-
-                          {/* Puce de sélection radio avec coche */}
-                          <View
-                            style={[
-                              styles.radioCircle,
-                              isSelected && styles.radioCircleActive,
-                            ]}
-                          >
-                            {isSelected && (
-                              <Ionicons name="checkmark" size={14} color={colors.white} />
-                            )}
+                            <Text
+                              style={[
+                                styles.proposedCardSub,
+                                { textAlign: isRTL ? 'right' : 'left' },
+                              ]}
+                            >
+                              Défaut suggéré : {defaultPct}%
+                            </Text>
                           </View>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
-                ) : (
-                  // Message informatif si toutes les catégories de base sont déjà choisies
-                  <Text
-                    style={[
-                      styles.emptyUnchosenText,
-                      { textAlign: isRTL ? 'right' : 'left' },
-                    ]}
-                  >
-                    {isRTL
-                      ? 'لقد قمت بتحديد جميع الفئات الافتراضية. يمكنك إنشاء فئة مخصصة أدناه.'
-                      : 'Toutes les catégories suggérées sont déjà dans vos catégories suivies. Créez-en une sur-mesure ci-dessous !'}
-                  </Text>
                 )}
-
-                {/* Option tout en bas : "Créer une catégorie" pour basculer en saisie libre */}
-                <TouchableOpacity
-                  style={[
-                    styles.createOptionBtn,
-                    { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                  ]}
-                  onPress={() => {
-                    setIsCreatingCustom(true);
-                    setSelectedExistingIds([]);
-                    setError('');
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.createOptionIconWrap}>
-                    <Ionicons name="add" size={20} color={colors.forest} />
-                  </View>
-                  <Text style={styles.createOptionText}>
-                    + {t('nouvelle_categorie')} ({isRTL ? 'إدخال حر' : 'Saisie libre'})
-                  </Text>
-                </TouchableOpacity>
               </View>
-            )}
-
-            {/* =========================================================================
-                SECTION 2 : FORMULAIRE DE SAISIE LIBRE (CRÉATION OU ÉDITION)
-                ========================================================================= */}
-            {(isCreatingCustom || isEdit) && (
-              <>
-                {/* Bouton de retour vers la liste existante si des catégories sont disponibles */}
-                {!isEdit && unchosenCategories.length > 0 && (
-                  <TouchableOpacity
-                    style={[
-                      styles.backToListBtn,
-                      { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                    ]}
-                    onPress={() => {
-                      setIsCreatingCustom(false);
-                      setError('');
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={isRTL ? 'arrow-forward' : 'arrow-back'}
-                      size={16}
-                      color={colors.forest}
-                    />
-                    <Text style={styles.backToListText}>
-                      {isRTL
-                        ? 'العودة إلى قائمة الفئات المقترحة'
-                        : 'Choisir parmi les catégories suggérées existantes'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Champ Nom de la catégorie (Saisie libre obligatoire) */}
+            ) : (
+              /* SAISIE MANUELLE */
+              <View style={styles.manualSection}>
                 <Input
-                  label={t('nom_categorie')}
-                  value={name}
+                  label="Nom exact de la nouvelle catégorie"
+                  value={manualName}
                   onChangeText={(txt) => {
-                    setName(txt);
+                    setManualName(txt);
                     setError('');
                   }}
                   placeholder={
                     kind === 'product'
-                      ? 'Ex: Épicerie fine, Produits bio, Fournitures...'
-                      : 'Ex: Garderie, Abonnement gym, Cours particuliers...'
+                      ? 'Ex: Poissonnerie, Boulangerie...'
+                      : 'Ex: Assurance auto, Frais de scolarité...'
                   }
                   autoFocus
                 />
 
-                {/* Champ Description optionnelle */}
                 <Input
-                  label={t('description_categorie')}
+                  label="Description / Note pédagogique (optionnel)"
                   value={description}
                   onChangeText={setDescription}
-                  placeholder="Courte note ou explication..."
+                  placeholder="Ex: Achats de fruits de mer frais du marché..."
                 />
 
-                {/* Palette de couleurs */}
-                <View style={styles.sectionWrap}>
-                  <Text
-                    style={[
-                      styles.fieldLabel,
-                      { textAlign: isRTL ? 'right' : 'left' },
-                    ]}
-                  >
-                    {t('couleur_categorie')}
-                  </Text>
-                  <View style={styles.paletteRow}>
-                    {COLOR_PALETTE.map((c) => (
-                      <TouchableOpacity
-                        key={c}
-                        style={[
-                          styles.colorCircle,
-                          { backgroundColor: c },
-                          selectedColor === c && styles.colorCircleSelected,
-                        ]}
-                        onPress={() => setSelectedColor(c)}
-                        activeOpacity={0.8}
-                      >
-                        {selectedColor === c && (
-                          <Ionicons name="checkmark" size={16} color={colors.white} />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
+                {/* Sélecteur de couleur */}
+                <Text style={[styles.fieldLabel, { textAlign: isRTL ? 'right' : 'left' }]}>
+                  Couleur d’identification :
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.colorRow}
+                >
+                  {COLOR_PALETTE.map((c) => (
+                    <TouchableOpacity
+                      key={c}
+                      style={[
+                        styles.colorCircle,
+                        { backgroundColor: c },
+                        selectedColor === c && styles.colorCircleSelected,
+                      ]}
+                      onPress={() => setSelectedColor(c)}
+                      activeOpacity={0.8}
+                    />
+                  ))}
+                </ScrollView>
 
-                {/* Grille de sélection de l'icône */}
-                <View style={styles.sectionWrap}>
-                  <Text
-                    style={[
-                      styles.fieldLabel,
-                      { textAlign: isRTL ? 'right' : 'left' },
-                    ]}
-                  >
-                    {t('icone_categorie')}
-                  </Text>
-                  <View style={styles.iconsGrid}>
-                    {AVAILABLE_ICONS.map((ico) => (
-                      <TouchableOpacity
-                        key={ico}
-                        style={[
-                          styles.iconCell,
-                          selectedIcon === ico && {
-                            borderColor: selectedColor,
-                            backgroundColor: '#F0F9F5',
-                          },
-                        ]}
-                        onPress={() => setSelectedIcon(ico)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons
-                          name={ico as any}
-                          size={24}
-                          color={selectedIcon === ico ? selectedColor : colors.gray}
-                        />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              </>
+                {/* Sélecteur d'icône */}
+                <Text style={[styles.fieldLabel, { textAlign: isRTL ? 'right' : 'left' }]}>
+                  Icône représentative :
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.iconRow}
+                >
+                  {AVAILABLE_ICONS.map((ic) => (
+                    <TouchableOpacity
+                      key={ic}
+                      style={[
+                        styles.iconSquare,
+                        selectedIcon === ic && styles.iconSquareSelected,
+                      ]}
+                      onPress={() => setSelectedIcon(ic)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name={ic as any}
+                        size={20}
+                        color={selectedIcon === ic ? colors.white : colors.forest}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
             )}
 
-            {/* Boutons d'Action Principaux */}
-            <View style={styles.buttonGroup}>
-              {/* Bouton vert de validation */}
+            {/* COLONNE DÉDIÉE AU POURCENTAGE D'ALLOCATION DU BUDGET */}
+            <View style={styles.allocationBox}>
+              <View
+                style={[
+                  styles.allocationHeaderRow,
+                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                ]}
+              >
+                <Ionicons name="pie-chart-outline" size={20} color={colors.forest} />
+                <Text style={styles.allocationBoxTitle}>
+                  Pourcentage d’allocation du budget
+                </Text>
+              </View>
+
+              <Text style={[styles.allocationBoxSub, { textAlign: isRTL ? 'right' : 'left' }]}>
+                Définissez la part du budget mensuel qui sera assignée à cette catégorie.
+              </Text>
+
+              <View
+                style={[
+                  styles.allocationInputRow,
+                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                ]}
+              >
+                <TextInput
+                  style={[
+                    styles.percentInput,
+                    isOver100 && { borderColor: colors.coral },
+                  ]}
+                  value={allocationPercent}
+                  onChangeText={(val) => {
+                    setAllocationPercent(val);
+                    setError('');
+                  }}
+                  keyboardType="decimal-pad"
+                  placeholder="Ex: 5"
+                />
+                <Text style={styles.percentSymbol}>% du budget</Text>
+              </View>
+
+              {/* Jauge de contrôle budgétaire */}
+              <View style={styles.allocationGauge}>
+                <View
+                  style={[
+                    styles.allocationGaugeHeader,
+                    { flexDirection: isRTL ? 'row-reverse' : 'row' },
+                  ]}
+                >
+                  <Text style={styles.gaugeLbl}>
+                    Actuel : {currentTotalAllocatedPct}%  +  Ajouté : {numAllocPercent}%
+                  </Text>
+                  <Text
+                    style={[
+                      styles.gaugeVal,
+                      isOver100 && { color: colors.coral, fontWeight: '700' },
+                    ]}
+                  >
+                    Nouveau total : {projectedTotalPercent}% / 100%
+                  </Text>
+                </View>
+
+                <View style={styles.gaugeTrack}>
+                  <View
+                    style={[
+                      styles.gaugeFill,
+                      { width: `${Math.min(projectedTotalPercent, 100)}%` },
+                      isOver100 && { backgroundColor: colors.coral },
+                    ]}
+                  />
+                </View>
+
+                {isOver100 ? (
+                  <Text style={styles.overBudgetNotice}>
+                    ⚠️ Dépassement de {Math.round((projectedTotalPercent - 100) * 10) / 10}%. Le total des allocations ne doit jamais dépasser 100 % du budget mensuel.
+                  </Text>
+                ) : (
+                  <Text style={styles.withinBudgetNotice}>
+                    ✓ Allocation valide (reste {Math.round((100 - projectedTotalPercent) * 10) / 10}% disponible).
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            {/* BOUTON D'ENREGISTREMENT */}
+            <View style={{ marginTop: 14 }}>
               <Button
                 label={
-                  isCreatingCustom || isEdit
-                    ? t('enregistrer')
-                    : `${t('selectionner')} (${selectedExistingIds.length})`
+                  isOver100
+                    ? 'Total dépasse 100%'
+                    : mode === 'proposed'
+                      ? 'Ajouter la catégorie proposée'
+                      : 'Créer et ajouter la catégorie'
                 }
                 onPress={handleSave}
                 loading={busy}
-              />
-              {/* Bouton secondaire clair d'annulation */}
-              <Button
-                label={t('annuler')}
-                variant="secondary"
-                onPress={onClose}
+                disabled={isOver100 || (mode === 'proposed' && !selectedProposedId)}
               />
             </View>
           </ScrollView>
@@ -763,224 +759,324 @@ export function CustomCategoryModal({
   );
 }
 
-// Styles graphiques conformes à la charte de Masrouf
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(16, 43, 39, 0.45)',
+    backgroundColor: 'rgba(16, 43, 39, 0.55)',
     justifyContent: 'flex-end',
   },
-  sheetContainer: {
+  sheet: {
     backgroundColor: colors.white,
     borderTopLeftRadius: radius.hero,
     borderTopRightRadius: radius.hero,
-    maxHeight: '90%',
+    maxHeight: '92%',
     paddingBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 10,
   },
-  sheetHeader: {
-    alignItems: 'center',
+  header: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radius.hero,
+    borderTopRightRadius: radius.hero,
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F4F8',
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.forest,
-  },
-  sheetSub: {
-    fontSize: 12,
-    color: colors.gray,
-    marginTop: 2,
-  },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F0F4F8',
+    borderBottomColor: colors.border,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  scrollBody: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 16,
-  },
-  sectionWrap: {
-    gap: 8,
-  },
-  fieldLabel: {
-    fontSize: 13,
+  title: {
+    fontSize: 18,
     fontWeight: '700',
     color: colors.forest,
   },
-  kindSelector: {
+  subtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#4B5563',
+    marginTop: 2,
+  },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  kindTabs: {
+    backgroundColor: colors.white,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
     gap: 8,
   },
   kindTab: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     paddingVertical: 10,
-    borderRadius: radius.pill,
-    backgroundColor: '#F4F7F6',
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderRadius: radius.card,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   kindTabActive: {
-    backgroundColor: '#E8F6F2',
+    backgroundColor: colors.forest,
     borderColor: colors.forest,
   },
   kindTabText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.gray,
+    color: colors.forest,
   },
   kindTabTextActive: {
-    color: colors.forest,
-    fontWeight: '800',
+    color: colors.white,
   },
-  existingList: {
+  body: {
+    backgroundColor: colors.white,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  modeSelector: {
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    padding: 10,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
     gap: 8,
   },
-  existingItem: {
+  modeOption: {
     alignItems: 'center',
-    backgroundColor: '#F9FBFA',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1.5,
-    borderColor: '#E8ECEF',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
   },
-  existingItemSelected: {
-    borderColor: colors.forest,
-    backgroundColor: '#F0F9F5',
+  modeOptionActive: {
+    backgroundColor: '#E8F7F5',
   },
-  itemIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+  modeOptionText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '600',
+    flex: 1,
   },
-  itemName: {
-    fontSize: 14,
+  modeOptionTextActive: {
     fontWeight: '700',
     color: colors.forest,
   },
-  itemNameSelected: {
+  proposedSection: {
+    marginVertical: 6,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.forest,
+    marginBottom: 8,
+  },
+  emptyNotice: {
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 6,
+  },
+  emptyNoticeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.forest,
+    textAlign: 'center',
+  },
+  emptyNoticeSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#4B5563',
+    textAlign: 'center',
+  },
+  proposedGrid: {
+    gap: 8,
+  },
+  proposedCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    padding: 12,
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  proposedCardSelected: {
+    borderColor: colors.forest,
+    backgroundColor: '#F0F9F7',
+    borderWidth: 1.5,
+  },
+  proposedIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E8F4F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proposedCardName: {
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.forest,
   },
-  itemDesc: {
-    fontSize: 11,
-    color: colors.gray,
+  proposedCardNameSelected: {
+    fontWeight: '700',
+  },
+  proposedCardSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4B5563',
     marginTop: 2,
   },
-  radioCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: '#CBD5E1',
-    alignItems: 'center',
-    justifyContent: 'center',
+  manualSection: {
     backgroundColor: colors.white,
-  },
-  radioCircleActive: {
-    borderColor: colors.forest,
-    backgroundColor: colors.forest,
-  },
-  emptyUnchosenText: {
-    fontSize: 13,
-    color: colors.gray,
-    fontStyle: 'italic',
-    paddingVertical: 8,
-  },
-  createOptionBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
     borderRadius: radius.card,
-    backgroundColor: '#EAF7F2',
-    borderWidth: 1.5,
-    borderColor: colors.forest,
-    borderStyle: 'dashed',
-  },
-  createOptionIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.mint,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createOptionText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.forest,
-  },
-  backToListBtn: {
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-  },
-  backToListText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.forest,
-    textDecorationLine: 'underline',
-  },
-  paletteRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    padding: 14,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
     gap: 10,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.forest,
     marginTop: 4,
   },
+  colorRow: {
+    gap: 8,
+    paddingVertical: 6,
+  },
   colorCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
   colorCircleSelected: {
     borderWidth: 3,
-    borderColor: colors.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    borderColor: colors.forest,
+    transform: [{ scale: 1.15 }],
   },
-  iconsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 4,
+  iconRow: {
+    gap: 8,
+    paddingVertical: 6,
   },
-  iconCell: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+  iconSquare: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#E8F4F2',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
   },
-  buttonGroup: {
+  iconSquareSelected: {
+    backgroundColor: colors.forest,
+  },
+  allocationBox: {
+    backgroundColor: colors.white,
+    borderRadius: radius.card,
+    padding: 14,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  allocationHeaderRow: {
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  allocationBoxTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.forest,
+  },
+  allocationBoxSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#4B5563',
+    marginBottom: 10,
+  },
+  allocationInputRow: {
+    alignItems: 'center',
     gap: 10,
-    marginTop: 12,
+    marginBottom: 10,
+  },
+  percentInput: {
+    width: 80,
+    height: 44,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.forest,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.forest,
+    textAlign: 'center',
+  },
+  percentSymbol: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.forest,
+  },
+  allocationGauge: {
+    backgroundColor: '#F7F6F2',
+    borderRadius: 10,
+    padding: 10,
+    gap: 6,
+  },
+  allocationGaugeHeader: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  gaugeLbl: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  gaugeVal: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.forest,
+  },
+  gaugeTrack: {
+    height: 8,
+    backgroundColor: colors.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  gaugeFill: {
+    height: '100%',
+    backgroundColor: colors.forest,
+  },
+  overBudgetNotice: {
+    fontSize: 11,
+    color: colors.coral,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  withinBudgetNotice: {
+    fontSize: 11,
+    color: '#10B981',
+    fontWeight: '600',
+    marginTop: 2,
   },
 });

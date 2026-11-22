@@ -31,8 +31,14 @@ import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/compo
 import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
 import type { User } from '@/state/types';
-import { formatTND } from '@/utils/format';
+import { formatTND, todayISO } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
+import {
+  isChildrenCategory,
+  findEnfantCategory,
+  CANONICAL_ENFANT_ID,
+  CANONICAL_ENFANT_NAME,
+} from '@/utils/categoryMatching';
 
 export default function FamilyDashboard() {
   const router = useRouter();
@@ -47,6 +53,7 @@ export default function FamilyDashboard() {
   const [giveNote, setGiveNote] = useState('');
   const [giveError, setGiveError] = useState('');
   const [giveBusy, setGiveBusy] = useState(false);
+  const [showOverBudgetWarning, setShowOverBudgetWarning] = useState(false);
 
   // Données financières du parent connecté
   const familyFund = db.familyFunds.find((f) => f.parentId === me?.id) || {
@@ -54,6 +61,54 @@ export default function FamilyDashboard() {
     totalAdded: 0,
     totalAllocated: 0,
   };
+
+  // Calcul dynamique de l'enveloppe budgétaire catégorie « Enfants » pour le parent
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const startOfMonth = `${currentMonthKey}-01`;
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const endOfMonth = `${currentMonthKey}-${String(lastDay).padStart(2, '0')}`;
+
+  const catEnfant = findEnfantCategory(db.categories);
+  const catEnfantId = catEnfant?.id || CANONICAL_ENFANT_ID;
+
+  const activeBudget =
+    db.budgets.find((b) => b.userId === me?.id && b.start.slice(0, 7) === currentMonthKey) ||
+    db.budgets.find((b) => b.userId === me?.id && b.start <= todayISO() && b.end >= todayISO()) ||
+    db.budgets.find((b) => b.userId === me?.id);
+
+  const familyBudget = db.familyBudgets?.find(
+    (b) => b.parentId === me?.id && (b.month === currentMonthKey || b.start === startOfMonth)
+  );
+
+  // Somme des allocations réservées à la catégorie Enfant
+  const catEnfantBudget = React.useMemo(() => {
+    let sum = 0;
+    const allocs = activeBudget?.allocations || familyBudget?.allocations || {};
+    for (const [k, v] of Object.entries(allocs)) {
+      if (k === catEnfantId || isChildrenCategory(k) || isChildrenCategory(db.categories.find((c) => c.id === k))) {
+        sum += Number(v) || 0;
+      }
+    }
+    return sum;
+  }, [activeBudget, familyBudget, catEnfantId, db.categories]);
+
+  // Dépenses actuelles dans la catégorie Enfant ce mois-ci
+  const currentEnfantSpent = React.useMemo(() => {
+    return db.expenses
+      .filter(
+        (e) =>
+          e.userId === me?.id &&
+          (e.categoryId === catEnfantId ||
+            isChildrenCategory(e.categoryId) ||
+            isChildrenCategory(db.categories.find((c) => c.id === e.categoryId))) &&
+          e.date >= startOfMonth &&
+          e.date <= endOfMonth
+      )
+      .reduce((sum, e) => sum + e.amount, 0);
+  }, [db.expenses, me?.id, catEnfantId, db.categories, startOfMonth, endOfMonth]);
+
+  const remainingEnfantBudget = Math.max(0, catEnfantBudget - currentEnfantSpent);
 
   // Liste des enfants rattachés au parent
   const childrenList = db.users.filter(
@@ -68,11 +123,16 @@ export default function FamilyDashboard() {
   // Historique des allocations
   const myAllocations = db.allocations.filter((a) => a.parentId === me?.id);
 
-  // Calcul des dépenses totales de la famille (enfants + parent)
-  const familyUserIds = [me?.id, ...childrenList.map((c) => c.id)];
-  const totalFamilyExpenses = db.expenses
-    .filter((e) => familyUserIds.includes(e.userId))
-    .reduce((sum, e) => sum + e.amount, 0);
+  // Calcul des dépenses totales de la famille sans double comptage des virements d'argent de poche
+  const totalFamilyExpenses = React.useMemo(() => {
+    const parentExp = db.expenses
+      .filter((e) => e.userId === me?.id && e.date >= startOfMonth && e.date <= endOfMonth)
+      .reduce((sum, e) => sum + e.amount, 0);
+    const parentPur = db.purchases
+      .filter((p) => p.userId === me?.id && p.date >= startOfMonth && p.date <= endOfMonth)
+      .reduce((sum, p) => sum + p.price, 0);
+    return parentExp + parentPur;
+  }, [db.expenses, db.purchases, me?.id, startOfMonth, endOfMonth]);
 
   // Ouvrir la modale d'allocation pour un enfant spécifique
   const openGiveModal = (child: User) => {
@@ -80,25 +140,12 @@ export default function FamilyDashboard() {
     setGiveAmount('');
     setGiveNote('');
     setGiveError('');
+    setShowOverBudgetWarning(false);
     setGiveMoneyModal(true);
   };
 
-  // Soumission de l'allocation d'argent
-  const submitGiveMoney = async () => {
+  const executeAllocation = async (num: number) => {
     if (!targetChild) return;
-    const num = parseFloat(giveAmount.replace(',', '.'));
-    if (isNaN(num) || num <= 0) {
-      setGiveError('Veuillez entrer un montant valide supérieur à 0.');
-      return;
-    }
-
-    if (num > familyFund.balance) {
-      setGiveError(
-        `Fonds insuffisants dans la réserve. Disponible : ${formatTND(familyFund.balance)}`
-      );
-      return;
-    }
-
     setGiveBusy(true);
     setGiveError('');
 
@@ -109,11 +156,35 @@ export default function FamilyDashboard() {
       setGiveError(res.error ?? 'Erreur lors de l’allocation.');
     } else {
       setGiveMoneyModal(false);
+      setShowOverBudgetWarning(false);
+      const isExceeded = (catEnfantBudget > 0 && currentEnfantSpent + num > catEnfantBudget) || catEnfantBudget === 0;
       Alert.alert(
-        'Succès',
-        `${formatTND(num)} ont été alloués avec succès à ${targetChild.name}.`
+        isRTL ? 'تأكيد العملية' : 'Succès',
+        isRTL
+          ? `تم تحويل ${formatTND(num)} بنجاح إلى ${targetChild.name}.${isExceeded ? ' تم تسجيل التحويل مع تجاوز الميزانية وسيعرض باللون الأحمر في التحليلات.' : ''}`
+          : `${formatTND(num)} ont été alloués avec succès à ${targetChild.name}.${isExceeded ? ' (Dépassement de budget enregistré et marqué en rouge dans les analyses)' : ''}`
       );
     }
+  };
+
+  // Soumission de l'allocation d'argent
+  const submitGiveMoney = async () => {
+    if (!targetChild) return;
+    const num = parseFloat(giveAmount.replace(',', '.'));
+    if (isNaN(num) || num <= 0) {
+      setGiveError(isRTL ? 'الرجاء إدخال مبلغ صحيح أكبر من صفر.' : 'Veuillez entrer un montant valide supérieur à 0.');
+      return;
+    }
+
+    const projectedSpent = currentEnfantSpent + num;
+    const willExceed = (catEnfantBudget > 0 && projectedSpent > catEnfantBudget) || catEnfantBudget === 0;
+
+    if (willExceed && !showOverBudgetWarning) {
+      setShowOverBudgetWarning(true);
+      return;
+    }
+
+    await executeAllocation(num);
   };
 
   // Répondre à une demande d'argent
@@ -509,11 +580,26 @@ export default function FamilyDashboard() {
                   Allouer à {targetChild?.name}
                 </Text>
                 <Text style={styles.modalSub}>
-                  Réserve disponible : {formatTND(familyFund.balance)}
+                  {isRTL ? 'ميزانية فئة الأطفال : ' : 'Budget catégorie Enfant : '}
+                  <Text style={{ fontWeight: '700', color: colors.forest }}>
+                    {formatTND(catEnfantBudget)}
+                  </Text>
+                  {` · ${isRTL ? 'المتبقي : ' : 'Disponible : '}`}
+                  <Text
+                    style={{
+                      fontWeight: '700',
+                      color: remainingEnfantBudget > 0 ? colors.forest : colors.coral,
+                    }}
+                  >
+                    {formatTND(remainingEnfantBudget)}
+                  </Text>
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => setGiveMoneyModal(false)}
+                onPress={() => {
+                  setGiveMoneyModal(false);
+                  setShowOverBudgetWarning(false);
+                }}
                 style={styles.modalClose}
               >
                 <Ionicons name="close" size={20} color={colors.forest} />
@@ -524,12 +610,33 @@ export default function FamilyDashboard() {
               <AlertBanner tone="danger" title={t('erreur')} detail={giveError} />
             ) : null}
 
+            {showOverBudgetWarning ? (
+              <View style={styles.warningAlertBox}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <Ionicons name="warning" size={18} color={colors.coral} />
+                  <Text style={styles.warningAlertTitle}>
+                    {isRTL ? 'تنبيه : تجاوز ميزانية فئة الأطفال' : 'Attention : Dépassement du budget Enfant'}
+                  </Text>
+                </View>
+                <Text style={styles.warningAlertText}>
+                  {catEnfantBudget > 0
+                    ? (isRTL
+                        ? `هذا المبلغ (${formatTND(parseFloat(giveAmount.replace(',', '.')) || 0)}) يتجاوز الميزانية المخصصة لفئة الأطفال (المتبقي: ${formatTND(remainingEnfantBudget)} / المخطط: ${formatTND(catEnfantBudget)}). سيتم تسجيل التحويل وتحديده باللون الأحمر في التحليلات.`
+                        : `Cette allocation de ${formatTND(parseFloat(giveAmount.replace(',', '.')) || 0)} dépasse le budget alloué à la catégorie « Enfant » (Budget restant : ${formatTND(remainingEnfantBudget)} / Prévu : ${formatTND(catEnfantBudget)}). Le virement sera effectué et apparaîtra en rouge dans vos analyses.`)
+                    : (isRTL
+                        ? `لم يتم تخصيص ميزانية مسبقة لفئة الأطفال لهذا الشهر (0.000 د.ت). سيتم تسجيل هذا المبلغ كتجاوز للميزانية وتوضيحه باللون الأحمر في التحليلات.`
+                        : `Aucun budget n'a été alloué à la catégorie « Enfant » ce mois-ci (0.000 DT). Ce montant sera enregistré et mis en évidence en rouge dans vos analyses.`)}
+                </Text>
+              </View>
+            ) : null}
+
             <Input
               label="Montant de l'allocation (TND)"
               value={giveAmount}
               onChangeText={(txt) => {
                 setGiveAmount(txt);
                 setGiveError('');
+                setShowOverBudgetWarning(false);
               }}
               keyboardType="decimal-pad"
               placeholder="Ex: 25.000"
@@ -545,14 +652,25 @@ export default function FamilyDashboard() {
 
             <View style={styles.modalBtnGroup}>
               <Button
-                label="Confirmer le virement"
+                label={
+                  showOverBudgetWarning
+                    ? (isRTL ? 'تأكيد التحويل رغم التجاوز' : 'Confirmer malgré le dépassement')
+                    : (isRTL ? 'تأكيد التحويل' : 'Confirmer le virement')
+                }
+                variant={showOverBudgetWarning ? 'danger' : 'primary'}
                 onPress={submitGiveMoney}
                 loading={giveBusy}
               />
               <Button
-                label="Annuler"
+                label={showOverBudgetWarning ? (isRTL ? 'تعديل المبلغ' : 'Modifier le montant') : (isRTL ? 'Annuler' : 'Annuler')}
                 variant="secondary"
-                onPress={() => setGiveMoneyModal(false)}
+                onPress={() => {
+                  if (showOverBudgetWarning) {
+                    setShowOverBudgetWarning(false);
+                  } else {
+                    setGiveMoneyModal(false);
+                  }
+                }}
               />
             </View>
           </View>
@@ -993,5 +1111,23 @@ const styles = StyleSheet.create({
   modalBtnGroup: {
     gap: 10,
     marginTop: 14,
+  },
+  warningAlertBox: {
+    backgroundColor: '#FEF2F2',
+    borderColor: colors.coral,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 10,
+  },
+  warningAlertTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.coral,
+  },
+  warningAlertText: {
+    fontSize: 12,
+    color: '#991B1B',
+    lineHeight: 18,
   },
 });

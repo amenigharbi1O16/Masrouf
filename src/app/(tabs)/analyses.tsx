@@ -32,7 +32,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 // Conteneur d'écran standardisé avec barre d'état et marges de sécurité
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'état vide (sans budget) et de titres de section
-import { EmptyState, SectionTitle } from '@/components/ui';
+import { EmptyState, PillBarChart, SectionTitle } from '@/components/ui';
+import { ChildrenBudgetAnalytics } from '@/components/ChildrenBudgetAnalytics';
+import {
+  getChildMonthlyHistory,
+  getParentTotalMonthlyHistory,
+  getUserMonthlyHistory,
+} from '@/utils/analyticsHistory';
 // Constantes de thème : palette chromatique (vert forêt, corail, menthe) et arrondis
 import { colors, radius } from '@/constants/theme';
 // Sélecteurs d'état SQLite : filtrage par intervalle, fenêtre temporelle antérieure et transactions
@@ -42,6 +48,11 @@ import {
   previousWindow,
   userTxns,
 } from '@/state/selectors';
+import {
+  isChildrenCategory,
+  CANONICAL_ENFANT_ID,
+  CANONICAL_ENFANT_NAME,
+} from '@/utils/categoryMatching';
 // Store global de l'application Masrouf (Zustand synchronisé avec SQLite)
 import { useStore } from '@/state/store';
 // Utilitaire d'assignation d'icônes vectorielles selon le nom de la catégorie
@@ -72,6 +83,60 @@ export default function AnalyticsScreen() {
     if (!win) return [];
     return allTxns.filter((tx) => inRange(tx.date, win.start, win.end));
   }, [allTxns, win]);
+
+  // Enfants rattachés au parent (pour le tableau de bord d'analyse parent)
+  const isParent = me?.role === 'parent' || me?.role === 'admin';
+  const isChild = me?.role === 'child';
+  const isNormalUser = !isParent && !isChild;
+
+  const childrenList = useMemo(() => {
+    if (!isParent || !me) return [];
+    return db.users.filter(
+      (u) => u.role === 'child' && (u.parentId === me.id || u.familyId === me.familyId)
+    );
+  }, [db.users, isParent, me]);
+
+  // Mois cible pour l'historique comparatif réactif (respecte le sélecteur de période)
+  const targetMonthKey = useMemo(() => {
+    if (budget?.start) {
+      return budget.start.slice(0, 7);
+    }
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }, [budget?.start]);
+
+  // Historique 6 mois pour profil PARENT (Achats + Dépenses + Allocations aux enfants)
+  const parentTotalHistory = useMemo(() => {
+    if (!isParent || !me) return [];
+    return getParentTotalMonthlyHistory(
+      db,
+      me.id,
+      targetMonthKey,
+      langue === 'ar' ? 'ar' : langue === 'en' ? 'en' : 'fr'
+    );
+  }, [db, isParent, me, targetMonthKey, langue]);
+
+  // Historique 6 mois pour profil ENFANT (Dépenses/Achats personnels vs Budget alloué)
+  const childHistory = useMemo(() => {
+    if (!isChild || !me) return [];
+    return getChildMonthlyHistory(
+      db,
+      me.id,
+      targetMonthKey,
+      langue === 'ar' ? 'ar' : langue === 'en' ? 'en' : 'fr'
+    );
+  }, [db, isChild, me, targetMonthKey, langue]);
+
+  // Historique 6 mois pour profil UTILISATEUR NORMAL (Dépenses/Achats personnels vs Budget)
+  const normalUserHistory = useMemo(() => {
+    if (!isNormalUser || !me) return [];
+    return getUserMonthlyHistory(
+      db,
+      me.id,
+      targetMonthKey,
+      langue === 'ar' ? 'ar' : langue === 'en' ? 'en' : 'fr'
+    );
+  }, [db, isNormalUser, me, targetMonthKey, langue]);
 
   // Calculs monétaires précis en millimes entiers (zéro dérive d'arrondi)
   const curTotal = useMemo(
@@ -150,30 +215,42 @@ export default function AnalyticsScreen() {
       }
     >();
 
-    // Étape 1 : Initialisation de la carte avec toutes les catégories définies dans la base SQLite
+    // Étape 1 : Initialisation de la carte avec toutes les catégories définies dans la base SQLite (avec regroupement canonique "Enfant")
     for (const c of db.categories) {
+      const isEnf = isChildrenCategory(c);
+      const catKey = isEnf ? CANONICAL_ENFANT_ID : c.id;
+      const catName = isEnf ? CANONICAL_ENFANT_NAME : c.name;
       const allocated = budget.allocations[c.id] ?? 0;
-      map.set(c.id, {
-        id: c.id,
-        name: c.name,
-        spent: 0,
-        allocated,
-        hasBudget: allocated > 0,
-        consumptionPct: 0,
-        shareOfTotal: 0,
-      });
+
+      const existing = map.get(catKey);
+      if (existing) {
+        existing.allocated += allocated;
+        existing.hasBudget = existing.allocated > 0;
+      } else {
+        map.set(catKey, {
+          id: catKey,
+          name: catName,
+          spent: 0,
+          allocated,
+          hasBudget: allocated > 0,
+          consumptionPct: 0,
+          shareOfTotal: 0,
+        });
+      }
     }
 
     // Étape 2 : Agrégation des dépenses réelles à partir des transactions de la période
     for (const tx of curTxns) {
       if (!tx || !tx.categoryId) continue;
-      let entry = map.get(tx.categoryId);
+      const isEnf = isChildrenCategory(tx.categoryId) || isChildrenCategory(categoryName(db, tx.categoryId));
+      const catKey = isEnf ? CANONICAL_ENFANT_ID : tx.categoryId;
+      let entry = map.get(catKey);
       // Création dynamique d'une entrée si une catégorie personnalisée n'était pas pré-initialisée
       if (!entry) {
-        const catName = categoryName(db, tx.categoryId);
+        const catName = isEnf ? CANONICAL_ENFANT_NAME : categoryName(db, tx.categoryId);
         const alloc = budget.allocations[tx.categoryId] ?? 0;
         entry = {
-          id: tx.categoryId,
+          id: catKey,
           name: catName,
           spent: 0,
           allocated: alloc,
@@ -181,7 +258,7 @@ export default function AnalyticsScreen() {
           consumptionPct: 0,
           shareOfTotal: 0,
         };
-        map.set(tx.categoryId, entry);
+        map.set(catKey, entry);
       }
       // Cumul précis en millimes entiers (1 DT = 1000 millimes) pour éliminer les dérives décimales
       entry.spent += Math.round(Number(tx.amount || 0) * 1000);
@@ -678,6 +755,82 @@ export default function AnalyticsScreen() {
         </View>
       </View>
 
+      {/* COMPARAISON HISTORIQUE DE CONSOMMATION MULTI-MOIS (PILL BAR CHART UNIFIÉ) */}
+      {isParent && (
+        <View style={{ marginTop: 14 }}>
+          <PillBarChart
+            title={
+              isRTL
+                ? 'إجمالي نفقات الولي والمصروف · د.ت'
+                : langue === 'en'
+                ? 'Total parent & family expenses · DT'
+                : 'Dépenses globales du parent & foyer · DT'
+            }
+            subtitle={
+              isRTL
+                ? 'مقارنة إجمالي المصاريف والمشتريات والمبالغ المخصصة للأبناء'
+                : 'Achats personnels, dépenses directes et montants alloués aux enfants'
+            }
+            items={parentTotalHistory}
+            unit={isRTL ? 'د.ت' : 'DT'}
+            toDateLabel={
+              isRTL ? 'الشهر الحالي' : langue === 'en' ? 'to date' : 'en cours'
+            }
+            isRTL={isRTL}
+          />
+        </View>
+      )}
+
+      {isChild && (
+        <View style={{ marginTop: 14 }}>
+          <PillBarChart
+            title={
+              isRTL
+                ? 'مصاريفي الشخصية · د.ت'
+                : langue === 'en'
+                ? 'My monthly expenses · DT'
+                : 'Mes dépenses mensuelles · DT'
+            }
+            subtitle={
+              isRTL
+                ? 'مقارنة استهلاك مصروفي الشخصي ومشترياتي عبر الأشهر'
+                : 'Évolution de mes dépenses et de mon argent de poche alloué'
+            }
+            items={childHistory}
+            unit={isRTL ? 'د.ت' : 'DT'}
+            toDateLabel={
+              isRTL ? 'الشهر الحالي' : langue === 'en' ? 'to date' : 'en cours'
+            }
+            isRTL={isRTL}
+          />
+        </View>
+      )}
+
+      {isNormalUser && (
+        <View style={{ marginTop: 14 }}>
+          <PillBarChart
+            title={
+              isRTL
+                ? 'المصاريف الشهرية · د.ت'
+                : langue === 'en'
+                ? 'Monthly expenses · DT'
+                : 'Dépenses mensuelles · DT'
+            }
+            subtitle={
+              isRTL
+                ? 'تطور النفقات والمشتريات خلال الـ 6 أشهر الماضية'
+                : 'Évolution de vos dépenses et achats par rapport à votre budget'
+            }
+            items={normalUserHistory}
+            unit={isRTL ? 'د.ت' : 'DT'}
+            toDateLabel={
+              isRTL ? 'الشهر الحالي' : langue === 'en' ? 'to date' : 'en cours'
+            }
+            isRTL={isRTL}
+          />
+        </View>
+      )}
+
       {/* ============================================================ */}
       {/* 5. CONSOMMATION PAR CATÉGORIE (DU PLUS FAIBLE AU PLUS FORT) */}
       {/* ============================================================ */}
@@ -714,8 +867,16 @@ export default function AnalyticsScreen() {
               ? Math.min(100, catItem.consumptionPct)
               : Math.min(100, catItem.shareOfTotal);
 
+            const isOverCat = catItem.hasBudget && catItem.consumptionPct > 100;
+
             return (
-              <View key={catItem.id} style={styles.categoryCard}>
+              <View
+                key={catItem.id}
+                style={[
+                  styles.categoryCard,
+                  isOverCat && { borderColor: colors.coral, backgroundColor: '#FFF5F5' },
+                ]}
+              >
                 {/* Ligne d'en-tête de la catégorie */}
                 <View
                   style={[
@@ -730,9 +891,18 @@ export default function AnalyticsScreen() {
                     ]}
                   >
                     <Ionicons name={icon} size={18} color={itemColor} />
-                    <Text style={styles.categoryNameText}>{transName}</Text>
+                    <Text style={[styles.categoryNameText, isOverCat && { color: colors.coral }]}>
+                      {transName}
+                    </Text>
+                    {isOverCat ? (
+                      <View style={{ backgroundColor: '#FEE2E2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginHorizontal: 4 }}>
+                        <Text style={{ color: colors.coral, fontSize: 10, fontWeight: '800' }}>
+                          {t('depassement_budget')}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
-                  <Text style={styles.categorySpentText}>
+                  <Text style={[styles.categorySpentText, isOverCat && { color: colors.coral, fontWeight: '800' }]}>
                     {formatDT(catItem.spent)}
                   </Text>
                 </View>
@@ -762,9 +932,11 @@ export default function AnalyticsScreen() {
                   {catItem.hasBudget ? (
                     <>
                       <Text style={[styles.categoryMetaText, { color: itemColor, fontWeight: '700' }]}>
-                        {catItem.consumptionPct.toFixed(1)}% {t('pourcentage_consomme_enveloppe')}
+                        {isOverCat
+                          ? `+${formatDT(catItem.spent - catItem.allocated)} (${catItem.consumptionPct.toFixed(1)}%)`
+                          : `${catItem.consumptionPct.toFixed(1)}% ${t('pourcentage_consomme_enveloppe')}`}
                       </Text>
-                      <Text style={styles.categoryMetaAlloc}>
+                      <Text style={[styles.categoryMetaAlloc, isOverCat && { color: colors.coral, fontWeight: '600' }]}>
                         {t('enveloppe_budgetaire')} : {formatDT(catItem.allocated)}
                       </Text>
                     </>
@@ -977,6 +1149,17 @@ export default function AnalyticsScreen() {
             Aucune catégorie ne présente de surconsommation anormale. Toutes vos enveloppes sont sous le seuil critique.
           </Text>
         </View>
+      )}
+
+      {/* ============================================================ */}
+      {/* 8. SUIVI ANALYTIQUE DU BUDGET DES ENFANTS (TABLEAU DE BORD PARENT) */}
+      {/* ============================================================ */}
+      {isParent && childrenList.length > 0 && (
+        <ChildrenBudgetAnalytics
+          childrenList={childrenList}
+          db={db}
+          currentMonthKey={budget.start.slice(0, 7)}
+        />
       )}
 
       {/* Espacement de sécurité en bas */}

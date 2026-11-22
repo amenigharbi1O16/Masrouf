@@ -28,7 +28,8 @@
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { View } from 'react-native';
 // Ligne d'information bicolore synthétique
 import { InfoRow } from '@/components/Cards';
 // Conteneur d'écran avec retour arrière et gestion du défilement
@@ -38,9 +39,11 @@ import { AlertBanner, Button, Eyebrow, Input } from '@/components/ui';
 // Magasin d'état global connecté à SQLite
 import { useStore } from '@/state/store';
 // Fonctions utilitaires de calcul et formatage monétaire tunisien (3 décimales)
-import { daysBetween, dt, fmtRange, getExactMonthBounds, money, toNum } from '@/utils/format';
+import { daysBetween, dt, fmtRange, getExactMonthBounds, money, todayISO, toNum } from '@/utils/format';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
+// Moteur de réévaluation automatique des allocations basé sur la consommation réelle
+import { computeAutomatedBudgetAllocations } from '@/utils/budgetReevaluation';
 
 /**
  * MISSION DU COMPOSANT :
@@ -71,32 +74,57 @@ export default function AllocateBudgetScreen() {
   // Fonctions de traduction et sens de lecture
   const { t, isRTL, langue, traduireCategorie } = useTranslation();
 
-  // Bornes mensuelles exactes : 1er du mois au dernier jour réel du mois
-  const exactBounds = getExactMonthBounds(start);
-  const normalizedStart = exactBounds.start;
-  const normalizedEnd = exactBounds.end;
+  // Bornes de la période budgétaire : utilise les dates transmises ou celles du mois par défaut
+  const normalizedStart = start || getExactMonthBounds(todayISO()).start;
+  const normalizedEnd = end || getExactMonthBounds(normalizedStart).end;
 
   // Conversion numérique du montant total saisi
   const totalN = toNum(total);
 
   // Filtrage des catégories actives suivies par l'utilisateur connecté
-  const cats = db.categories.filter(
-    (c) => (me?.categoryIds ?? []).includes(c.id) && c.active
-  );
+  // Si aucune catégorie n'est suivie, repli sur les catégories par défaut actives du système
+  const userCatIds = useMemo(() => {
+    if (me?.categoryIds && me.categoryIds.length > 0) return me.categoryIds;
+    return db.categories.filter((c) => c.active && (db.defaultPercentages[c.id] > 0 || (c as any).isDefault)).map((c) => c.id);
+  }, [me?.categoryIds, db.categories, db.defaultPercentages]);
 
-  // Initialisation intelligente : pré-remplissage des enveloppes selon les pourcentages par défaut configurés
-  const [vals, setVals] = useState<Record<string, string>>(
-    Object.fromEntries(
-      cats.map((c) => [
-        c.id,
-        dt(
-          Math.round(
-            ((totalN * (db.defaultPercentages[c.id] ?? 0)) / 100) * 1000
-          ) / 1000
-        ),
-      ])
-    )
-  );
+  const cats = useMemo(() => {
+    return db.categories.filter((c) => userCatIds.includes(c.id) && c.active);
+  }, [db.categories, userCatIds]);
+
+  // Calcul automatisé des allocations réévaluées selon la consommation réelle du mois précédent pour cet utilisateur
+  const automatedReeval = useMemo(() => {
+    if (!me) return null;
+    return computeAutomatedBudgetAllocations(db, me.id, normalizedStart, normalizedEnd, totalN, userCatIds);
+  }, [db, me, normalizedStart, normalizedEnd, totalN, userCatIds]);
+
+  // Fonction de calcul de répartition exacte à 100% du budget entre les catégories
+  const getProportionalAllocations = () => {
+    const initialMap: Record<string, string> = {};
+    if (automatedReeval && automatedReeval.allocations.length > 0) {
+      for (const a of automatedReeval.allocations) {
+        initialMap[a.categoryId] = dt(a.allocatedAmount);
+      }
+    } else {
+      const sumPct = cats.reduce((acc, c) => acc + (db.defaultPercentages[c.id] || 5), 0) || 1;
+      let runningSum = 0;
+      cats.forEach((c, idx) => {
+        if (idx === cats.length - 1) {
+          const rem = Math.max(0, Math.round((totalN - runningSum) * 1000) / 1000);
+          initialMap[c.id] = dt(rem);
+        } else {
+          const weight = (db.defaultPercentages[c.id] || 5) / sumPct;
+          const amt = Math.round(totalN * weight * 1000) / 1000;
+          runningSum += amt;
+          initialMap[c.id] = dt(amt);
+        }
+      });
+    }
+    return initialMap;
+  };
+
+  // Initialisation intelligente : pré-remplissage des enveloppes réparties exactement à 100%
+  const [vals, setVals] = useState<Record<string, string>>(getProportionalAllocations);
 
   // Conversion numérique en temps réel de tous les montants saisis
   const nums = Object.fromEntries(
@@ -126,6 +154,10 @@ export default function AllocateBudgetScreen() {
     // Sécurité : bloque la validation si dépassement ou total nul/invalide
     if (over || !Number.isFinite(totalN) || totalN <= 0) return;
     
+    if (me && (!me.categoryIds || me.categoryIds.length === 0)) {
+      actions.setUserCategories(userCatIds);
+    }
+
     // Écriture atomique dans SQLite avec bornes exactes de mois
     actions.saveBudget({
       start: normalizedStart,
@@ -168,6 +200,15 @@ export default function AllocateBudgetScreen() {
         }
         tone={over ? 'danger' : 'good'}
       />
+
+      {/* Bouton de rééquilibrage automatique à 100% de la sélection */}
+      <View style={{ marginVertical: 6, alignItems: isRTL ? 'flex-start' : 'flex-end' }}>
+        <Button
+          label={isRTL ? 'إعادة التوزيع التلقائي 100%' : 'Répartir automatiquement (100%)'}
+          variant="secondary"
+          onPress={() => setVals(getProportionalAllocations())}
+        />
+      </View>
 
       {/* Boucle de génération d'un champ de saisie pour chaque catégorie active */}
       {cats.map((c) => (

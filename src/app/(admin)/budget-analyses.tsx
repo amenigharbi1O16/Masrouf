@@ -24,16 +24,24 @@ import {
   View,
 } from 'react-native';
 import { Screen } from '@/components/Screen';
-import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/components/ui';
+import { AlertBanner, Body, Button, Eyebrow, Input, PillBarChart, SectionTitle } from '@/components/ui';
+import { ChildrenBudgetAnalytics } from '@/components/ChildrenBudgetAnalytics';
+import { getParentTotalMonthlyHistory } from '@/utils/analyticsHistory';
 import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
 import { formatTND } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
+import {
+  isChildrenCategory,
+  findEnfantCategory,
+  CANONICAL_ENFANT_ID,
+  CANONICAL_ENFANT_NAME,
+} from '@/utils/categoryMatching';
 
 export default function FamilyBudgetAnalysesScreen() {
   const router = useRouter();
-  const { db, me, actions } = useStore();
-  const { t, isRTL } = useTranslation();
+  const { db, me, selectedBudget, actions } = useStore();
+  const { t, isRTL, langue } = useTranslation();
 
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -54,12 +62,18 @@ export default function FamilyBudgetAnalysesScreen() {
     (u) => u.role === 'child' && (u.parentId === me?.id || u.familyId === me?.familyId)
   );
 
-  // Budget familial du mois courant (démarre strictement à 0 si aucun budget n'a été saisi)
+  // Budget mensuel unique de référence centrale (synchronisé entre l'accueil, budgets et analyses)
+  const activeUserBudget =
+    selectedBudget ||
+    db.budgets.find((b) => b.userId === me?.id && b.start.slice(0, 7) === currentMonthKey) ||
+    db.budgets.find((b) => b.userId === me?.id);
+
+  // Budget familial du mois courant
   const familyBudget = db.familyBudgets.find(
     (b) => b.parentId === me?.id && (b.month === currentMonthKey || b.start === startOfMonth)
   );
-  // Montant du Budget du mois : garanti à 0 par défaut sans valeur fictive
-  const totalBudgeted = familyBudget?.totalBudget ?? familyBudget?.total ?? 0;
+  // Montant du Budget du mois : garanti unique et identique sur toutes les pages
+  const totalBudgeted = activeUserBudget?.total ?? familyBudget?.totalBudget ?? familyBudget?.total ?? 0;
 
   // Dépenses du parent (achats + dépenses directes + argent donné aux enfants dans la catégorie Enfants)
   const parentSpent = useMemo(() => {
@@ -76,6 +90,17 @@ export default function FamilyBudgetAnalysesScreen() {
     return eTot + pTot;
   }, [db.expenses, db.purchases, me, startOfMonth, endOfMonth]);
 
+  // Historique 6 mois pour profil PARENT (Achats + Dépenses directes + Allocations aux enfants)
+  const parentTotalHistory = useMemo(() => {
+    if (!me) return [];
+    return getParentTotalMonthlyHistory(
+      db,
+      me.id,
+      currentMonthKey,
+      langue === 'ar' ? 'ar' : langue === 'en' ? 'en' : 'fr'
+    );
+  }, [db, me, currentMonthKey, langue]);
+
   // Total dépensé unique (sans double comptage de l'argent donné aux enfants)
   const totalSpent = parentSpent;
   // Pourcentage consommé (0 si aucun budget)
@@ -90,13 +115,15 @@ export default function FamilyBudgetAnalysesScreen() {
     const map: Record<string, number> = {};
     for (const exp of db.expenses.filter((e) => e.userId === me?.id && e.date >= startOfMonth && e.date <= endOfMonth)) {
       const cat = db.categories.find((c) => c.id === exp.categoryId);
-      const name = cat?.name || 'Autres';
+      const isEnf = isChildrenCategory(cat) || isChildrenCategory(exp.categoryId);
+      const name = isEnf ? CANONICAL_ENFANT_NAME : (cat?.name || 'Autres');
       map[name] = (map[name] || 0) + exp.amount;
     }
     for (const pur of db.purchases.filter((p) => p.userId === me?.id && p.date >= startOfMonth && p.date <= endOfMonth)) {
       const prod = db.products.find((pr) => pr.id === pur.productId);
       const cat = db.categories.find((c) => c.id === prod?.categoryId);
-      const name = cat?.name || 'Autres';
+      const isEnf = isChildrenCategory(cat) || isChildrenCategory(prod?.categoryId);
+      const name = isEnf ? CANONICAL_ENFANT_NAME : (cat?.name || 'Autres');
       map[name] = (map[name] || 0) + pur.price;
     }
     return Object.entries(map).map(([name, amount]) => ({
@@ -137,7 +164,7 @@ export default function FamilyBudgetAnalysesScreen() {
     setBudgetModal(true);
   };
 
-  // Enregistrement du Budget du mois dans SQLite
+  // Enregistrement du Budget du mois dans SQLite (synchronisé sur l'ensemble des pages)
   const handleSaveBudget = async () => {
     const numGlobal = parseFloat(budgetAmount.replace(',', '.'));
     if (isNaN(numGlobal) || numGlobal <= 0) {
@@ -148,13 +175,24 @@ export default function FamilyBudgetAnalysesScreen() {
     setBudgetBusy(true);
     setBudgetError('');
 
+    // 1. Sauvegarde dans les budgets centraux de l'utilisateur (utilisé par Accueil et Analyses)
+    actions.saveBudget({
+      id: activeUserBudget?.id,
+      start: startOfMonth,
+      end: endOfMonth,
+      total: numGlobal,
+      allocations: activeUserBudget?.allocations || familyBudget?.allocations || {},
+    });
+
+    // 2. Synchronisation dans le budget familial du foyer
     actions.saveFamilyBudget({
+      id: familyBudget?.id,
       start: startOfMonth,
       end: endOfMonth,
       month: currentMonthKey,
       total: numGlobal,
       totalBudget: numGlobal,
-      allocations: familyBudget?.allocations || {},
+      allocations: familyBudget?.allocations || activeUserBudget?.allocations || {},
     });
 
     setBudgetBusy(false);
@@ -284,15 +322,51 @@ export default function FamilyBudgetAnalysesScreen() {
           ) : (
             <View style={{ gap: 10 }}>
               {categoryStats.map((cat, idx) => {
-                const catObj = db.categories.find((c) => c.name === cat.name);
-                const plannedAmount = catObj && familyBudget ? (familyBudget.allocations[catObj.id] ?? 0) : 0;
+                const isThisEnfant = isChildrenCategory(cat.name);
+                let plannedAmount = 0;
+                if (isThisEnfant) {
+                  const allocs = activeUserBudget?.allocations || familyBudget?.allocations || {};
+                  for (const [k, v] of Object.entries(allocs)) {
+                    if (isChildrenCategory(k) || isChildrenCategory(db.categories.find((c) => c.id === k))) {
+                      plannedAmount += Number(v) || 0;
+                    }
+                  }
+                } else {
+                  const catObj = db.categories.find(
+                    (c) => c.name === cat.name || c.id === cat.name
+                  );
+                  plannedAmount = catObj
+                    ? (activeUserBudget?.allocations?.[catObj.id] ?? familyBudget?.allocations?.[catObj.id] ?? 0)
+                    : 0;
+                }
                 const plannedPct = totalBudgeted > 0 ? Math.round((plannedAmount / totalBudgeted) * 100) : 0;
+                const isCatExceeded = plannedAmount > 0 && cat.amount > plannedAmount;
+                const catOverAmount = plannedAmount > 0 ? Math.max(0, cat.amount - plannedAmount) : 0;
 
                 return (
-                  <View key={idx} style={styles.categoryRow}>
+                  <View
+                    key={idx}
+                    style={[
+                      styles.categoryRow,
+                      isCatExceeded && { borderColor: colors.coral, backgroundColor: '#FFF5F5' },
+                    ]}
+                  >
                     <View style={styles.catHeader}>
-                      <Text style={styles.catName}>{cat.name}</Text>
-                      <Text style={styles.catAmount}>{formatTND(cat.amount)}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={[styles.catName, isCatExceeded && { color: colors.coral }]}>
+                          {cat.name}
+                        </Text>
+                        {isCatExceeded ? (
+                          <View style={styles.catExceededPill}>
+                            <Text style={styles.catExceededPillText}>
+                              {isRTL ? 'تجاوز' : 'Dépassement'}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={[styles.catAmount, isCatExceeded && { color: colors.coral }]}>
+                        {formatTND(cat.amount)}
+                      </Text>
                     </View>
                     <View style={styles.catProgressTrack}>
                       <View
@@ -300,8 +374,9 @@ export default function FamilyBudgetAnalysesScreen() {
                           styles.catProgressFill,
                           {
                             width: `${Math.min(cat.pct, 100)}%`,
-                            backgroundColor:
-                              idx === 0
+                            backgroundColor: isCatExceeded
+                              ? colors.coral
+                              : idx === 0
                                 ? colors.forest
                                 : idx === 1
                                   ? colors.mint
@@ -313,14 +388,26 @@ export default function FamilyBudgetAnalysesScreen() {
                       />
                     </View>
                     <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', justifyContent: 'space-between', marginTop: 3 }}>
-                      <Text style={styles.catPct}>
-                        {isRTL ? 'الفعلي : ' : 'Réalisé : '}{cat.pct}% {isRTL ? 'من المصاريف' : 'des dépenses'}
-                      </Text>
-                      {plannedPct > 0 ? (
-                        <Text style={[styles.catPct, { color: colors.gray, fontWeight: '600' }]}>
+                      {isCatExceeded ? (
+                        <Text style={[styles.catPct, { color: colors.coral, fontWeight: '700' }]}>
+                          {isRTL
+                            ? `تجاوز الميزانية بمقدار +${formatTND(catOverAmount)}`
+                            : `Dépassement de +${formatTND(catOverAmount)}`}
+                        </Text>
+                      ) : (
+                        <Text style={styles.catPct}>
+                          {isRTL ? 'الفعلي : ' : 'Réalisé : '}{cat.pct}% {isRTL ? 'من المصاريف' : 'des dépenses'}
+                        </Text>
+                      )}
+                      {plannedAmount > 0 ? (
+                        <Text style={[styles.catPct, { color: isCatExceeded ? colors.coral : colors.gray, fontWeight: '600' }]}>
                           {isRTL ? 'المخطط : ' : 'Prévu : '}{plannedPct}% ({formatTND(plannedAmount)})
                         </Text>
-                      ) : null}
+                      ) : (
+                        <Text style={[styles.catPct, { color: colors.gray }]}>
+                          {isRTL ? 'بدون ميزانية محددة' : 'Sans enveloppe fixée'}
+                        </Text>
+                      )}
                     </View>
                   </View>
                 );
@@ -329,60 +416,45 @@ export default function FamilyBudgetAnalysesScreen() {
           )}
         </View>
 
-        {/* ALLOCATIONS & PROGRESSION DES ENFANTS */}
+        {/* COMPARAISON MENSUELLE DES DÉPENSES GLOBALES DU PARENT (PILL BAR CHART) */}
         <View style={styles.sectionWrap}>
-          <SectionTitle>Ventilation par enfant</SectionTitle>
+          <SectionTitle>
+            {isRTL
+              ? 'تطور إجمالي نفقات الولي والمصروف'
+              : 'Évolution des dépenses globales du parent & foyer'}
+          </SectionTitle>
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2, marginBottom: 10 }}>
+            {isRTL
+              ? 'مقارنة إجمالي النفقات والمشتريات والمبالغ المخصصة للأبناء خلال الـ 6 أشهر الماضية'
+              : 'Graphique comparatif des achats, dépenses directes et montants alloués aux enfants.'}
+          </Text>
+          <PillBarChart
+            title={
+              isRTL
+                ? 'إجمالي نفقات الولي والمصروف · د.ت'
+                : 'Dépenses globales du parent & foyer · DT'
+            }
+            subtitle={
+              isRTL
+                ? 'المصاريف والمشتريات والتحويلات للأبناء'
+                : 'Achats personnels, dépenses et allocations aux enfants'
+            }
+            items={parentTotalHistory}
+            unit={isRTL ? 'د.ت' : 'DT'}
+            toDateLabel={
+              isRTL ? 'الشهر الحالي' : langue === 'en' ? 'to date' : 'en cours'
+            }
+            isRTL={isRTL}
+          />
+        </View>
 
-          {childrenBudgetProgress.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>Aucun enfant rattaché.</Text>
-            </View>
-          ) : (
-            <View style={{ gap: 10 }}>
-              {childrenBudgetProgress.map(({ child, allocated, spent, remaining, pct }) => (
-                <View key={child.id} style={styles.childBreakdownCard}>
-                  <View style={styles.childHeaderRow}>
-                    <View style={styles.childAvatar}>
-                      <Ionicons name="person" size={18} color={colors.forest} />
-                    </View>
-                    <View style={{ flex: 1, marginHorizontal: 10 }}>
-                      <Text style={styles.childName}>{child.name}</Text>
-                      <Text style={styles.childSub}>{child.email}</Text>
-                    </View>
-                    <View style={styles.childBalanceBox}>
-                      <Text style={styles.childBalanceLbl}>Reste disponible</Text>
-                      <Text style={styles.childBalanceVal}>
-                        {formatTND(remaining)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.childDivider} />
-
-                  <View style={styles.childStatsRow}>
-                    <Text style={styles.childStatsText}>
-                      Alloué : {formatTND(allocated)}  ·  Dépensé : {formatTND(spent)}
-                    </Text>
-                    <Text style={[styles.childPctText, pct > 100 && { color: colors.coral }]}>
-                      {pct}%
-                    </Text>
-                  </View>
-
-                  <View style={styles.childProgressTrack}>
-                    <View
-                      style={[
-                        styles.progressBarFill,
-                        {
-                          width: `${Math.min(pct, 100)}%`,
-                          backgroundColor: pct > 100 ? colors.coral : colors.forest,
-                        },
-                      ]}
-                    />
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
+        {/* ALLOCATIONS & PROGRESSION DES ENFANTS AVEC HISTORIQUE MULTI-MOIS */}
+        <View style={styles.sectionWrap}>
+          <ChildrenBudgetAnalytics
+            childrenList={childrenList}
+            db={db}
+            currentMonthKey={currentMonthKey}
+          />
         </View>
       </ScrollView>
 
@@ -711,6 +783,18 @@ const styles = StyleSheet.create({
   modalBtnGroup: {
     gap: 10,
     marginTop: 14,
+  },
+  catExceededPill: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  catExceededPillText: {
+    color: colors.coral,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });
 
