@@ -95,13 +95,13 @@ export default function EditProductScreen() {
 
   // Filtrage de toutes les catégories sélectionnées par l'utilisateur pour le type d'achat produits
   const availableCats = useMemo(() => {
-    const productCats = db.categories.filter((c) => c.kind === 'product');
+    const productCats = (db.categories || []).filter((c) => c && c.kind === 'product');
     const userCatSet = new Set((me?.categoryIds ?? []).map((cid) => String(cid).toLowerCase()));
     if (product?.categoryId) userCatSet.add(String(product.categoryId).toLowerCase());
     const selected = productCats.filter(
       (c) =>
         userCatSet.has(String(c.id).toLowerCase()) ||
-        userCatSet.has(c.name.toLowerCase()) ||
+        (typeof c.name === 'string' && userCatSet.has(c.name.toLowerCase())) ||
         (me?.id && c.userId === me.id)
     );
     return selected.length > 0 ? selected : productCats;

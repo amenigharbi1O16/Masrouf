@@ -59,12 +59,12 @@ const adminBudgetSource = readFileSync('src/app/(admin)/budget-analyses.tsx', 'u
 assert(adminBudgetSource.includes('selectedBudget'), 'admin budget-analyses doit être synchronisé avec selectedBudget');
 console.log('✓ Budget mensuel unique synchronisé entre Accueil, Budgets et Analyses validé.');
 
-// 6. Vérification du don d'argent du parent à l'enfant avec confirmation obligatoire
-console.log('\n--- 6. Vérification de la confirmation obligatoire pour le don d\'argent aux enfants ---');
-const financesSource = readFileSync('src/app/(admin)/finances.tsx', 'utf8');
-assert(financesSource.includes('confirmModal'), 'Finances doit comporter un modal de confirmation obligatoire');
-assert(financesSource.includes('allocBusy'), 'Finances doit verrouiller la requête pour éviter tout double débit');
-console.log('✓ Confirmation obligatoire et protection anti-double débit validées.');
+// 6. Vérification du don d'argent du parent à l'enfant avec modal et verrouillage
+console.log('\n--- 6. Vérification du don d\'argent aux enfants et verrouillage anti-double allocation ---');
+const enfantsSource = readFileSync('src/app/(admin)/enfants.tsx', 'utf8');
+assert(enfantsSource.includes('giveModal'), 'Enfants doit comporter un modal d\'allocation');
+assert(enfantsSource.includes('giveBusy'), 'Enfants doit verrouiller la requête pour éviter tout double débit');
+console.log('✓ Modal d\'allocation et protection anti-double débit validées.');
 
 // 7. Vérification du profil Enfant : consultation sans droit d'édition
 console.log('\n--- 7. Vérification des restrictions budgétaires du profil Enfant ---');

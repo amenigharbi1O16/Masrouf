@@ -18,7 +18,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { dt, money, short } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
@@ -39,8 +39,27 @@ const card = { backgroundColor: colors.white, borderRadius: radius.card } as con
  *    - Le montant déjà dépensé et le pourcentage consommé (ex: "75% consommé").
  *    - La période concernée (ex: "1 Nov 2026 - 30 Nov 2026").
  */
-export function BudgetCard({ available, spent, total, pct, range, over, onPress }: {
-  available: number; spent: number; total: number; pct: number; range: string; over?: number; onPress?: () => void;
+export function BudgetCard({
+  available,
+  spent,
+  total,
+  pct,
+  range,
+  over,
+  onPress,
+  partitionButton,
+}: {
+  available: number;
+  spent: number;
+  total: number;
+  pct: number;
+  range: string;
+  over?: number;
+  onPress?: () => void;
+  partitionButton?: {
+    label: string;
+    onPress: () => void;
+  };
 }) {
   // Récupération des fonctions de traduction et de détection de l'alignement arabe (RTL)
   const { t, isRTL } = useTranslation();
@@ -82,6 +101,31 @@ export function BudgetCard({ available, spent, total, pct, range, over, onPress 
 
       {/* Date de début et de fin du budget affichée en bas de carte */}
       <Text style={[styles.range, { textAlign: isRTL ? 'right' : 'left' }]}>{range}</Text>
+
+      {/* Bouton de partitionnement du budget (ex: pour l'enfant dans le cadre vert) */}
+      {partitionButton && (
+        <TouchableOpacity
+          onPress={(e) => {
+            e.stopPropagation?.();
+            partitionButton.onPress();
+          }}
+          activeOpacity={0.8}
+          style={[
+            styles.partitionBtn,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={partitionButton.label}
+        >
+          <Ionicons name="pie-chart-outline" size={17} color={colors.forest} />
+          <Text style={styles.partitionBtnText}>{partitionButton.label}</Text>
+          <Ionicons
+            name={isRTL ? 'chevron-back' : 'chevron-forward'}
+            size={15}
+            color={colors.forest}
+          />
+        </TouchableOpacity>
+      )}
     </Pressable>
   );
 }
@@ -420,6 +464,27 @@ export function InfoRow({ label, value, tone, plain = false }: {
 const styles = StyleSheet.create({
   // Carte maîtresse de budget en vert forêt avec padding de 20px
   budget: { backgroundColor: colors.forest, borderRadius: radius.card, padding: 20, gap: 6 },
+  // Bouton de partitionnement du budget dans le cadre vert
+  partitionBtn: {
+    marginTop: 10,
+    backgroundColor: colors.mint,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  partitionBtnText: {
+    color: colors.forest,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   // Surtitre vert menthe discret
   budgetLabel: { color: colors.mint, fontSize: 11, fontWeight: '500' },
   // Montant restant ou dépassé en grand format (34px)

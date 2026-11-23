@@ -66,6 +66,8 @@ export interface DrawerItem {
   icon: keyof typeof Ionicons.glyphMap;
   // Chemin de redirection interne dans l'arborescence Expo Router (ex: "/(admin)/dashboard")
   href: string;
+  // Badge numérique optionnel pour les notifications non lues ou compteurs
+  badge?: number;
 }
 
 /**
@@ -352,6 +354,13 @@ export function SideDrawer({ items, subtitle }: { items: DrawerItem[]; subtitle:
                       >
                         {it.label}
                       </Text>
+                      {it.badge !== undefined && it.badge > 0 && (
+                        <View style={[styles.countBadge, on && styles.countBadgeActive]}>
+                          <Text style={[styles.countBadgeText, on && styles.countBadgeTextActive]}>
+                            {it.badge}
+                          </Text>
+                        </View>
+                      )}
                     </Pressable>
                   );
                 })}
@@ -516,6 +525,24 @@ const styles = StyleSheet.create({
   itemTextActive: {
     color: colors.white,
     fontWeight: '700',
+  },
+  // Pastille numérique badge pour les notifications et alertes
+  countBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  countBadgeActive: {
+    backgroundColor: colors.mint,
+  },
+  countBadgeText: {
+    color: colors.white,
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  countBadgeTextActive: {
+    color: colors.forest,
   },
   // Pied du tiroir séparé par un trait fin regroupant langue et déconnexion
   footer: {

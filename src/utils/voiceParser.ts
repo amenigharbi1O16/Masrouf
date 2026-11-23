@@ -503,7 +503,8 @@ export function parseVoiceInput(
   // Recherche explicite d'un enfant par son prénom
   let matchedChild: User | undefined;
   for (const ch of children) {
-    const childFirstName = ch.name.toLowerCase().split(' ')[0];
+    const childName = typeof ch.name === 'string' ? ch.name : String(ch.name || '');
+    const childFirstName = childName.toLowerCase().split(' ')[0];
     if (lowerCombined.includes(childFirstName)) {
       matchedChild = ch;
       break;
@@ -580,11 +581,16 @@ export function parseVoiceInput(
   let finalCategory = matchResult.category;
   if (type === 'donation') {
     const donationCat = categories.find(
-      (c) =>
-        c.name.toLowerCase().includes('don') ||
-        c.name.toLowerCase().includes('charit') ||
-        c.name.toLowerCase().includes('تبرع') ||
-        c.name.toLowerCase().includes('صدق')
+      (c) => {
+        const cName = typeof c.name === 'string' ? c.name : String(c.name || '');
+        const cLower = cName.toLowerCase();
+        return (
+          cLower.includes('don') ||
+          cLower.includes('charit') ||
+          cName.includes('تبرع') ||
+          cName.includes('صدق')
+        );
+      }
     );
     if (donationCat) {
       finalCategory = donationCat;

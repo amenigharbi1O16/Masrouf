@@ -26,11 +26,16 @@ interface Ctx {
   visible: boolean;
 }
 
-const DrawerCtx = createContext<Ctx>({
-  open: () => { },
-  close: () => { },
-  visible: false,
-});
+const DrawerCtx: React.Context<Ctx> =
+  ((globalThis as any).__masrouf_drawer_ctx__ as React.Context<Ctx>) ||
+  createContext<Ctx>({
+    open: () => { },
+    close: () => { },
+    visible: false,
+  });
+if (process.env.NODE_ENV !== 'production') {
+  (globalThis as any).__masrouf_drawer_ctx__ = DrawerCtx;
+}
 
 /**
  * Hook personnalisé permettant d'interagir avec le tiroir latéral.

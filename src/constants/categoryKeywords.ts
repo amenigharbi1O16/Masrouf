@@ -193,7 +193,7 @@ export function matchCategoryFromText(
   // 2. Correspondance exacte ou partielle avec le nom d'une catégorie active (inclus catégories personnalisées)
   for (const cat of categories) {
     if (!cat.active) continue;
-    const catNameLower = cat.name.toLowerCase();
+    const catNameLower = (typeof cat.name === 'string' ? cat.name : String(cat.name || '')).toLowerCase();
     if (lower.includes(catNameLower)) {
       return { category: cat, isUncertain: false, confidence: 0.95 };
     }
@@ -203,11 +203,10 @@ export function matchCategoryFromText(
   for (const [catName, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
     const foundKeyword = keywords.find((kw) => lower.includes(kw.toLowerCase()));
     if (foundKeyword) {
-      const matched = categories.find(
-        (c) =>
-          c.name.toLowerCase().includes(catName.toLowerCase()) ||
-          catName.toLowerCase().includes(c.name.toLowerCase())
-      );
+      const matched = categories.find((c) => {
+        const cLower = (typeof c.name === 'string' ? c.name : String(c.name || '')).toLowerCase();
+        return cLower.includes(catName.toLowerCase()) || catName.toLowerCase().includes(cLower);
+      });
       if (matched) {
         return { category: matched, isUncertain: false, confidence: 0.85 };
       }
@@ -217,7 +216,8 @@ export function matchCategoryFromText(
   // 4. Correspondance avec les mots du nom des catégories personnalisées créées par l'utilisateur
   for (const cat of categories) {
     if (cat.isCustom && cat.active) {
-      const words = cat.name.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+      const cLower = (typeof cat.name === 'string' ? cat.name : String(cat.name || '')).toLowerCase();
+      const words = cLower.split(/\s+/).filter((w) => w.length >= 3);
       const matchedWord = words.find((w) => lower.includes(w));
       if (matchedWord) {
         return { category: cat, isUncertain: false, confidence: 0.80 };
@@ -227,14 +227,14 @@ export function matchCategoryFromText(
 
   // 5. Aucune correspondance nette : proposition de la catégorie la plus probable avec mention « à confirmer »
   // Si le texte évoque des courses générales -> Alimentation
-  const defaultFood = categories.find((c) => c.kind === 'product' && c.name.toLowerCase().includes('aliment'));
+  const defaultFood = categories.find((c) => c.kind === 'product' && (typeof c.name === 'string' ? c.name : String(c.name || '')).toLowerCase().includes('aliment'));
   if (defaultFood) {
     return { category: defaultFood, isUncertain: true, confidence: 0.45 };
   }
 
   // Repli sur la catégorie "Autres" ou la première catégorie active
   const fallback =
-    categories.find((c) => c.name.toLowerCase().includes('autre')) ||
+    categories.find((c) => (typeof c.name === 'string' ? c.name : String(c.name || '')).toLowerCase().includes('autre')) ||
     categories[0];
 
   return { category: fallback, isUncertain: true, confidence: 0.30 };

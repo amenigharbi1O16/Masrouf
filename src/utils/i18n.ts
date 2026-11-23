@@ -39,7 +39,7 @@ import ar from '../i18n/ar.json';
 import en from '../i18n/en.json';
 
 // Accès au magasin global et requêtes SQLite
-import { useStore } from '../state/store';
+import { useStore } from '@/state/store';
 import { updateLangue } from '../db/queries';
 import { isChildrenCategory } from './categoryMatching';
 
@@ -117,14 +117,15 @@ const NOMS_CATEGORIES_LOCALISES: Record<string, Record<Langue, string>> = {
  *   dans la langue courante (ex: 'تغذية' en arabe ou 'Food' en anglais).
  */
 export function traduireNomCategorie(nom: string, langue: Langue): string {
-  if (isChildrenCategory(nom)) {
+  const safeNom = typeof nom === 'string' ? nom : String(nom ?? '');
+  if (isChildrenCategory(safeNom)) {
     return langue === 'ar' ? 'أطفال' : langue === 'en' ? 'Children' : 'Enfant';
   }
-  const match = NOMS_CATEGORIES_LOCALISES[nom];
+  const match = NOMS_CATEGORIES_LOCALISES[safeNom];
   if (match && match[langue]) {
     return match[langue];
   }
-  return nom;
+  return safeNom;
 }
 
 /**
@@ -197,7 +198,12 @@ export interface LanguageContextType {
   traduireNiveau: (niveau: string) => string;
 }
 
-export const LanguageContext = createContext<LanguageContextType | null>(null);
+export const LanguageContext: React.Context<LanguageContextType | null> =
+  ((globalThis as any).__masrouf_lang_context__ as React.Context<LanguageContextType | null>) ||
+  createContext<LanguageContextType | null>(null);
+if (process.env.NODE_ENV !== 'production') {
+  (globalThis as any).__masrouf_lang_context__ = LanguageContext;
+}
 
 /**
  * MISSION DU COMPOSANT : LanguageProvider

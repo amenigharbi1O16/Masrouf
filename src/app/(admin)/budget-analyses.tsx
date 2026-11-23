@@ -110,7 +110,7 @@ export default function FamilyBudgetAnalysesScreen() {
   // Dépassement budgétaire autorisé mais signalé
   const isOverBudget = totalBudgeted > 0 && totalSpent > totalBudgeted;
 
-  // Répartition par catégorie des dépenses du Budget du mois (avec formule pct = (total cat / total mois) * 100)
+  // Répartition par catégorie des dépenses du Budget du mois avec consommation exacte de chaque enveloppe
   const categoryStats = useMemo(() => {
     const map: Record<string, number> = {};
     for (const exp of db.expenses.filter((e) => e.userId === me?.id && e.date >= startOfMonth && e.date <= endOfMonth)) {
@@ -126,12 +126,68 @@ export default function FamilyBudgetAnalysesScreen() {
       const name = isEnf ? CANONICAL_ENFANT_NAME : (cat?.name || 'Autres');
       map[name] = (map[name] || 0) + pur.price;
     }
-    return Object.entries(map).map(([name, amount]) => ({
-      name,
-      amount,
-      pct: totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0,
-    })).sort((a, b) => b.amount - a.amount);
-  }, [db.expenses, db.purchases, db.categories, db.products, me, totalSpent, startOfMonth, endOfMonth]);
+
+    // Récupérer toutes les allocations de la période active
+    const allocs = activeUserBudget?.allocations || familyBudget?.allocations || {};
+
+    // Inclure aussi toutes les catégories ayant une enveloppe allouée dans le budget actif
+    for (const [catId, allocVal] of Object.entries(allocs)) {
+      if ((allocVal ?? 0) > 0) {
+        const cat = db.categories.find((c) => c.id === catId);
+        const isEnf = isChildrenCategory(catId) || isChildrenCategory(cat);
+        const name = isEnf ? CANONICAL_ENFANT_NAME : (cat?.name || catId);
+        if (map[name] === undefined) {
+          map[name] = 0;
+        }
+      }
+    }
+
+    return Object.entries(map).map(([name, amount]) => {
+      const isThisEnfant = isChildrenCategory(name);
+      let plannedAmount = 0;
+      if (isThisEnfant) {
+        for (const [k, v] of Object.entries(allocs)) {
+          if (isChildrenCategory(k) || isChildrenCategory(db.categories.find((c) => c.id === k))) {
+            plannedAmount += Number(v) || 0;
+          }
+        }
+      } else {
+        const catObj = db.categories.find(
+          (c) => c.name === name || c.id === name
+        );
+        plannedAmount = catObj
+          ? (allocs[catObj.id] ?? 0)
+          : 0;
+      }
+
+      // Pourcentage planifié dans le budget total du mois
+      const plannedPct = totalBudgeted > 0 ? Math.round((plannedAmount / totalBudgeted) * 100) : 0;
+
+      // Pourcentage exact consommé de l'enveloppe allouée
+      const consumedPct = plannedAmount > 0
+        ? Math.round((amount / plannedAmount) * 1000) / 10
+        : 0;
+
+      // Reliquat restant de l'enveloppe
+      const remaining = Math.max(0, plannedAmount - amount);
+
+      // Part dans l'ensemble des dépenses du mois
+      const shareOfTotal = totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0;
+
+      return {
+        name,
+        amount,
+        plannedAmount,
+        plannedPct,
+        consumedPct,
+        remaining,
+        shareOfTotal,
+      };
+    }).sort((a, b) => {
+      if (b.amount !== a.amount) return b.amount - a.amount;
+      return b.plannedAmount - a.plannedAmount;
+    });
+  }, [db.expenses, db.purchases, db.categories, db.products, me, totalSpent, totalBudgeted, activeUserBudget, familyBudget, startOfMonth, endOfMonth]);
 
   // Progression budgétaire individuelle de chaque enfant (alloué, dépensé, restant, %)
   const childrenBudgetProgress = useMemo(() => {
@@ -322,26 +378,22 @@ export default function FamilyBudgetAnalysesScreen() {
           ) : (
             <View style={{ gap: 10 }}>
               {categoryStats.map((cat, idx) => {
-                const isThisEnfant = isChildrenCategory(cat.name);
-                let plannedAmount = 0;
-                if (isThisEnfant) {
-                  const allocs = activeUserBudget?.allocations || familyBudget?.allocations || {};
-                  for (const [k, v] of Object.entries(allocs)) {
-                    if (isChildrenCategory(k) || isChildrenCategory(db.categories.find((c) => c.id === k))) {
-                      plannedAmount += Number(v) || 0;
-                    }
-                  }
-                } else {
-                  const catObj = db.categories.find(
-                    (c) => c.name === cat.name || c.id === cat.name
-                  );
-                  plannedAmount = catObj
-                    ? (activeUserBudget?.allocations?.[catObj.id] ?? familyBudget?.allocations?.[catObj.id] ?? 0)
-                    : 0;
-                }
-                const plannedPct = totalBudgeted > 0 ? Math.round((plannedAmount / totalBudgeted) * 100) : 0;
-                const isCatExceeded = plannedAmount > 0 && cat.amount > plannedAmount;
-                const catOverAmount = plannedAmount > 0 ? Math.max(0, cat.amount - plannedAmount) : 0;
+                const isCatExceeded = cat.plannedAmount > 0 && cat.amount > cat.plannedAmount;
+                const catOverAmount = cat.plannedAmount > 0 ? Math.max(0, cat.amount - cat.plannedAmount) : 0;
+                const hasBudget = cat.plannedAmount > 0;
+
+                // Progression de la jauge : proportionnelle au budget alloué de l'enveloppe
+                const progressFillPct = hasBudget
+                  ? Math.min(100, Math.max(0, cat.consumedPct))
+                  : Math.min(100, Math.max(0, cat.shareOfTotal));
+
+                // Couleur sémantique de la barre :
+                // Vert forêt (< 80%), Ambre/Or (80% - 100%), Rouge Corail (> 100%)
+                const barColor = isCatExceeded
+                  ? colors.coral
+                  : cat.consumedPct >= 80
+                    ? colors.gold
+                    : colors.forest;
 
                 return (
                   <View
@@ -368,44 +420,49 @@ export default function FamilyBudgetAnalysesScreen() {
                         {formatTND(cat.amount)}
                       </Text>
                     </View>
+
+                    {/* Barre de progression proportionnelle au budget alloué */}
                     <View style={styles.catProgressTrack}>
                       <View
                         style={[
                           styles.catProgressFill,
                           {
-                            width: `${Math.min(cat.pct, 100)}%`,
-                            backgroundColor: isCatExceeded
-                              ? colors.coral
-                              : idx === 0
-                                ? colors.forest
-                                : idx === 1
-                                  ? colors.mint
-                                  : idx === 2
-                                    ? colors.green
-                                    : colors.gold,
+                            width: `${progressFillPct}%`,
+                            backgroundColor: barColor,
                           },
                         ]}
                       />
                     </View>
-                    <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', justifyContent: 'space-between', marginTop: 3 }}>
+
+                    {/* Informations comparatives précises : Consommé vs Prévu */}
+                    <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                       {isCatExceeded ? (
                         <Text style={[styles.catPct, { color: colors.coral, fontWeight: '700' }]}>
                           {isRTL
-                            ? `تجاوز الميزانية بمقدار +${formatTND(catOverAmount)}`
-                            : `Dépassement de +${formatTND(catOverAmount)}`}
+                            ? `تجاوز الميزانية بمقدار +${formatTND(catOverAmount)} (${cat.consumedPct.toFixed(0)}%)`
+                            : `Dépassement de +${formatTND(catOverAmount)} (${cat.consumedPct.toFixed(0)}%)`}
                         </Text>
-                      ) : (
-                        <Text style={styles.catPct}>
-                          {isRTL ? 'الفعلي : ' : 'Réalisé : '}{cat.pct}% {isRTL ? 'من المصاريف' : 'des dépenses'}
-                        </Text>
-                      )}
-                      {plannedAmount > 0 ? (
-                        <Text style={[styles.catPct, { color: isCatExceeded ? colors.coral : colors.gray, fontWeight: '600' }]}>
-                          {isRTL ? 'المخطط : ' : 'Prévu : '}{plannedPct}% ({formatTND(plannedAmount)})
+                      ) : hasBudget ? (
+                        <Text style={[styles.catPct, { color: colors.forest, fontWeight: '600' }]}>
+                          {isRTL ? 'المستهلك : ' : 'Consommé : '}
+                          <Text style={{ fontWeight: '800' }}>{cat.consumedPct.toFixed(0)}%</Text>
+                          <Text style={{ color: colors.gray, fontWeight: '500' }}>
+                            {` (${isRTL ? 'المتبقي : ' : 'Reste : '}${formatTND(cat.remaining)})`}
+                          </Text>
                         </Text>
                       ) : (
                         <Text style={[styles.catPct, { color: colors.gray }]}>
-                          {isRTL ? 'بدون ميزانية محددة' : 'Sans enveloppe fixée'}
+                          {isRTL ? 'بدون ميزانية محددة' : 'Hors budget planifié'}
+                        </Text>
+                      )}
+
+                      {hasBudget ? (
+                        <Text style={[styles.catPct, { color: isCatExceeded ? colors.coral : colors.gray, fontWeight: '600' }]}>
+                          {isRTL ? 'المخطط : ' : 'Prévu : '}{cat.plannedPct}% ({formatTND(cat.plannedAmount)})
+                        </Text>
+                      ) : (
+                        <Text style={[styles.catPct, { color: colors.gray }]}>
+                          {cat.shareOfTotal > 0 ? `${cat.shareOfTotal}% des dépenses` : ''}
                         </Text>
                       )}
                     </View>

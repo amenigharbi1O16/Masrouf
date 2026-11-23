@@ -156,7 +156,7 @@ export default function WelcomeScreen() {
       title: t('slide3_titre'),
       desc: t('slide3_desc'),
       bullet1: isRTL ? 'إنشاء حسابات مستقلة للأبناء بكلمات سر مؤقتة' : 'Création de comptes enfants avec accès sécurisé',
-      bullet2: isRTL ? 'إدارة الاحتياطي العائلي ومصروف الجيب' : 'Réserve familiale, argent de poche & demandes d’argent',
+      bullet2: isRTL ? 'ميزانية عائلية مركزية ومصروف جيب للأطفال' : 'Budget familial centralisé & argent de poche des enfants',
     },
   ];
 
@@ -730,7 +730,7 @@ export default function WelcomeScreen() {
                     { textAlign: isRTL ? 'right' : 'left' },
                   ]}
                 >
-                  {isRTL ? 'احتياطي عائلي، تحويل مصروف الجيب وموافقة الطلبات' : 'Réserve familiale, argent de poche & validation des demandes'}
+                  {isRTL ? 'ميزانية عائلية مركزية، تحديد مصروف الأبناء ومتابعة المصاريف' : 'Budget familial centralisé, argent de poche & suivi des dépenses'}
                 </Text>
               </View>
               <View

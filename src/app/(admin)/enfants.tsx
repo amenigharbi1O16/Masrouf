@@ -81,12 +81,6 @@ export default function ChildrenScreen() {
     pass: string;
   } | null>(null);
 
-  // Réserve familiale disponible
-  const familyFund = db.familyFunds.find((f) => f.parentId === me?.id) || {
-    balance: 0,
-    totalAdded: 0,
-    totalAllocated: 0,
-  };
 
   // Calcul dynamique de l'enveloppe budgétaire catégorie « Enfants » pour le parent
   const now = new Date();
@@ -791,11 +785,11 @@ export default function ChildrenScreen() {
                 <Text style={styles.warningAlertText}>
                   {catEnfantBudget > 0
                     ? (isRTL
-                        ? `هذا المبلغ (${formatTND(parseFloat(giveAmount.replace(',', '.')) || 0)}) يتجاوز الميزانية المخصصة لفئة الأطفال (المتبقي: ${formatTND(remainingEnfantBudget)} / المخطط: ${formatTND(catEnfantBudget)}). سيتم تسجيل التحويل وتحديده باللون الأحمر في التحليلات.`
-                        : `Cette allocation de ${formatTND(parseFloat(giveAmount.replace(',', '.')) || 0)} dépasse le budget alloué à la catégorie « Enfant » (Budget restant : ${formatTND(remainingEnfantBudget)} / Prévu : ${formatTND(catEnfantBudget)}). Le virement sera effectué et apparaîtra en rouge dans vos analyses.`)
+                      ? `هذا المبلغ (${formatTND(parseFloat(giveAmount.replace(',', '.')) || 0)}) يتجاوز الميزانية المخصصة لفئة الأطفال (المتبقي: ${formatTND(remainingEnfantBudget)} / المخطط: ${formatTND(catEnfantBudget)}). سيتم تسجيل التحويل وتحديده باللون الأحمر في التحليلات.`
+                      : `Cette allocation de ${formatTND(parseFloat(giveAmount.replace(',', '.')) || 0)} dépasse le budget alloué à la catégorie « Enfant » (Budget restant : ${formatTND(remainingEnfantBudget)} / Prévu : ${formatTND(catEnfantBudget)}). Le virement sera effectué et apparaîtra en rouge dans vos analyses.`)
                     : (isRTL
-                        ? `لم يتم تخصيص ميزانية مسبقة لفئة الأطفال لهذا الشهر (0.000 د.ت). سيتم تسجيل هذا المبلغ كتجاوز للميزانية وتوضيحه باللون الأحمر في التحليلات.`
-                        : `Aucun budget n'a été alloué à la catégorie « Enfant » ce mois-ci (0.000 DT). Ce montant sera enregistré et mis en évidence en rouge dans vos analyses.`)}
+                      ? `لم يتم تخصيص ميزانية مسبقة لفئة الأطفال لهذا الشهر (0.000 د.ت). سيتم تسجيل هذا المبلغ كتجاوز للميزانية وتوضيحه باللون الأحمر في التحليلات.`
+                      : `Aucun budget n'a été alloué à la catégorie « Enfant » ce mois-ci (0.000 DT). Ce montant sera enregistré et mis en évidence en rouge dans vos analyses.`)}
                 </Text>
               </View>
             ) : null}

@@ -1,7 +1,7 @@
-import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 // Composants de base de React Native pour la mise en page, les boutons tactiles et les alertes natives
-import { Alert, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BudgetCard, CategoryCard, ExpenseCard, TransactionRow } from '@/components/Cards';
 // Modal de création rapide d'une catégorie personnalisée
@@ -43,6 +43,17 @@ export default function HomeScreen() {
   // Outil de navigation impérative Expo Router
   const router = useRouter();
 
+  // Paramètres passés via la navigation (ex: message de succès et ancre de défilement)
+  const params = useLocalSearchParams<{
+    categorySuccessMsg?: string;
+    budgetSuccessMsg?: string;
+    scrollToCategories?: string;
+    t?: string;
+  }>();
+
+  const scrollRef = useRef<any>(null);
+  const categoriesY = useRef<number>(0);
+
   // Données globales de la base SQLite et profil utilisateur connecté
   const { db, me, selectedBudget } = useStore();
 
@@ -56,6 +67,29 @@ export default function HomeScreen() {
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   // Message de succès après ajout d'une catégorie
   const [categorySuccess, setCategorySuccess] = useState<string | null>(null);
+
+  // Réception et affichage du message de succès avec défilement vers la section des catégories
+  useEffect(() => {
+    const msg = params.categorySuccessMsg || params.budgetSuccessMsg;
+    if (msg) {
+      setCategorySuccess(msg);
+      const timer = setTimeout(() => {
+        if (categoriesY.current > 0) {
+          scrollRef.current?.scrollTo({
+            y: Math.max(0, categoriesY.current - 20),
+            animated: true,
+          });
+        }
+      }, 250);
+      const clearTimer = setTimeout(() => {
+        setCategorySuccess(null);
+      }, 6000);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(clearTimer);
+      };
+    }
+  }, [params.categorySuccessMsg, params.budgetSuccessMsg, params.t]);
 
   // Contrôle d'ouverture de la modale de saisie vocale intelligente
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
@@ -189,22 +223,24 @@ export default function HomeScreen() {
     return [...myPurchases, ...myExpenses].sort((a, b) => b.date.localeCompare(a.date));
   }, [db, me, budget, currentMonthStart, currentMonthEnd]);
 
+  const activeBudget = isChild ? (childBudget || budget) : budget;
+
   // Liste des catégories à afficher sur le tableau de bord :
   // Priorité aux catégories suivies par l'utilisateur (me.categoryIds),
   // complétées par toute catégorie présente dans l'enveloppe du budget actif
   // Placé AVANT tout return conditionnel pour respecter strictement les règles des Hooks React
   const displayCategoryIds = useMemo(() => {
     const followed = me?.categoryIds ?? [];
-    if (!budget) return followed;
-    const allocKeys = Object.keys(budget.allocations).filter(
-      (id) => (budget.allocations[id] ?? 0) > 0
+    if (!activeBudget) return followed;
+    const allocKeys = Object.keys(activeBudget.allocations || {}).filter(
+      (id) => (activeBudget.allocations[id] ?? 0) > 0
     );
     return Array.from(new Set([...followed, ...allocKeys]));
-  }, [me?.categoryIds, budget]);
+  }, [me?.categoryIds, activeBudget]);
 
   const shown = expanded ? displayCategoryIds : displayCategoryIds.slice(0, 3);
   const rest = displayCategoryIds.slice(3);
-  const restAlloc = rest.reduce((a, id) => a + (budget?.allocations[id] ?? 0), 0);
+  const restAlloc = rest.reduce((a, id) => a + (activeBudget?.allocations?.[id] ?? 0), 0);
 
   const displayMonthDate = budget ? parseISO(budget.start) : now;
 
@@ -215,6 +251,7 @@ export default function HomeScreen() {
     <Screen
       // Salutation dynamique avec le nom de l'utilisateur
       title={`${t('bonjour')}, ${me.name.split(' ')[0]}`}
+      scrollRef={scrollRef}
       // Aucun bouton flottant redondant : actions uniques et distinctes intégrées directement dans la page
     >
       {/* 1. En-tête de période calendaire */}
@@ -250,8 +287,19 @@ export default function HomeScreen() {
         over={sum && sum.status === 'exceeded' ? sum.over : undefined}
         range={displayRange}
         onPress={() => {
-          // Si compte enfant : information de verrouillage
-          if (me.role === 'child') {
+          // Si compte enfant : navigation vers la répartition si budget alloué disponible
+          if (isChild) {
+            if (totalBudgetAmount > 0) {
+              router.push({
+                pathname: '/allocation-budget',
+                params: {
+                  start: childBudget?.start || budget?.start || currentMonthStart,
+                  end: childBudget?.end || budget?.end || currentMonthEnd,
+                  total: String(totalBudgetAmount),
+                },
+              } as never);
+              return;
+            }
             Alert.alert(t('compte_enfant'), t('budget_alloue_par_parent'));
             return;
           }
@@ -262,18 +310,26 @@ export default function HomeScreen() {
             router.push('/budget-mois');
           }
         }}
+        partitionButton={
+          isChild && totalBudgetAmount > 0
+            ? {
+                label: isRTL
+                  ? 'تقسيم الميزانية على الفئات'
+                  : 'Partitionner mon budget sur les catégories',
+                onPress: () => {
+                  router.push({
+                    pathname: '/allocation-budget',
+                    params: {
+                      start: childBudget?.start || budget?.start || currentMonthStart,
+                      end: childBudget?.end || budget?.end || currentMonthEnd,
+                      total: String(totalBudgetAmount),
+                    },
+                  } as never);
+                },
+              }
+            : undefined
+        }
       />
-
-      {/* Message de succès après ajout d'une catégorie */}
-      {categorySuccess ? (
-        <View style={{ marginTop: 8, marginBottom: 4 }}>
-          <AlertBanner
-            tone="success"
-            title={isRTL ? 'نجاح' : 'Succès'}
-            detail={categorySuccess}
-          />
-        </View>
-      ) : null}
 
       {/* 3. Bouton "Ajouter une catégorie" positionné exactement sous le cadre vert du budget, à droite */}
       <View
@@ -462,146 +518,164 @@ export default function HomeScreen() {
       </View>
 
       {/* 6. Section Vos Catégories */}
-      {displayCategoryIds.length > 0 ? (
-        <View style={{ marginTop: 8, marginBottom: 8 }}>
-          <View
-            style={{
-              flexDirection: isRTL ? 'row-reverse' : 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 4,
-            }}
-          >
-            <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 0 }}>
-              {t('vos_categories')}
-            </SectionTitle>
-            <Pressable
-              onPress={() => router.push('/gerer-categories')}
-              hitSlop={8}
-              accessibilityRole="button"
-            >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.forest }}>
-                {isRTL ? 'إدارة الفئات' : 'Gérer'} {isRTL ? '‹' : '›'}
-              </Text>
-            </Pressable>
-          </View>
-
-          {shown.map((id) => {
-            const rawCatName = categoryName(db, id);
-            const translatedCatName = traduireCategorie(rawCatName);
-            const catIcon = getCategoryIcon(rawCatName);
-            const catAlloc = budget?.allocations[id] ?? 0;
-            // Calcul du pourcentage prévu : (allocation catégorie / budget total) * 100
-            const plannedPct =
-              totalBudgetAmount > 0
-                ? Math.round((catAlloc / totalBudgetAmount) * 100)
-                : (db.defaultPercentages[id] ?? 0);
-            // Dépenses de la catégorie ce mois-ci
-            const catSpent = txns
-              .filter((tx) => tx.categoryId === id)
-              .reduce((s, tx) => s + tx.amount, 0);
-            // Pourcentage réalisé : rapport strict entre la consommation réelle et le budget alloué de cette catégorie
-            const stats = categoryConsumptionStats(catSpent, catAlloc);
-            const actualPct = Math.round(stats.pct);
-
-            return (
-              <CategoryCard
-                key={id}
-                name={translatedCatName}
-                icon={catIcon}
-                allocation={catAlloc}
-                spent={catSpent}
-                plannedPct={plannedPct}
-                actualPct={actualPct}
-              />
-            );
-          })}
-
-          {!expanded && rest.length > 0 && (
-            <Pressable
-              onPress={() => setExpanded(true)}
-              style={{
-                flexDirection: isRTL ? 'row-reverse' : 'row',
-                justifyContent: 'space-between',
-                paddingVertical: 6,
-              }}
-              accessibilityRole="button"
-            >
-              <Text
-                style={{
-                  fontSize: 13,
-                  color: colors.muted,
-                  flex: 1,
-                  textAlign: isRTL ? 'right' : 'left',
-                }}
-                numberOfLines={1}
-              >
-                {rest.map((id) => traduireCategorie(categoryName(db, id))).join(' · ')}
-              </Text>
-              {restAlloc > 0 && (
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.forest }}>
-                  {short(restAlloc)} DT
-                </Text>
-              )}
-            </Pressable>
-          )}
-
-          {expanded && rest.length > 0 && (
-            <Pressable
-              onPress={() => setExpanded(false)}
-              accessibilityRole="button"
-              style={{ alignSelf: isRTL ? 'flex-end' : 'flex-start', paddingVertical: 4 }}
-            >
-              <Text style={{ fontSize: 13, color: colors.forest, fontWeight: '600' }}>
-                {t('voir_moins')}
-              </Text>
-            </Pressable>
-          )}
-        </View>
-      ) : (
+      <View
+        onLayout={(e) => {
+          categoriesY.current = e.nativeEvent.layout.y;
+        }}
+        style={{ marginTop: 8, marginBottom: 8 }}
+      >
         <View
           style={{
-            backgroundColor: colors.white,
-            borderRadius: radius.card,
-            padding: 16,
-            marginVertical: 8,
-            borderWidth: 1,
-            borderColor: colors.border,
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            gap: 10,
+            marginBottom: 6,
           }}
         >
-          <Ionicons name="pricetags-outline" size={30} color={colors.forest} />
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: '600',
-              color: colors.forest,
-              textAlign: 'center',
-            }}
-          >
-            {isRTL
-              ? 'لم تحدد أي فئات للمتابعة بعد.'
-              : 'Aucune catégorie suivie pour le moment.'}
-          </Text>
-          <Text
-            style={{
-              fontSize: 12,
-              color: colors.muted,
-              textAlign: 'center',
-            }}
-          >
-            {isRTL
-              ? 'حدد الفئات التي تهمك لتنظيم ميزانيتك وتتبع مصاريفك بدقة.'
-              : 'Choisissez les catégories qui vous intéressent pour organiser votre budget et répartir vos dépenses.'}
-          </Text>
-          <Button
-            label={isRTL ? 'اختيار فئاتي' : 'Choisir mes catégories'}
-            variant="secondary"
+          <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 0 }}>
+            {t('vos_categories')}
+          </SectionTitle>
+          <Pressable
             onPress={() => router.push('/gerer-categories')}
-          />
+            hitSlop={8}
+            accessibilityRole="button"
+          >
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.forest }}>
+              {isRTL ? 'إدارة الفئات' : 'Gérer'} {isRTL ? '‹' : '›'}
+            </Text>
+          </Pressable>
         </View>
-      )}
+
+        {/* Message de succès après enregistrement des catégories */}
+        {categorySuccess ? (
+          <View style={{ marginBottom: 10 }}>
+            <AlertBanner
+              tone="success"
+              title={isRTL ? 'نجاح' : 'Succès'}
+              detail={categorySuccess}
+            />
+          </View>
+        ) : null}
+
+        {displayCategoryIds.length > 0 ? (
+          <>
+            {shown.map((id) => {
+              const rawCatName = categoryName(db, id);
+              const translatedCatName = traduireCategorie(rawCatName);
+              const catIcon = getCategoryIcon(rawCatName);
+              const catAlloc = activeBudget?.allocations?.[id] ?? 0;
+              // Calcul du pourcentage prévu : (allocation catégorie / budget total) * 100
+              const plannedPct =
+                totalBudgetAmount > 0
+                  ? Math.round((catAlloc / totalBudgetAmount) * 100)
+                  : (db.defaultPercentages[id] ?? 0);
+              // Dépenses de la catégorie ce mois-ci
+              const catSpent = txns
+                .filter((tx) => tx.categoryId === id)
+                .reduce((s, tx) => s + tx.amount, 0);
+              // Pourcentage réalisé : rapport strict entre la consommation réelle et le budget alloué de cette catégorie
+              const stats = categoryConsumptionStats(catSpent, catAlloc);
+              const actualPct = Math.round(stats.pct);
+
+              return (
+                <CategoryCard
+                  key={id}
+                  name={translatedCatName}
+                  icon={catIcon}
+                  allocation={catAlloc}
+                  spent={catSpent}
+                  plannedPct={plannedPct}
+                  actualPct={actualPct}
+                />
+              );
+            })}
+
+            {!expanded && rest.length > 0 && (
+              <Pressable
+                onPress={() => setExpanded(true)}
+                style={{
+                  flexDirection: isRTL ? 'row-reverse' : 'row',
+                  justifyContent: 'space-between',
+                  paddingVertical: 6,
+                }}
+                accessibilityRole="button"
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: colors.muted,
+                    flex: 1,
+                    textAlign: isRTL ? 'right' : 'left',
+                  }}
+                  numberOfLines={1}
+                >
+                  {rest.map((id) => traduireCategorie(categoryName(db, id))).join(' · ')}
+                </Text>
+                {restAlloc > 0 && (
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.forest }}>
+                    {short(restAlloc)} DT
+                  </Text>
+                )}
+              </Pressable>
+            )}
+
+            {expanded && rest.length > 0 && (
+              <Pressable
+                onPress={() => setExpanded(false)}
+                accessibilityRole="button"
+                style={{ alignSelf: isRTL ? 'flex-end' : 'flex-start', paddingVertical: 4 }}
+              >
+                <Text style={{ fontSize: 13, color: colors.forest, fontWeight: '600' }}>
+                  {t('voir_moins')}
+                </Text>
+              </Pressable>
+            )}
+          </>
+        ) : (
+          <View
+            style={{
+              backgroundColor: colors.white,
+              borderRadius: radius.card,
+              padding: 16,
+              marginVertical: 4,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <Ionicons name="pricetags-outline" size={30} color={colors.forest} />
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: '600',
+                color: colors.forest,
+                textAlign: 'center',
+              }}
+            >
+              {isRTL
+                ? 'لم تحدد أي فئات للمتابعة بعد.'
+                : 'Aucune catégorie suivie pour le moment.'}
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                color: colors.muted,
+                textAlign: 'center',
+              }}
+            >
+              {isRTL
+                ? 'حدد الفئات التي تهمك لتنظيم ميزانيتك وتتبع مصاريفك بدقة.'
+                : 'Choisissez les catégories qui vous intéressent pour organiser votre budget et répartir vos dépenses.'}
+            </Text>
+            <Button
+              label={isRTL ? 'اختيار فئاتي' : 'Choisir mes catégories'}
+              variant="secondary"
+              onPress={() => router.push('/gerer-categories')}
+            />
+          </View>
+        )}
+      </View>
 
       {/* 7. Suivi budgétaire des enfants pour le parent (sans révéler le détail d'achats) */}
       {(me.role === 'parent' || me.role === 'admin') && childrenProgress.length > 0 && (

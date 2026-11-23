@@ -52,6 +52,8 @@ interface Props {
   plain?: boolean;
   /** Bouton d'action flottant optionnel (ex: "＋ Ajouter un achat") */
   fab?: { label: string; onPress: () => void };
+  /** Référence optionnelle vers le ScrollView pour contrôle impératif du défilement */
+  scrollRef?: any;
 }
 
 /**
@@ -64,6 +66,7 @@ export function Screen({
   onBack,
   plain,
   fab,
+  scrollRef,
 }: Props) {
   // Largeur physique de l'écran pour le calcul réactif des marges et du positionnement FAB
   const { width } = useWindowDimensions();
@@ -87,6 +90,7 @@ export function Screen({
 
           {/* Zone de contenu principale défilable */}
           <ScrollView
+            ref={scrollRef as any}
             contentContainerStyle={{
               paddingHorizontal: pad,
               paddingTop: 14,

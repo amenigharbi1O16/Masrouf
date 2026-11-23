@@ -208,16 +208,35 @@ export interface AppSettings {
 }
 
 /**
+ * Types des notifications et alertes système ou de consommation.
+ */
+export type NotificationType =
+  | 'alert_80'
+  | 'alert_100'
+  | 'alert_50'
+  | 'category_alert_80'
+  | 'category_alert_100'
+  | 'period_end'
+  | 'budget_change'
+  | 'new_purchase'
+  | 'new_expense'
+  | 'budget_allocation'
+  | 'user_registered'
+  | 'system';
+
+/**
  * Entité Notification interne et alerte réelle smartphone stockée dans SQLite.
  */
 export interface InAppNotification {
   id: string;
   userId: string;
-  type: 'alert_80' | 'alert_100' | 'period_end' | 'budget_change' | 'user_registered' | 'system';
+  type: NotificationType;
   title: string;
   body: string;
   periodLabel?: string;
   periodId?: string;
+  categoryId?: string;
+  categoryName?: string;
   amountSpent?: number;
   budgetTotal?: number;
   actionRecommended?: string;
@@ -252,22 +271,6 @@ export interface MoneyAllocation {
   categoryId?: string;
   categoryName?: string;
   createdAt: string;
-}
-
-/**
- * Entité Demande d'Argent soumise par un enfant à son parent tuteur.
- */
-export interface MoneyRequest {
-  id: string;
-  parentId: string;
-  childId: string;
-  childName: string;
-  amount: number;
-  reason: string;
-  status: 'pending' | 'approved' | 'rejected';
-  date: string;
-  createdAt: string;
-  respondedAt?: string;
 }
 
 /**
@@ -330,10 +333,9 @@ export interface DB {
   notifications: InAppNotification[];
   sessionUserId: string | null;
 
-  // --- Données du Système Familial ---
+  // --- Données du Système Familial Centralisé ---
   familyFunds: FamilyFund[];
   allocations: MoneyAllocation[];
-  moneyRequests: MoneyRequest[];
   familyBudgets: FamilyBudget[];
 }
 

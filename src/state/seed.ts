@@ -197,7 +197,6 @@ export async function buildSeed(): Promise<DB> {
     // Système familial initialisé
     familyFunds: [],
     allocations: [],
-    moneyRequests: [],
     familyBudgets: [],
   };
 }

@@ -109,7 +109,7 @@ export function ExpenseForm({
     // 5. Pour Ines Ben Ali : garantie stricte d'affichage des 5 catégories allouées (Alimentation, Transport, Factures, Loisirs, Épargne)
     if (isInes) {
       // Normalisation du nom de la catégorie pour tester les mots-clés
-      const nameLower = c.name.toLowerCase();
+      const nameLower = (typeof c.name === 'string' ? c.name : String(c.name || '')).toLowerCase();
       // Vérification si le nom contient l'un des mots-clés prévus
       if (inesKeywords.some((kw) => nameLower.includes(kw))) return true;
     }

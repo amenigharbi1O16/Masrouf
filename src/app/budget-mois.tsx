@@ -50,6 +50,8 @@ import {
 } from '@/utils/format';
 // Système d'internationalisation et détection du sens d'écriture RTL
 import { useTranslation } from '@/utils/i18n';
+// Rapprochement et catégorie canonique Enfant
+import { findEnfantCategory, CANONICAL_ENFANT_ID } from '@/utils/categoryMatching';
 
 /**
  * MISSION DU COMPOSANT :
@@ -133,12 +135,20 @@ export default function BudgetPeriodScreen() {
   };
 
   // Catégories concernées en mode édition : union des catégories suivies par l'utilisateur et de celles déjà allouées
+  // Pour un profil parent/admin, la catégorie Enfant est toujours présente
   const editCategoryIds = useMemo(() => {
     const fromAlloc = Object.keys(existing?.allocations ?? {});
     const fromUser = me?.categoryIds ?? [];
     const combined = Array.from(new Set([...fromUser, ...fromAlloc]));
+    if (me?.role === 'parent' || me?.role === 'admin') {
+      const childCat = findEnfantCategory(db.categories);
+      const childCatId = childCat ? childCat.id : CANONICAL_ENFANT_ID;
+      if (!combined.includes(childCatId)) {
+        combined.push(childCatId);
+      }
+    }
     return combined.length > 0 ? combined : fromAlloc;
-  }, [existing?.allocations, me?.categoryIds]);
+  }, [existing?.allocations, me?.categoryIds, me?.role, db.categories]);
 
   // État local des montants alloués par catégorie en mode édition
   const [alloc, setAlloc] = useState<Record<string, string>>(() => {
@@ -186,9 +196,26 @@ export default function BudgetPeriodScreen() {
           title={t('compte_enfant')}
           detail={`${t('budget_alloue_par_parent')} (${formatTND(childAllocatedBudget)})`}
         />
+        {/* Bouton pour partitionner le budget sur les catégories sélectionnées */}
+        {childAllocatedBudget > 0 && (
+          <Button
+            label={isRTL ? 'تقسيم الميزانية على الفئات' : 'Partitionner mon budget sur les catégories'}
+            onPress={() =>
+              router.push({
+                pathname: '/allocation-budget',
+                params: {
+                  start: chBudget?.start || startOfMonth,
+                  end: chBudget?.end || endOfMonth,
+                  total: String(childAllocatedBudget),
+                },
+              } as never)
+            }
+          />
+        )}
         {/* Bouton de retour vers le tableau de bord */}
         <Button
           label="Retour à l'accueil"
+          variant="secondary"
           onPress={() => router.replace('/(tabs)')}
         />
       </Screen>

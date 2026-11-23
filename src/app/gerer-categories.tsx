@@ -30,7 +30,6 @@ import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react
 import { Ionicons } from '@expo/vector-icons';
 // Composant réutilisable de sélection de catégories avec cartes tactiles et boutons bascule
 import { CategoryPicker } from '@/components/CategoryPicker';
-import { CustomCategoryModal } from '@/components/CustomCategoryModal';
 // Conteneur d'écran avec retour arrière et gestion du défilement
 import { Screen } from '@/components/Screen';
 // Composants atomiques d'interface utilisateur
@@ -56,10 +55,14 @@ export default function ManageCategoriesScreen() {
   const { t, isRTL } = useTranslation();
 
   // État local : tableau contenant les IDs des catégories actuellement sélectionnées par l'utilisateur
-  const [selected, setSelected] = useState<string[]>(me?.categoryIds ?? []);
+  const [selected, setSelected] = useState<string[]>(() => {
+    if (me?.categoryIds && me.categoryIds.length > 0) return me.categoryIds;
+    return db.categories
+      .filter((c) => c.active && (db.defaultPercentages[c.id] > 0 || (c as any).isDefault))
+      .map((c) => c.id);
+  });
   const [deleteError, setDeleteError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [addModalOpen, setAddModalOpen] = useState(false);
 
   const toggle = (id: string) =>
     setSelected((prev) =>
@@ -105,11 +108,17 @@ export default function ManageCategoriesScreen() {
 
   const handleSave = () => {
     actions.setUserCategories(selected);
-    Alert.alert(
-      isRTL ? 'نجاح' : 'Succès',
-      isRTL ? 'تم حفظ الفئات بنجاح!' : 'Catégories enregistrées avec succès !',
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+    const msg = isRTL ? 'تم حفظ الفئات بنجاح!' : 'Catégories enregistrées avec succès !';
+
+    // Redirection immédiate vers la partie des catégories sur la page d'accueil avec message de succès
+    router.replace({
+      pathname: '/(tabs)',
+      params: {
+        categorySuccessMsg: msg,
+        scrollToCategories: 'true',
+        t: Date.now().toString(),
+      },
+    } as never);
   };
 
   return (
@@ -121,25 +130,9 @@ export default function ManageCategoriesScreen() {
       </Eyebrow>
 
       {/* Titre de la section avec bouton d'ajout de catégorie */}
-      <View
-        style={[
-          styles.headerRow,
-          { flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center' },
-        ]}
-      >
-        <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left', flex: 1, marginBottom: 0 }}>
-          {t('vos_categories')}
-        </SectionTitle>
-
-        <TouchableOpacity
-          style={[styles.addBtn, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}
-          onPress={() => setAddModalOpen(true)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={16} color={colors.white} />
-          <Text style={styles.addBtnText}>{t('ajouter_categorie')}</Text>
-        </TouchableOpacity>
-      </View>
+      <SectionTitle style={{ textAlign: isRTL ? 'right' : 'left' }}>
+        {t('vos_categories')}
+      </SectionTitle>
 
       {/* Explication rassurante */}
       <Body style={{ textAlign: isRTL ? 'right' : 'left' }}>
@@ -192,22 +185,6 @@ export default function ManageCategoriesScreen() {
         label={t('annuler')}
         variant="secondary"
         onPress={() => router.back()}
-      />
-
-      {/* Modal d'ajout de catégorie */}
-      <CustomCategoryModal
-        visible={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
-        onSuccess={(cat) => {
-          setSelected((prev) => Array.from(new Set([...prev, cat.id])));
-          setSuccessMsg(
-            isRTL
-              ? `تمت إضافة فئة "${cat.name}" بنجاح!`
-              : `La catégorie "${cat.name}" a été ajoutée avec succès !`
-          );
-          setTimeout(() => setSuccessMsg(''), 5000);
-        }}
-        scope={me?.role === 'parent' || me?.role === 'admin' ? 'family' : 'personal'}
       />
     </Screen>
   );

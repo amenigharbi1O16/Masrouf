@@ -30,11 +30,11 @@ import { useStore } from '@/state/store';
 import { formatTND } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
 
-type FilterType = 'all' | 'allocations' | 'requests' | 'expenses';
+type FilterType = 'all' | 'allocations' | 'expenses';
 
 interface TimelineItem {
   id: string;
-  type: 'allocation' | 'request' | 'expense' | 'purchase';
+  type: 'allocation' | 'expense' | 'purchase';
   title: string;
   subtitle: string;
   amount: number;
@@ -78,45 +78,7 @@ export default function FamilyHistoryScreen() {
       }
     }
 
-    // 2. Demandes d'argent
-    for (const r of db.moneyRequests) {
-      if (r.parentId === me?.id) {
-        list.push({
-          id: `req-${r.id}`,
-          type: 'request',
-          title: `Demande de ${r.childName}`,
-          subtitle: `${r.reason || 'Demande d’argent'} (${r.status === 'approved'
-            ? 'Approuvée'
-            : r.status === 'rejected'
-              ? 'Rejetée'
-              : 'En attente'
-            })`,
-          amount: r.amount,
-          date: r.date,
-          status: r.status,
-          icon:
-            r.status === 'approved'
-              ? 'checkmark-circle-outline'
-              : r.status === 'rejected'
-                ? 'close-circle-outline'
-                : 'mail-unread-outline',
-          color:
-            r.status === 'approved'
-              ? colors.forest
-              : r.status === 'rejected'
-                ? '#E11D48'
-                : '#E65100',
-          bg:
-            r.status === 'approved'
-              ? '#EAF7F0'
-              : r.status === 'rejected'
-                ? '#FFE4E6'
-                : '#FFF3E0',
-        });
-      }
-    }
-
-    // 3. Dépenses de la famille
+    // 2. Dépenses de la famille
     for (const exp of db.expenses) {
       if (familyUserIds.includes(exp.userId)) {
         const u = db.users.find((user) => user.id === exp.userId);
@@ -156,12 +118,11 @@ export default function FamilyHistoryScreen() {
 
     // Tri antéchronologique (du plus récent au plus ancien)
     return list.sort((a, b) => b.date.localeCompare(a.date));
-  }, [db.allocations, db.moneyRequests, db.expenses, db.purchases, db.users, db.products, db.categories, me?.id, familyUserIds]);
+  }, [db.allocations, db.expenses, db.purchases, db.users, db.products, db.categories, me?.id, familyUserIds]);
 
   // Filtrage selon le filtre sélectionné
   const filteredTimeline = useMemo(() => {
     if (filter === 'allocations') return timeline.filter((i) => i.type === 'allocation');
-    if (filter === 'requests') return timeline.filter((i) => i.type === 'request');
     if (filter === 'expenses')
       return timeline.filter((i) => i.type === 'expense' || i.type === 'purchase');
     return timeline;
@@ -182,8 +143,7 @@ export default function FamilyHistoryScreen() {
       </SectionTitle>
 
       <Body style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 14 }}>
-        Historique consolidé de toutes les opérations du foyer : allocations,
-        demandes et dépenses.
+        Historique consolidé de toutes les opérations du foyer : allocations et dépenses.
       </Body>
 
       {/* FILTRES PAR TYPE */}
@@ -224,24 +184,6 @@ export default function FamilyHistoryScreen() {
         <TouchableOpacity
           style={[
             styles.filterChip,
-            filter === 'requests' && styles.filterChipActive,
-          ]}
-          onPress={() => setFilter('requests')}
-          activeOpacity={0.8}
-        >
-          <Text
-            style={[
-              styles.filterChipText,
-              filter === 'requests' && styles.filterChipTextActive,
-            ]}
-          >
-            Demandes
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.filterChip,
             filter === 'expenses' && styles.filterChipActive,
           ]}
           onPress={() => setFilter('expenses')}
@@ -253,7 +195,7 @@ export default function FamilyHistoryScreen() {
               filter === 'expenses' && styles.filterChipTextActive,
             ]}
           >
-            Dépenses
+            Dépenses & Achats
           </Text>
         </TouchableOpacity>
       </View>
@@ -306,9 +248,7 @@ export default function FamilyHistoryScreen() {
                 <Text
                   style={[
                     styles.itemAmount,
-                    item.type === 'request' && item.status === 'rejected'
-                      ? { color: colors.gray, textDecorationLine: 'line-through' }
-                      : { color: colors.forest },
+                    { color: colors.forest },
                   ]}
                 >
                   {formatTND(item.amount)}

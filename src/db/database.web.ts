@@ -85,6 +85,12 @@ export type CategoryRow = {
   is_system: number;
   /** Thème de regroupement visuel (Essentiel, Vie quotidienne, Logement, etc.) */
   theme: string;
+  user_id?: number | null;
+  description?: string | null;
+  color?: string | null;
+  is_custom?: number;
+  scope?: 'personal' | 'family';
+  created_at?: string;
 };
 
 export type ProductRow = {
@@ -192,6 +198,27 @@ export type SettingsRow = {
   threshold_expert: number;
 };
 
+export const DEFAULT_CATEGORIES: CategoryRow[] = [
+  // Type Product avec icônes vectorielles sans emojis
+  { id: 1, name_key: 'Alimentation', type: 'product', icon: 'restaurant-outline', default_percent: 25, is_default: 1, is_active: 1, is_system: 0, theme: 'Essentiel' },
+  { id: 2, name_key: 'Vêtements et chaussures', type: 'product', icon: 'shirt-outline', default_percent: 8, is_default: 1, is_active: 1, is_system: 0, theme: 'Personnel' },
+  { id: 3, name_key: 'Hygiène et soins personnels', type: 'product', icon: 'sparkles-outline', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Vie quotidienne' },
+  { id: 4, name_key: 'Maison et équipement', type: 'product', icon: 'home-outline', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Logement' },
+  { id: 5, name_key: 'Matériel informatique', type: 'product', icon: 'laptop-outline', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Études et travail' },
+  { id: 6, name_key: 'Santé', type: 'product', icon: 'medkit-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Santé' },
+  // Type Expense avec icônes vectorielles sans emojis
+  { id: 7, name_key: 'Transport', type: 'expense', icon: 'car-outline', default_percent: 10, is_default: 1, is_active: 1, is_system: 0, theme: 'Essentiel' },
+  { id: 8, name_key: 'Factures', type: 'expense', icon: 'receipt-outline', default_percent: 14, is_default: 1, is_active: 1, is_system: 0, theme: 'Logement' },
+  { id: 9, name_key: 'Études', type: 'expense', icon: 'school-outline', default_percent: 10, is_default: 1, is_active: 1, is_system: 0, theme: 'Études et travail' },
+  { id: 10, name_key: 'Loisirs et sorties', type: 'expense', icon: 'game-controller-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Personnel' },
+  { id: 11, name_key: 'Enfant', type: 'expense', icon: 'happy-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Famille' },
+  { id: 12, name_key: 'Aide à la famille', type: 'expense', icon: 'people-outline', default_percent: 2, is_default: 1, is_active: 1, is_system: 0, theme: 'Famille' },
+  { id: 13, name_key: 'Épargne', type: 'expense', icon: 'cash-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
+  { id: 14, name_key: 'Dons et charité', type: 'expense', icon: 'heart-outline', default_percent: 1, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
+  { id: 15, name_key: 'Frais bancaires', type: 'expense', icon: 'business-outline', default_percent: 2, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
+  { id: 16, name_key: 'Autres', type: 'expense', icon: 'cart-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 1, theme: 'Divers' },
+];
+
 class WebDatabaseStore {
   user: UserRow[] = [
     {
@@ -260,26 +287,7 @@ class WebDatabaseStore {
     { id: 16, user_id: 2, category_id: 16, enabled: 1, created_at: '2026-11-02' },
   ];
 
-  category: CategoryRow[] = [
-    // Type Product avec icônes vectorielles sans emojis
-    { id: 1, name_key: 'Alimentation', type: 'product', icon: 'restaurant-outline', default_percent: 25, is_default: 1, is_active: 1, is_system: 0, theme: 'Essentiel' },
-    { id: 2, name_key: 'Vêtements et chaussures', type: 'product', icon: 'shirt-outline', default_percent: 8, is_default: 1, is_active: 1, is_system: 0, theme: 'Personnel' },
-    { id: 3, name_key: 'Hygiène et soins personnels', type: 'product', icon: 'sparkles-outline', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Vie quotidienne' },
-    { id: 4, name_key: 'Maison et équipement', type: 'product', icon: 'home-outline', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Logement' },
-    { id: 5, name_key: 'Matériel informatique', type: 'product', icon: 'laptop-outline', default_percent: 4, is_default: 1, is_active: 1, is_system: 0, theme: 'Études et travail' },
-    { id: 6, name_key: 'Santé', type: 'product', icon: 'medkit-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Santé' },
-    // Type Expense avec icônes vectorielles sans emojis
-    { id: 7, name_key: 'Transport', type: 'expense', icon: 'car-outline', default_percent: 10, is_default: 1, is_active: 1, is_system: 0, theme: 'Essentiel' },
-    { id: 8, name_key: 'Factures', type: 'expense', icon: 'receipt-outline', default_percent: 14, is_default: 1, is_active: 1, is_system: 0, theme: 'Logement' },
-    { id: 9, name_key: 'Études', type: 'expense', icon: 'school-outline', default_percent: 10, is_default: 1, is_active: 1, is_system: 0, theme: 'Études et travail' },
-    { id: 10, name_key: 'Loisirs et sorties', type: 'expense', icon: 'game-controller-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Personnel' },
-    { id: 11, name_key: 'Enfant', type: 'expense', icon: 'happy-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Famille' },
-    { id: 12, name_key: 'Aide à la famille', type: 'expense', icon: 'people-outline', default_percent: 2, is_default: 1, is_active: 1, is_system: 0, theme: 'Famille' },
-    { id: 13, name_key: 'Épargne', type: 'expense', icon: 'cash-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
-    { id: 14, name_key: 'Dons et charité', type: 'expense', icon: 'heart-outline', default_percent: 1, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
-    { id: 15, name_key: 'Frais bancaires', type: 'expense', icon: 'business-outline', default_percent: 2, is_default: 1, is_active: 1, is_system: 0, theme: 'Argent' },
-    { id: 16, name_key: 'Autres', type: 'expense', icon: 'cart-outline', default_percent: 5, is_default: 1, is_active: 1, is_system: 1, theme: 'Divers' },
-  ];
+  category: CategoryRow[] = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
 
   // ============================================================
   // MISSION ARCHITECTURALE : ZÉRO DONNÉE EN DUR
@@ -358,7 +366,22 @@ class WebDatabaseStore {
             }
           }
           if (parsed.user_category) this.user_category = parsed.user_category;
-          if (parsed.category) this.category = parsed.category;
+          if (parsed.category && Array.isArray(parsed.category)) {
+            const defaults = DEFAULT_CATEGORIES;
+            this.category = (parsed.category as CategoryRow[]).map((c: any, index: number) => {
+              const defaultMatch = defaults.find((d) => d.id === c.id || String(d.id) === String(c.id));
+              let nameKey = c.name_key ?? c.name ?? c.nom;
+              if (typeof nameKey !== 'string' || !nameKey.trim() || !isNaN(Number(nameKey))) {
+                nameKey = defaultMatch?.name_key || `Catégorie ${c.id || index + 1}`;
+              }
+              return {
+                ...c,
+                name_key: nameKey,
+                type: c.type === 'expense' ? 'expense' : (defaultMatch ? defaultMatch.type : (c.type || 'product')),
+                is_active: c.is_active === 0 ? 0 : 1,
+              };
+            });
+          }
           if (parsed.product) this.product = parsed.product;
           if (parsed.purchase) this.purchase = parsed.purchase;
           if (parsed.expense) this.expense = parsed.expense;
@@ -586,22 +609,48 @@ export const db = {
     // INSERT INTO CATEGORY
     // Simulation SQL : Création d'une nouvelle catégorie dans le catalogue universel
     if (s.includes('INSERT INTO CATEGORY') || s.includes('INSERT OR IGNORE INTO CATEGORY') || s.includes('INSERT INTO CATEGORIES')) {
-      const [nom, typeOrIcon, iconOrPct, pctOrTheme, theme] = params;
-      let nameKey = nom;
+      let nameKey = String(params[0] ?? 'Catégorie').trim();
+      if (!nameKey || !isNaN(Number(nameKey))) {
+        nameKey = 'Catégorie';
+      }
+
+      // Respecter la clause OR IGNORE si la catégorie existe déjà
+      if (s.includes('OR IGNORE') && store.category.some((c) => String(c.name_key).toLowerCase() === nameKey.toLowerCase())) {
+        return { lastInsertRowId: 0, changes: 0 };
+      }
+
       let catType: 'product' | 'expense' = 'product';
       let icon = 'cart-outline';
       let defPct = 0;
+      let isActive = 1;
+      let userId: number | null = null;
+      let description: string | null = null;
+      let color: string | null = null;
+      let isCustom = 0;
+      let scope: 'personal' | 'family' = 'personal';
       let th = 'Divers';
 
-      if (params.length === 5) {
-        catType = typeOrIcon === 'expense' ? 'expense' : 'product';
-        icon = iconOrPct || 'cart-outline';
-        defPct = pctOrTheme || 0;
-        th = theme || 'Divers';
-      } else {
-        icon = typeOrIcon || 'cart-outline';
-        defPct = iconOrPct || 0;
-        th = pctOrTheme || 'Divers';
+      if (s.includes('USER_ID') || params.length === 9) {
+        // Signature: (name_key, type, icon, is_active, user_id, description, color, is_custom, scope)
+        catType = params[1] === 'expense' ? 'expense' : 'product';
+        icon = String(params[2] || 'cart-outline');
+        isActive = Number(params[3]) ? 1 : 0;
+        userId = params[4] ? Number(params[4]) : null;
+        description = params[5] ? String(params[5]) : null;
+        color = params[6] ? String(params[6]) : null;
+        isCustom = Number(params[7]) ? 1 : 0;
+        scope = params[8] === 'family' ? 'family' : 'personal';
+      } else if (params.length === 5) {
+        catType = params[1] === 'expense' ? 'expense' : 'product';
+        icon = String(params[2] || 'cart-outline');
+        defPct = Number(params[3]) || 0;
+        th = params[4] ? String(params[4]) : 'Divers';
+      } else if (params.length >= 4) {
+        catType = params[1] === 'expense' ? 'expense' : 'product';
+        icon = String(params[2] || 'cart-outline');
+        defPct = Number(params[3]) || 0;
+        isActive = params[5] !== undefined ? (Number(params[5]) ? 1 : 0) : 1;
+        th = params[7] ? String(params[7]) : (params[4] ? String(params[4]) : 'Divers');
       }
 
       const id = (store.category.length > 0 ? Math.max(...store.category.map((c) => c.id)) : 0) + 1;
@@ -613,9 +662,14 @@ export const db = {
         icon,
         default_percent: defPct,
         is_default: 0,
-        is_active: 1,
+        is_active: isActive,
         is_system: 0,
         theme: th,
+        user_id: userId,
+        description,
+        color,
+        is_custom: isCustom,
+        scope,
       });
       store.sauvegarder();
       return { lastInsertRowId: id, changes: 1 };
@@ -625,23 +679,43 @@ export const db = {
     // Simulation SQL : Modification des propriétés d'une catégorie existante
     if (s.includes('UPDATE CATEGORY') || s.includes('UPDATE CATEGORIES')) {
       const id = params[params.length - 1];
-      const cat = store.category.find((c) => c.id === id || String(c.id) === String(id));
+      let cat = store.category.find((c) => c.id === id || String(c.id) === String(id));
+      if (!cat && typeof id === 'string') {
+        cat = store.category.find((c) => String(c.name_key).toLowerCase() === id.toLowerCase());
+      }
       if (cat) {
-        if (s.includes('SET NAME_KEY = ? WHERE ID = ?') || params.length <= 2) {
-          cat.name_key = params[0];
-        } else if (params.length >= 6) {
-          cat.name_key = params[0];
-          cat.type = params[1] === 'expense' ? 'expense' : 'product';
-          cat.icon = params[2] ?? cat.icon;
-          cat.default_percent = params[3] ?? cat.default_percent;
-          cat.is_active = params[4] ?? cat.is_active;
-        } else if (params.length >= 4) {
-          cat.name_key = params[0];
-          cat.icon = params[1] ?? cat.icon;
-          cat.default_percent = params[2] ?? cat.default_percent;
-          cat.is_active = params[3] ?? cat.is_active;
+        if (s.includes('SET IS_ACTIVE = ?')) {
+          cat.is_active = Number(params[0]) ? 1 : 0;
+        } else if (s.includes('SET DESCRIPTION = ?')) {
+          cat.description = params[0] ? String(params[0]) : null;
+        } else if (s.includes('SET COLOR = ?')) {
+          cat.color = params[0] ? String(params[0]) : null;
+        } else if (s.includes('SET NAME_KEY = ?')) {
+          if (typeof params[0] === 'string' && params[0].trim()) {
+            cat.name_key = params[0].trim();
+          }
+        } else if (s.includes('DEFAULT_PERCENT = ?') && s.includes('TYPE = ?')) {
+          cat.default_percent = Number(params[0]) || 0;
+          cat.is_default = 1;
+          if (params[1]) cat.type = params[1] === 'expense' ? 'expense' : 'product';
+        } else if (s.includes("TYPE = 'PRODUCT'")) {
+          cat.type = 'product';
+          if (params[0]) cat.theme = String(params[0]);
+        } else if (s.includes("TYPE = 'EXPENSE'")) {
+          cat.type = 'expense';
+          cat.is_system = Number(params[0]) || 0;
+          if (params[1]) cat.theme = String(params[1]);
         } else {
-          cat.name_key = params[0];
+          // Mise à jour multi-colonnes standard
+          if (typeof params[0] === 'string' && isNaN(Number(params[0])) && params[0].trim()) {
+            cat.name_key = params[0].trim();
+          }
+          if (params.length >= 5) {
+            cat.type = params[1] === 'expense' ? 'expense' : 'product';
+            cat.icon = params[2] ?? cat.icon;
+            cat.default_percent = Number(params[3]) || cat.default_percent;
+            cat.is_active = Number(params[4]) ?? cat.is_active;
+          }
         }
         store.sauvegarder();
       }
@@ -1023,6 +1097,30 @@ export const db = {
       return store.settings as unknown as T;
     }
 
+    // SELECT FROM CATEGORY
+    if (s.includes('FROM CATEGORY') || s.includes('FROM CATEGORIES')) {
+      const [p1, p2] = params;
+      const target = p1 !== undefined ? String(p1).toLowerCase() : '';
+      const target2 = p2 !== undefined ? String(p2).toLowerCase() : target;
+      const cat = store.category.find(
+        (c) =>
+          String(c.id).toLowerCase() === target ||
+          String(c.id).toLowerCase() === target2 ||
+          String(c.name_key).toLowerCase() === target ||
+          String(c.name_key).toLowerCase() === target2
+      );
+      if (!cat) return null;
+      return {
+        ...cat,
+        nom: cat.name_key,
+        icone: cat.icon,
+        pourcentage_defaut: cat.default_percent,
+        est_defaut: cat.is_default,
+        est_visible: cat.is_active,
+        est_systeme: cat.is_system,
+      } as unknown as T;
+    }
+
     return null;
   },
 
@@ -1032,15 +1130,21 @@ export const db = {
     // CATEGORIES
     // Simulation SQL : Récupération du catalogue de catégories avec alias
     if (s.includes('FROM CATEGORY') || s.includes('FROM CATEGORIES')) {
-      return store.category.map((c) => ({
-        ...c,
-        nom: c.name_key,
-        icone: c.icon,
-        pourcentage_defaut: c.default_percent,
-        est_defaut: c.is_default,
-        est_visible: c.is_active,
-        est_systeme: c.is_system,
-      })) as unknown as T[];
+      return store.category.map((c) => {
+        const cleanName = typeof c.name_key === 'string' && isNaN(Number(c.name_key)) && c.name_key.trim()
+          ? c.name_key.trim()
+          : (DEFAULT_CATEGORIES.find((d) => d.id === c.id)?.name_key || `Catégorie ${c.id}`);
+        return {
+          ...c,
+          name_key: cleanName,
+          nom: cleanName,
+          icone: c.icon,
+          pourcentage_defaut: c.default_percent,
+          est_defaut: c.is_default,
+          est_visible: c.is_active,
+          est_systeme: c.is_system,
+        };
+      }) as unknown as T[];
     }
 
     // USER CATEGORIES

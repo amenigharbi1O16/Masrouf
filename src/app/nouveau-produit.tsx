@@ -81,11 +81,11 @@ export default function AddProductScreen() {
 
   // Toutes les catégories sélectionnées par l'utilisateur qui concernent le type d'achat produits
   const availableCats = useMemo(() => {
-    const productCats = db.categories.filter((c) => c.kind === 'product');
+    const productCats = (db.categories || []).filter((c) => c && c.kind === 'product');
     const selected = productCats.filter(
       (c) =>
         userCatSet.has(String(c.id).toLowerCase()) ||
-        userCatSet.has(c.name.toLowerCase()) ||
+        (typeof c.name === 'string' && userCatSet.has(c.name.toLowerCase())) ||
         (me?.id && c.userId === me.id)
     );
     // Si l'utilisateur a des catégories de produits sélectionnées, toutes les afficher ; sinon afficher toutes les catégories de produits

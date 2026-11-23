@@ -635,7 +635,9 @@ export function VoiceTransactionModal({
                     value={parsed.categoryName || ''}
                     onChangeText={(catTxt) => {
                       const match = db.categories.find(
-                        (c) => c.name.toLowerCase() === catTxt.trim().toLowerCase()
+                        (c) =>
+                          (typeof c.name === 'string' ? c.name : String(c.name || '')).toLowerCase() ===
+                          catTxt.trim().toLowerCase()
                       );
                       setParsed((prev) =>
                         prev

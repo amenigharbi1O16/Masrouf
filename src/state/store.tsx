@@ -52,6 +52,8 @@ import { buildSeed } from './seed';
 import {
   evaluateBudgetAlerts,
   notifyBudgetChange,
+  notifyNewExpense,
+  notifyNewPurchase,
   requestNotificationPermissions,
   sendPhoneNotification,
   syncPhoneBadgeCount,
@@ -61,7 +63,6 @@ import {
   sqliteAddAllocation,
   sqliteAddCategory,
   sqliteAddExpense,
-  sqliteAddMoneyRequest,
   sqliteAddProduct,
   sqliteAddPurchase,
   sqliteAddUser,
@@ -79,7 +80,6 @@ import {
   sqliteUpdateAllocation,
   sqliteUpdateCategory,
   sqliteUpdateExpense,
-  sqliteUpdateMoneyRequest,
   sqliteUpdateProduct,
   sqliteUpdatePurchase,
   sqliteUpdateUser,
@@ -97,7 +97,6 @@ import type {
   FamilyFund,
   InAppNotification,
   MoneyAllocation,
-  MoneyRequest,
   ParsedVoiceTransaction,
   PointsRules,
   Product,
@@ -125,10 +124,7 @@ export interface Actions {
 
   // --- Système Familial & Comptes Enfants ---
   createChild(name: string, email: string, password: string): Promise<Result & { initialPassword?: string }>;
-  addFamilyFunds(amount: number, note?: string): Result;
   allocateMoney(childId: string, amount: number, note?: string): Result;
-  requestMoney(amount: number, reason: string): Result;
-  respondToMoneyRequest(requestId: string, approve: boolean): Result;
   saveFamilyBudget(b: Omit<FamilyBudget, 'parentId' | 'id' | 'createdAt'> & { id?: string }): string;
 
   // --- Catégories Personnalisées ---
@@ -189,7 +185,12 @@ interface Ctx {
   unreadNotificationsCount: number;
 }
 
-const StoreContext = createContext<Ctx | null>(null);
+const StoreContext: React.Context<Ctx | null> =
+  ((globalThis as any).__masrouf_store_context__ as React.Context<Ctx | null>) ||
+  createContext<Ctx | null>(null);
+if (process.env.NODE_ENV !== 'production') {
+  (globalThis as any).__masrouf_store_context__ = StoreContext;
+}
 
 /**
  * Fournisseur principal de l'état Masrouf (`StoreProvider`).
@@ -357,20 +358,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                 }
               }
 
-              // H. Fusionner les demandes d'argent
-              if (Array.isArray(parsed.moneyRequests)) {
-                for (const mr of parsed.moneyRequests) {
-                  const exists = (loaded.moneyRequests || []).some((x) => x.id === mr.id);
-                  if (!exists) {
-                    loaded.moneyRequests = [mr, ...(loaded.moneyRequests || [])];
-                    try {
-                      sqliteAddMoneyRequest(mr);
-                    } catch { }
-                  }
-                }
-              }
-
-              // I. Fusionner la réserve financière familiale
+              // H. Fusionner la réserve financière familiale
               if (Array.isArray(parsed.familyFunds)) {
                 for (const ff of parsed.familyFunds) {
                   const exists = (loaded.familyFunds || []).some((x) => x.id === ff.id || x.parentId === ff.parentId);
@@ -916,7 +904,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }
 
         update((d) => ({ ...d, purchases: [...d.purchases, purchase] }));
-        // Évaluation automatique des seuils de notification (80%, 100%)
+
+        // Notification immédiate du nouvel achat pour informer l'utilisateur
+        const dNow = dbRef.current;
+        const prod = dNow?.products.find((x) => x.id === purchase.productId);
+        const prodName = prod?.name || 'Article';
+        const catObj = dNow?.categories.find((c) => c.id === prod?.categoryId);
+        const catName = catObj?.name || 'Alimentation';
+
+        try {
+          notifyNewPurchase({
+            userId: currentUserId,
+            productName: prodName,
+            categoryName: catName,
+            price: purchase.price,
+            store: purchase.store,
+            onTriggerNotification: (n) => {
+              const notifId = uid();
+              const notifItem: InAppNotification = {
+                ...n,
+                id: notifId,
+                createdAt: new Date().toISOString(),
+              };
+              sqliteSaveNotification(notifItem);
+              update((st) => ({
+                ...st,
+                notifications: [notifItem, ...(st.notifications || [])],
+              }));
+            },
+          });
+        } catch (err) {
+          console.warn('notifyNewPurchase warning:', err);
+        }
+
+        // Évaluation automatique des seuils de notification (80%, 100%, alertes par catégorie)
         setTimeout(() => {
           const d = dbRef.current;
           if (!d) return;
@@ -935,6 +956,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             budget: targetBudget,
             spent: pSpent + eSpent,
             existingNotifications: d.notifications || [],
+            purchases: d.purchases,
+            expenses: d.expenses,
+            categories: d.categories,
+            products: d.products,
             onTriggerNotification: (n) => {
               const notifId = uid();
               const notifItem: InAppNotification = {
@@ -958,6 +983,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               budget: targetBudget,
               spent: pSpent + eSpent,
               existingNotifications: d.notifications || [],
+              purchases: d.purchases,
+              expenses: d.expenses,
+              categories: d.categories,
+              products: d.products,
               onTriggerNotification: (n) => {
                 const parentNotifItem: InAppNotification = {
                   ...n,
@@ -1006,6 +1035,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         sqliteUpdatePurchase(id, patch);
         // Mise à jour de l'achat correspondant dans le tableau purchases du store
         update((st) => ({ ...st, purchases: st.purchases.map((p) => (p.id === id ? { ...p, ...patch } : p)) }));
+
+        // Réévaluation automatique des alertes après modification
+        setTimeout(() => {
+          const dNow = dbRef.current;
+          if (!dNow) return;
+          const currentP = dNow.purchases.find((p) => p.id === id);
+          if (!currentP) return;
+          const targetBudget = dNow.budgets.find(
+            (b) => b.userId === currentP.userId && b.start <= currentP.date && currentP.date <= b.end
+          );
+          if (!targetBudget) return;
+          const pSpent = dNow.purchases
+            .filter((x) => x.userId === currentP.userId && x.date >= targetBudget.start && x.date <= targetBudget.end)
+            .reduce((sum, x) => sum + x.price, 0);
+          const eSpent = dNow.expenses
+            .filter((x) => x.userId === currentP.userId && x.date >= targetBudget.start && x.date <= targetBudget.end)
+            .reduce((sum, x) => sum + x.amount, 0);
+          evaluateBudgetAlerts({
+            userId: currentP.userId,
+            budget: targetBudget,
+            spent: pSpent + eSpent,
+            existingNotifications: dNow.notifications || [],
+            purchases: dNow.purchases,
+            expenses: dNow.expenses,
+            categories: dNow.categories,
+            products: dNow.products,
+            onTriggerNotification: (n) => {
+              const notifId = uid();
+              const notifItem: InAppNotification = {
+                ...n,
+                id: notifId,
+                createdAt: new Date().toISOString(),
+              };
+              sqliteSaveNotification(notifItem);
+              update((st) => ({
+                ...st,
+                notifications: [notifItem, ...(st.notifications || [])],
+              }));
+            },
+          });
+        }, 50);
       },
 
       // 12b. Suppression d'un achat
@@ -1055,7 +1125,37 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }
 
         update((d) => ({ ...d, expenses: [...d.expenses, expense] }));
-        // Évaluation automatique des seuils de notification (80%, 100%)
+
+        // Notification immédiate de la nouvelle dépense
+        const dNow = dbRef.current;
+        const catObj = dNow?.categories.find((c) => c.id === expense.categoryId);
+        const catName = catObj?.name || 'Dépenses diverses';
+
+        try {
+          notifyNewExpense({
+            userId: currentUserId,
+            title: expense.note || catName,
+            categoryName: catName,
+            amount: expense.amount,
+            onTriggerNotification: (n) => {
+              const notifId = uid();
+              const notifItem: InAppNotification = {
+                ...n,
+                id: notifId,
+                createdAt: new Date().toISOString(),
+              };
+              sqliteSaveNotification(notifItem);
+              update((st) => ({
+                ...st,
+                notifications: [notifItem, ...(st.notifications || [])],
+              }));
+            },
+          });
+        } catch (err) {
+          console.warn('notifyNewExpense warning:', err);
+        }
+
+        // Évaluation automatique des seuils de notification (80%, 100%, alertes par catégorie)
         setTimeout(() => {
           const d = dbRef.current;
           if (!d) return;
@@ -1075,6 +1175,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             budget: targetBudget,
             spent: pSpent + eSpent,
             existingNotifications: d.notifications || [],
+            purchases: d.purchases,
+            expenses: d.expenses,
+            categories: d.categories,
+            products: d.products,
             onTriggerNotification: (n) => {
               const notifId = uid();
               const notifItem: InAppNotification = {
@@ -1098,6 +1202,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               budget: targetBudget,
               spent: pSpent + eSpent,
               existingNotifications: d.notifications || [],
+              purchases: d.purchases,
+              expenses: d.expenses,
+              categories: d.categories,
+              products: d.products,
               onTriggerNotification: (n) => {
                 const parentNotifItem: InAppNotification = {
                   ...n,
@@ -1146,6 +1254,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         sqliteUpdateExpense(id, patch);
         // Mise à jour de la dépense dans la liste mémoire du store Zustand
         update((st) => ({ ...st, expenses: st.expenses.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
+
+        // Réévaluation automatique des alertes après modification de dépense
+        setTimeout(() => {
+          const dNow = dbRef.current;
+          if (!dNow) return;
+          const currentE = dNow.expenses.find((e) => e.id === id);
+          if (!currentE) return;
+          const targetBudget = dNow.budgets.find(
+            (b) => b.userId === currentE.userId && b.start <= currentE.date && currentE.date <= b.end
+          );
+          if (!targetBudget) return;
+          const pSpent = dNow.purchases
+            .filter((x) => x.userId === currentE.userId && x.date >= targetBudget.start && x.date <= targetBudget.end)
+            .reduce((sum, x) => sum + x.price, 0);
+          const eSpent = dNow.expenses
+            .filter((x) => x.userId === currentE.userId && x.date >= targetBudget.start && x.date <= targetBudget.end)
+            .reduce((sum, x) => sum + x.amount, 0);
+          evaluateBudgetAlerts({
+            userId: currentE.userId,
+            budget: targetBudget,
+            spent: pSpent + eSpent,
+            existingNotifications: dNow.notifications || [],
+            purchases: dNow.purchases,
+            expenses: dNow.expenses,
+            categories: dNow.categories,
+            products: dNow.products,
+            onTriggerNotification: (n) => {
+              const notifId = uid();
+              const notifItem: InAppNotification = {
+                ...n,
+                id: notifId,
+                createdAt: new Date().toISOString(),
+              };
+              sqliteSaveNotification(notifItem);
+              update((st) => ({
+                ...st,
+                notifications: [notifItem, ...(st.notifications || [])],
+              }));
+            },
+          });
+        }, 50);
       },
 
       // 14b. Suppression d'une dépense directe
@@ -1423,50 +1572,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const savedChild: User = { ...childUser, id: insertedId || childUser.id };
         sqliteSetUserCategories(savedChild.id, savedChild.categoryIds);
 
+        // Notification de bienvenue pour le nouvel enfant
+        const childWelcomeNotif: InAppNotification = {
+          id: uid(),
+          userId: savedChild.id,
+          type: 'user_registered',
+          title: 'Bienvenue sur Masrouf ! 🌿',
+          body: `Bienvenue ${savedChild.name} ! Ton compte enfant est prêt. Tu pourras suivre ton budget, tes achats et voir tes économies grandir.`,
+          periodLabel: '',
+          periodId: '',
+          amountSpent: 0,
+          budgetTotal: 0,
+          actionRecommended: 'Explore tes catégories et tes objectifs d\'épargne.',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        };
+        sqliteSaveNotification(childWelcomeNotif);
+        sendPhoneNotification({
+          title: childWelcomeNotif.title,
+          body: childWelcomeNotif.body,
+        }).catch(() => {});
+
         update((s) => ({
           ...s,
           users: [...s.users, savedChild],
+          notifications: [childWelcomeNotif, ...(s.notifications || [])],
         }));
 
         return { ok: true, user: savedChild, initialPassword: password };
-      },
-
-      // --- Finances Familiales : Réserve et Allocations ---
-      addFamilyFunds(amount, note) {
-        const d = dbRef.current!;
-        const currentUserId = meId();
-        const parent = d.users.find((u) => u.id === currentUserId);
-        // Vérification que l'utilisateur est bien un parent ou administrateur
-        if (!parent || (parent.role !== 'admin' && parent.role !== 'parent')) {
-          return { ok: false, error: 'Action réservée au parent administrateur.' };
-        }
-        if (amount <= 0) return { ok: false, error: 'Le montant doit être supérieur à zéro.' };
-
-        let fund = d.familyFunds.find((f) => f.parentId === parent.id);
-        const now = todayISO();
-        if (!fund) {
-          fund = {
-            id: uid(),
-            parentId: parent.id,
-            balance: amount,
-            totalContributions: amount,
-            updatedAt: now,
-          };
-        } else {
-          fund = {
-            ...fund,
-            balance: fund.balance + amount,
-            totalContributions: fund.totalContributions + amount,
-            updatedAt: now,
-          };
-        }
-        sqliteSaveFamilyFund(fund);
-
-        update((s) => ({
-          ...s,
-          familyFunds: [fund!, ...s.familyFunds.filter((f) => f.id !== fund!.id)],
-        }));
-        return { ok: true };
       },
 
       // 21. Allocation d'argent d'un parent vers un compte enfant
@@ -1643,6 +1776,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         };
         // Persistance de la notification
         sqliteSaveNotification(childNotif);
+        sendPhoneNotification({
+          title: childNotif.title,
+          body: childNotif.body,
+        }).catch(() => {});
 
         // Mise à jour atomique de l'état global Zustand
         update((s) => ({
@@ -1911,96 +2048,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
 
-      requestMoney(amount, reason) {
-        const d = dbRef.current!;
-        const currentUserId = meId();
-        const child = d.users.find((u) => u.id === currentUserId);
-        if (!child || child.role !== 'child') {
-          return { ok: false, error: 'Action réservée aux comptes enfants.' };
-        }
-        if (!child.parentId) {
-          return { ok: false, error: 'Aucun parent associé à ce compte enfant.' };
-        }
-        if (amount <= 0) return { ok: false, error: 'Le montant doit être supérieur à zéro.' };
-        if (!reason.trim()) return { ok: false, error: 'Veuillez préciser le motif de votre demande.' };
-
-        const req: MoneyRequest = {
-          id: uid(),
-          parentId: child.parentId,
-          childId: child.id,
-          childName: child.name,
-          amount,
-          reason: reason.trim(),
-          status: 'pending',
-          date: todayISO(),
-          createdAt: new Date().toISOString(),
-        };
-        sqliteAddMoneyRequest(req);
-
-        const parentNotif: InAppNotification = {
-          id: uid(),
-          userId: child.parentId,
-          type: 'system',
-          title: `Demande d'argent : ${child.name}`,
-          body: `${child.name} demande ${amount.toFixed(3)} DT pour : "${reason.trim()}".`,
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        };
-        sqliteSaveNotification(parentNotif);
-
-        update((s) => ({
-          ...s,
-          moneyRequests: [req, ...(s.moneyRequests || [])],
-          notifications: [parentNotif, ...(s.notifications || [])],
-        }));
-
-        return { ok: true };
-      },
-
-      respondToMoneyRequest(requestId, approve) {
-        const d = dbRef.current!;
-        const currentUserId = meId();
-        const parent = d.users.find((u) => u.id === currentUserId);
-        // Vérification que l'utilisateur est bien un parent ou administrateur
-        if (!parent || (parent.role !== 'admin' && parent.role !== 'parent')) {
-          return { ok: false, error: 'Action réservée au parent administrateur.' };
-        }
-
-        const req = d.moneyRequests.find((r) => r.id === requestId);
-        if (!req) return { ok: false, error: 'Demande introuvable.' };
-        if (req.status !== 'pending') return { ok: false, error: 'Cette demande a déjà été traitée.' };
-
-        const now = new Date().toISOString();
-        if (approve) {
-          // Exécuter l'allocation unique
-          act.allocateMoney(req.childId, req.amount, `Demande approuvée : ${req.reason}`);
-          sqliteUpdateMoneyRequest(requestId, 'approved', now);
-          update((s) => ({
-            ...s,
-            moneyRequests: s.moneyRequests.map((r) => (r.id === requestId ? { ...r, status: 'approved', respondedAt: now } : r)),
-          }));
-        } else {
-          // Rejet sans transfert
-          sqliteUpdateMoneyRequest(requestId, 'rejected', now);
-          const childNotif: InAppNotification = {
-            id: uid(),
-            userId: req.childId,
-            type: 'system',
-            title: 'Demande refusée',
-            body: `Votre demande de ${req.amount.toFixed(3)} DT pour "${req.reason}" n'a pas été acceptée.`,
-            isRead: false,
-            createdAt: now,
-          };
-          sqliteSaveNotification(childNotif);
-          update((s) => ({
-            ...s,
-            moneyRequests: s.moneyRequests.map((r) => (r.id === requestId ? { ...r, status: 'rejected', respondedAt: now } : r)),
-            notifications: [childNotif, ...(s.notifications || [])],
-          }));
-        }
-        return { ok: true };
-      },
-
       // 22. Enregistrement ou mise à jour du Budget du mois pour le foyer
       // Fonction de sauvegarde du Budget du mois : enregistre le budget global unique du foyer et met à jour le parent et les enfants
       saveFamilyBudget(b) {
@@ -2143,7 +2190,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         let resolvedCategoryId = v.categoryId;
         // Recherche de la catégorie correspondante dans la base
         let targetCat = dbRef.current?.categories.find(
-          (c) => c.id === v.categoryId || (v.categoryName && c.name.toLowerCase() === v.categoryName.toLowerCase())
+          (c) =>
+            c.id === v.categoryId ||
+            (v.categoryName &&
+              (typeof c.name === 'string' ? c.name : String(c.name || '')).toLowerCase() ===
+                v.categoryName.toLowerCase())
         );
         // Si aucune catégorie correspondante n'existe et qu'un nom est fourni, la créer automatiquement
         if (!targetCat && v.categoryName) {
@@ -2273,11 +2324,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (v.type === 'donation') {
           // Recherche ou création de la catégorie Dons & Charité
           let catDon = dbRef.current?.categories.find(
-            (c) =>
-              c.id === 'donations' ||
-              c.name.toLowerCase().includes('don') ||
-              c.name.includes('تبرع') ||
-              c.name.includes('صدقة')
+            (c) => {
+              const cName = typeof c.name === 'string' ? c.name : String(c.name || '');
+              const cLower = cName.toLowerCase();
+              return (
+                c.id === 'donations' ||
+                cLower.includes('don') ||
+                cName.includes('تبرع') ||
+                cName.includes('صدقة')
+              );
+            }
           );
           // Si absente, création automatique de la catégorie Dons
           if (!catDon) {
@@ -2398,7 +2454,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       sessionUserId: null,
       familyFunds: [],
       allocations: [],
-      moneyRequests: [],
       familyBudgets: [],
     } as DB);
 
@@ -2419,10 +2474,79 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
 /**
  * Hook de consommation du store Masrouf.
- * Lève une exception explicite si utilisé hors d'un <StoreProvider>.
+ * Protégé contre les désynchronisations lors du Fast Refresh et des transitions de route :
+ * si le contexte n'est pas encore disponible, renvoie un état d'attente (ready: false)
+ * permettant aux composants gardiens (Gate) d'afficher l'écran de chargement sans lever d'exception fatale.
  */
 export function useStore(): Ctx {
   const c = useContext(StoreContext);
-  if (!c) throw new Error('useStore must be used inside <StoreProvider>');
+  if (!c) {
+    return {
+      db: {
+        users: [],
+        categories: [],
+        categoryTypes: [],
+        defaultPercentages: {},
+        pointsRules: { periodReward: 100, streakLength: 3, streakBonus: 50, saverAt: 300, expertAt: 1000 },
+        settings: { allowRegistration: true },
+        budgets: [],
+        products: [],
+        purchases: [],
+        expenses: [],
+        notifications: [],
+        sessionUserId: null,
+        familyFunds: [],
+        allocations: [],
+        familyBudgets: [],
+      },
+      ready: false,
+      me: null,
+      actions: {
+        login: async () => ({ ok: false, error: 'Store not ready' }),
+        register: async () => ({ ok: false, error: 'Store not ready' }),
+        logout: () => {},
+        changePassword: async () => ({ ok: false, error: 'Store not ready' }),
+        updateProfile: () => {},
+        completeOnboarding: () => {},
+        setUserCategories: () => {},
+        createChild: async () => ({ ok: false, error: 'Store not ready' }),
+        allocateMoney: () => ({ ok: false, error: 'Store not ready' }),
+        saveFamilyBudget: () => '',
+        addCustomCategory: () => ({ ok: false, error: 'Store not ready' }),
+        updateCustomCategory: () => ({ ok: false, error: 'Store not ready' }),
+        deleteCustomCategory: () => ({ ok: false, error: 'Store not ready' }),
+        applyVoiceTransaction: async () => ({ ok: false, error: 'Store not ready' }),
+        setSelectedBudgetId: () => {},
+        saveBudget: () => '',
+        addProduct: () => '',
+        updateProduct: () => {},
+        addPurchase: () => '',
+        updatePurchase: () => {},
+        deletePurchase: () => ({ ok: false, error: 'Store not ready' }),
+        addExpense: () => '',
+        updateExpense: () => {},
+        deleteExpense: () => ({ ok: false, error: 'Store not ready' }),
+        updateAllocation: () => ({ ok: false, error: 'Store not ready' }),
+        deleteAllocation: () => ({ ok: false, error: 'Store not ready' }),
+        markCelebrated: () => {},
+        markNotificationRead: () => {},
+        markAllNotificationsRead: () => {},
+        addNotification: () => '',
+        resetChildPassword: async () => ({ ok: false, error: 'Store not ready' }),
+        issueTemporaryPassword: async () => '',
+        addCategory: () => ({ ok: false, error: 'Store not ready' }),
+        updateCategory: () => {},
+        updateCategoryTypes: () => {},
+        setDefaultPercentages: () => {},
+        setPointsRules: () => {},
+        setSettings: () => {},
+        setLanguage: () => {},
+      },
+      selectedBudgetId: null,
+      selectedBudget: null,
+      notifications: [],
+      unreadNotificationsCount: 0,
+    };
+  }
   return c;
 }

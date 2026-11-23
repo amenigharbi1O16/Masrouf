@@ -21,7 +21,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 // Détection de la plateforme d'exécution (Android, iOS ou Web)
 import { Platform } from 'react-native';
 // Types métier TypeScript de l'application
-import type { Budget, DB, InAppNotification } from '@/state/types';
+import type { Budget, Category, DB, Expense, InAppNotification, Product, Purchase } from '@/state/types';
 // Fonctions utilitaires de calcul monétaire et de formatage
 import { fmtRange, money, todayISO } from './format';
 
@@ -243,22 +243,24 @@ export interface BudgetAlertCheckParams {
   spent: number;
   existingNotifications: InAppNotification[];
   onTriggerNotification: (n: Omit<InAppNotification, 'id' | 'createdAt'>) => void;
+  purchases?: Purchase[];
+  expenses?: Expense[];
+  categories?: Category[];
+  products?: Product[];
 }
 
 /**
  * MISSION DE LA FONCTION : evaluateBudgetAlerts
  *   Analyse mathématiquement l'état d'un budget par rapport aux dépenses réelles
  *   et déclenche les notifications sur le smartphone pour les événements clés :
- *   1. Seuil de 80% atteint (alerte préventive).
- *   2. Seuil de 100% dépassé (alerte critique de dépassement).
+ *   1. Seuil de 80% atteint au niveau global (alerte préventive).
+ *   2. Seuil de 100% dépassé au niveau global (alerte critique de dépassement).
  *   3. Fin de période imminente (dans les 3 derniers jours).
+ *   4. Alertes par catégorie allouée : 80% et 100% / dépassement de l'enveloppe de catégorie.
  *
  * RÔLE DANS L'APPLICATION :
  *   Surveille en permanence le budget sélectionné lors de chaque ajout ou modification de transaction.
  *   Empêche les doublons en vérifiant la liste des notifications déjà émises pour ce cycle.
- *
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Déclenche une vraie notification locale sur le téléphone et crée une entrée dans le centre de notifications de l'application.
  */
 export function evaluateBudgetAlerts({
   userId,
@@ -266,6 +268,10 @@ export function evaluateBudgetAlerts({
   spent,
   existingNotifications,
   onTriggerNotification,
+  purchases,
+  expenses,
+  categories,
+  products,
 }: BudgetAlertCheckParams): void {
   // Sécurité : si le budget total est nul ou négatif, aucune alerte n'est pertinente
   if (!budget || budget.total <= 0) return;
@@ -291,7 +297,7 @@ export function evaluateBudgetAlerts({
       // Calcul du dépassement exact
       const overAmount = spent - budget.total;
       // Titre explicatif
-      const title = 'Dépassement de budget : 100% franchi';
+      const title = 'Dépassement de budget : 100% franchi ⚠️';
       // Corps détaillé indiquant la période, les montants et l'action recommandée
       const body = `Période ${periodLabel} : Vous avez dépassé votre budget de ${money(budget.total)} (Dépensé : ${money(spent)}, soit +${money(overAmount)} de dépassement). Action conseillée : Ajustez vos allocations ou limitez les dépenses imprévues pour cette période.`;
       // Action recommandée
@@ -317,42 +323,63 @@ export function evaluateBudgetAlerts({
         actionRecommended,
         isRead: false,
       });
-      // Fin de vérification (l'alerte 100% supplante l'alerte 80%)
-      return;
     }
-  }
-
-  // ------------------------------------------------------------
-  // CAS 2 : ALERTE 80% DU BUDGET ATTEINT (Prévention)
-  // ------------------------------------------------------------
-  if (ratio >= 0.8 && ratio < 1.0) {
-    // Vérification anti-doublon pour l'alerte 80%
+  } else if (ratio >= 0.8) {
+    // ------------------------------------------------------------
+    // CAS 2 : ALERTE 80% DU BUDGET ATTEINT (Prévention)
+    // ------------------------------------------------------------
     const alreadySent80 = existingNotifications.some(
       (n) => n.userId === userId && n.periodId === budget.id && n.type === 'alert_80'
     );
 
-    // Si l'alerte 80% n'a pas encore été envoyée
     if (!alreadySent80) {
-      // Montant restant disponible
       const remain = budget.total - spent;
-      // Titre clair
-      const title = 'Seuil d’alerte : 80% du budget atteint';
-      // Corps détaillé
+      const title = 'Seuil d’alerte : 80% du budget atteint 🔔';
       const body = `Période ${periodLabel} : Vous avez consommé ${(ratio * 100).toFixed(1)}% de votre budget (${money(spent)} sur ${money(budget.total)}). Il vous reste ${money(remain)}. Action conseillée : Modérez vos dépenses quotidiennes pour terminer la période sereinement.`;
-      // Action recommandée
       const actionRecommended = 'Surveillez vos achats au supermarché et privilégiez les produits essentiels.';
 
-      // Envoi de la notification réelle sur le smartphone
       sendPhoneNotification({
         title,
         body,
         data: { type: 'alert_80', budgetId: budget.id, spent, total: budget.total },
       });
 
-      // Enregistrement dans le centre de notifications in-app
       onTriggerNotification({
         userId,
         type: 'alert_80',
+        title,
+        body,
+        periodLabel,
+        periodId: budget.id,
+        amountSpent: spent,
+        budgetTotal: budget.total,
+        actionRecommended,
+        isRead: false,
+      });
+    }
+  } else if (ratio >= 0.5) {
+    // ------------------------------------------------------------
+    // CAS 2b : ÉVOLUTION DE LA CONSOMMATION : 50% DU BUDGET ATTEINT
+    // ------------------------------------------------------------
+    const alreadySent50 = existingNotifications.some(
+      (n) => n.userId === userId && n.periodId === budget.id && n.type === 'alert_50'
+    );
+
+    if (!alreadySent50) {
+      const remain = budget.total - spent;
+      const title = 'Évolution du budget : 50% consommé 📊';
+      const body = `Période ${periodLabel} : Vous avez atteint la moitié de votre budget (${(ratio * 100).toFixed(0)}% consommé, soit ${money(spent)} sur ${money(budget.total)}). Il vous reste ${money(remain)} pour la suite.`;
+      const actionRecommended = 'Votre rythme de consommation est bien maîtrisé. Continuez à suivre vos dépenses.';
+
+      sendPhoneNotification({
+        title,
+        body,
+        data: { type: 'alert_50', budgetId: budget.id, spent, total: budget.total },
+      });
+
+      onTriggerNotification({
+        userId,
+        type: 'alert_50',
         title,
         body,
         periodLabel,
@@ -368,36 +395,27 @@ export function evaluateBudgetAlerts({
   // ------------------------------------------------------------
   // CAS 3 : FIN DE PÉRIODE BUDGÉTAIRE IMMINENTE (≤ 3 jours restants)
   // ------------------------------------------------------------
-  // Calcul de la différence en jours entre aujourd'hui et la date de fin
   const dToday = new Date(today);
   const dEnd = new Date(budget.end);
   const diffDays = Math.ceil((dEnd.getTime() - dToday.getTime()) / (1000 * 3600 * 24));
 
-  // Si nous sommes dans les 3 derniers jours de la période active et pas encore expirée
   if (diffDays >= 0 && diffDays <= 3 && today >= budget.start) {
-    // Anti-doublon quotidien pour la fin de période
     const alreadySentEnd = existingNotifications.some(
       (n) => n.userId === userId && n.periodId === budget.id && n.type === 'period_end'
     );
 
     if (!alreadySentEnd) {
-      // Solde disponible à l'instant T
       const remain = Math.max(0, budget.total - spent);
-      // Titre
-      const title = 'Fin de période budgétaire imminente';
-      // Corps explicatif
+      const title = 'Fin de période budgétaire imminente ⏳';
       const body = `Votre période ${periodLabel} se termine dans ${diffDays === 0 ? "aujourd'hui" : diffDays === 1 ? '1 jour' : `${diffDays} jours`}. Montant restant disponible : ${money(remain)}. Action conseillée : Préparez dès maintenant votre prochaine période de budget.`;
-      // Action recommandée
       const actionRecommended = 'Planifiez vos prochaines enveloppes budgétaires dans le calendrier.';
 
-      // Envoi de la notification réelle sur le smartphone
       sendPhoneNotification({
         title,
         body,
         data: { type: 'period_end', budgetId: budget.id, diffDays },
       });
 
-      // Enregistrement in-app
       onTriggerNotification({
         userId,
         type: 'period_end',
@@ -412,15 +430,122 @@ export function evaluateBudgetAlerts({
       });
     }
   }
+
+  // ------------------------------------------------------------
+  // CAS 4 : ALERTES SUR LES ENVELOPPES ALLOUÉES AUX CATÉGORIES
+  // ------------------------------------------------------------
+  if (budget.allocations && purchases && expenses) {
+    for (const [catId, allocAmount] of Object.entries(budget.allocations)) {
+      const allocated = Number(allocAmount) || 0;
+      if (allocated <= 0) continue;
+
+      const catObj = categories?.find((c) => c.id === catId);
+      const catName = catObj?.name || catId;
+
+      // Calcul des dépenses pour cette catégorie dans cette période
+      const pCat = purchases
+        .filter((p) => {
+          if (p.userId !== userId || p.date < budget.start || p.date > budget.end) return false;
+          const prod = products?.find((pr) => pr.id === p.productId);
+          return prod?.categoryId === catId;
+        })
+        .reduce((sum, p) => sum + p.price, 0);
+
+      const eCat = expenses
+        .filter((e) => e.userId === userId && e.date >= budget.start && e.date <= budget.end && e.categoryId === catId)
+        .reduce((sum, e) => sum + e.amount, 0);
+
+      const totalCatSpent = pCat + eCat;
+      const catRatio = totalCatSpent / allocated;
+
+      // 4A : Dépassement de l'enveloppe allouée à la catégorie (100% franchi)
+      if (catRatio >= 1.0) {
+        const alreadySentCat100 = existingNotifications.some(
+          (n) =>
+            n.userId === userId &&
+            n.periodId === budget.id &&
+            n.type === 'category_alert_100' &&
+            (n.categoryId === catId || n.body.includes(`"${catName}"`))
+        );
+
+        if (!alreadySentCat100) {
+          const over = totalCatSpent - allocated;
+          const title = `Dépassement : Catégorie "${catName}" ⚠️`;
+          const body = `Période ${periodLabel} : Le budget alloué à "${catName}" (${money(allocated)}) a été dépassé de ${money(over)} (Dépensé : ${money(totalCatSpent)}). Pensez à rééquilibrer vos dépenses.`;
+          const actionRecommended = `Ajustez vos allocations ou limitez les prochains achats dans le rayon ${catName}.`;
+
+          sendPhoneNotification({
+            title,
+            body,
+            data: { type: 'category_alert_100', budgetId: budget.id, categoryId: catId, totalCatSpent, allocated },
+          });
+
+          onTriggerNotification({
+            userId,
+            type: 'category_alert_100',
+            title,
+            body,
+            periodLabel,
+            periodId: budget.id,
+            categoryId: catId,
+            categoryName: catName,
+            amountSpent: totalCatSpent,
+            budgetTotal: allocated,
+            actionRecommended,
+            isRead: false,
+          });
+        }
+      } else if (catRatio >= 0.8) {
+        // 4B : Seuil d'alerte préventif de 80% sur l'enveloppe de catégorie
+        const alreadySentCat80 = existingNotifications.some(
+          (n) =>
+            n.userId === userId &&
+            n.periodId === budget.id &&
+            n.type === 'category_alert_80' &&
+            (n.categoryId === catId || n.body.includes(`"${catName}"`))
+        );
+
+        if (!alreadySentCat80) {
+          const remain = allocated - totalCatSpent;
+          const title = `Alerte 80% : Catégorie "${catName}" 🔔`;
+          const body = `Période ${periodLabel} : Vous avez consommé ${(catRatio * 100).toFixed(0)}% du budget alloué à "${catName}" (${money(totalCatSpent)} sur ${money(allocated)}). Il vous reste ${money(remain)}.`;
+          const actionRecommended = `Surveillez vos achats dans la catégorie ${catName} pour ne pas dépasser votre enveloppe.`;
+
+          sendPhoneNotification({
+            title,
+            body,
+            data: { type: 'category_alert_80', budgetId: budget.id, categoryId: catId, totalCatSpent, allocated },
+          });
+
+          onTriggerNotification({
+            userId,
+            type: 'category_alert_80',
+            title,
+            body,
+            periodLabel,
+            periodId: budget.id,
+            categoryId: catId,
+            categoryName: catName,
+            amountSpent: totalCatSpent,
+            budgetTotal: allocated,
+            actionRecommended,
+            isRead: false,
+          });
+        }
+      }
+    }
+  }
 }
+
+// Variables anti-rebond pour éviter le spam lors d'enregistrements rapides
+let lastBudgetNotifyKey = '';
+let lastBudgetNotifyTime = 0;
 
 /**
  * MISSION DE LA FONCTION : notifyBudgetChange
  *   Envoie une notification sur le smartphone lorsqu'un budget est créé ou modifié.
  * RÔLE DANS L'APPLICATION :
  *   Confirme à l'utilisateur la prise en compte de sa modification de plafond budgétaire.
- * CE QUI EST AFFICHÉ À L'ÉCRAN :
- *   Une bannière système indiquant la nouvelle enveloppe globale fixée pour la période.
  */
 export function notifyBudgetChange(
   userId: string,
@@ -428,25 +553,30 @@ export function notifyBudgetChange(
   isCreation: boolean,
   onTriggerNotification: (n: Omit<InAppNotification, 'id' | 'createdAt'>) => void
 ): void {
-  // Libellé de la période
-  const periodLabel = fmtRange(budget.start, budget.end);
-  // Titre de la notification
-  const title = isCreation
-    ? 'Nouvelle période budgétaire créée'
-    : 'Période budgétaire modifiée';
-  // Corps détaillé
-  const body = `Le budget pour la période ${periodLabel} a été fixé à ${money(budget.total)}. Toutes vos jauges et enveloppes par catégorie sont maintenant actives.`;
-  // Action recommandée
-  const actionRecommended = 'Consultez votre tableau de bord d’accueil pour suivre vos dépenses sur cette période.';
+  const now = Date.now();
+  const key = `${userId}_${budget.id}_${budget.total}_${isCreation}`;
+  if (key === lastBudgetNotifyKey && now - lastBudgetNotifyTime < 2500) {
+    return;
+  }
+  lastBudgetNotifyKey = key;
+  lastBudgetNotifyTime = now;
 
-  // Envoi de la notification réelle sur le téléphone
+  const periodLabel = fmtRange(budget.start, budget.end);
+  const title = isCreation
+    ? 'Nouvelle période budgétaire créée 📅'
+    : 'Période budgétaire modifiée 🔄';
+  
+  const allocCount = Object.keys(budget.allocations || {}).filter((k) => (budget.allocations?.[k] ?? 0) > 0).length;
+  const allocInfo = allocCount > 0 ? ` réparti sur ${allocCount} catégorie(s)` : '';
+  const body = `Le budget pour la période ${periodLabel} a été fixé à ${money(budget.total)}${allocInfo}. Toutes vos jauges et enveloppes sont actives.`;
+  const actionRecommended = 'Consultez votre tableau de bord d’accueil pour suivre l’évolution de vos dépenses.';
+
   sendPhoneNotification({
     title,
     body,
     data: { type: 'budget_change', budgetId: budget.id, total: budget.total },
   });
 
-  // Enregistrement in-app
   onTriggerNotification({
     userId,
     type: 'budget_change',
@@ -456,6 +586,87 @@ export function notifyBudgetChange(
     periodId: budget.id,
     amountSpent: 0,
     budgetTotal: budget.total,
+    actionRecommended,
+    isRead: false,
+  });
+}
+
+/**
+ * MISSION DE LA FONCTION : notifyNewPurchase
+ *   Envoie une notification lorsqu'un nouvel achat de produit est enregistré.
+ */
+export function notifyNewPurchase({
+  userId,
+  productName,
+  categoryName,
+  price,
+  store,
+  onTriggerNotification,
+}: {
+  userId: string;
+  productName: string;
+  categoryName: string;
+  price: number;
+  store?: string;
+  onTriggerNotification: (n: Omit<InAppNotification, 'id' | 'createdAt'>) => void;
+}): void {
+  const title = 'Nouvel achat enregistré 🛒';
+  const storeInfo = store ? ` chez ${store}` : '';
+  const body = `Achat de "${productName}" (${money(price)})${storeInfo} dans la catégorie "${categoryName}" ajouté à vos dépenses.`;
+  const actionRecommended = 'Vos jauges de consommation ont été actualisées en temps réel.';
+
+  sendPhoneNotification({
+    title,
+    body,
+    data: { type: 'new_purchase', price, productName, categoryName },
+  });
+
+  onTriggerNotification({
+    userId,
+    type: 'new_purchase',
+    title,
+    body,
+    categoryName,
+    amountSpent: price,
+    actionRecommended,
+    isRead: false,
+  });
+}
+
+/**
+ * MISSION DE LA FONCTION : notifyNewExpense
+ *   Envoie une notification lorsqu'une nouvelle dépense directe est enregistrée.
+ */
+export function notifyNewExpense({
+  userId,
+  title: expenseTitle,
+  categoryName,
+  amount,
+  onTriggerNotification,
+}: {
+  userId: string;
+  title: string;
+  categoryName: string;
+  amount: number;
+  onTriggerNotification: (n: Omit<InAppNotification, 'id' | 'createdAt'>) => void;
+}): void {
+  const notifTitle = 'Nouvelle dépense enregistrée 🧾';
+  const body = `Dépense de "${expenseTitle}" (${money(amount)}) dans la catégorie "${categoryName}" ajoutée à votre consommation.`;
+  const actionRecommended = 'Votre solde et vos jauges budgétaires ont été mis à jour.';
+
+  sendPhoneNotification({
+    title: notifTitle,
+    body,
+    data: { type: 'new_expense', amount, title: expenseTitle, categoryName },
+  });
+
+  onTriggerNotification({
+    userId,
+    type: 'new_expense',
+    title: notifTitle,
+    body,
+    categoryName,
+    amountSpent: amount,
     actionRecommended,
     isRead: false,
   });

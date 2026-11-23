@@ -15,10 +15,8 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React from 'react';
 import {
-  Alert,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,40 +25,22 @@ import {
 } from 'react-native';
 import { useDrawer } from '@/components/DrawerContext';
 import { Screen } from '@/components/Screen';
-import { AlertBanner, Body, Button, Eyebrow, Input, SectionTitle } from '@/components/ui';
+import { Eyebrow, SectionTitle } from '@/components/ui';
 import { colors, radius } from '@/constants/theme';
 import { useStore } from '@/state/store';
-import type { User } from '@/state/types';
 import { formatTND, todayISO } from '@/utils/format';
 import { useTranslation } from '@/utils/i18n';
 import {
   isChildrenCategory,
   findEnfantCategory,
   CANONICAL_ENFANT_ID,
-  CANONICAL_ENFANT_NAME,
 } from '@/utils/categoryMatching';
 
 export default function FamilyDashboard() {
   const router = useRouter();
   const { open } = useDrawer();
-  const { db, me, actions } = useStore();
+  const { db, me, unreadNotificationsCount } = useStore();
   const { t, isRTL } = useTranslation();
-
-  // Modal rapide pour donner de l'argent à un enfant sélectionné
-  const [giveMoneyModal, setGiveMoneyModal] = useState(false);
-  const [targetChild, setTargetChild] = useState<User | null>(null);
-  const [giveAmount, setGiveAmount] = useState('');
-  const [giveNote, setGiveNote] = useState('');
-  const [giveError, setGiveError] = useState('');
-  const [giveBusy, setGiveBusy] = useState(false);
-  const [showOverBudgetWarning, setShowOverBudgetWarning] = useState(false);
-
-  // Données financières du parent connecté
-  const familyFund = db.familyFunds.find((f) => f.parentId === me?.id) || {
-    balance: 0,
-    totalAdded: 0,
-    totalAllocated: 0,
-  };
 
   // Calcul dynamique de l'enveloppe budgétaire catégorie « Enfants » pour le parent
   const now = new Date();
@@ -115,11 +95,6 @@ export default function FamilyDashboard() {
     (u) => u.role === 'child' && (u.parentId === me?.id || u.familyId === me?.familyId)
   );
 
-  // Demandes d'argent en attente
-  const pendingRequests = db.moneyRequests.filter(
-    (r) => r.parentId === me?.id && r.status === 'pending'
-  );
-
   // Historique des allocations
   const myAllocations = db.allocations.filter((a) => a.parentId === me?.id);
 
@@ -133,70 +108,6 @@ export default function FamilyDashboard() {
       .reduce((sum, p) => sum + p.price, 0);
     return parentExp + parentPur;
   }, [db.expenses, db.purchases, me?.id, startOfMonth, endOfMonth]);
-
-  // Ouvrir la modale d'allocation pour un enfant spécifique
-  const openGiveModal = (child: User) => {
-    setTargetChild(child);
-    setGiveAmount('');
-    setGiveNote('');
-    setGiveError('');
-    setShowOverBudgetWarning(false);
-    setGiveMoneyModal(true);
-  };
-
-  const executeAllocation = async (num: number) => {
-    if (!targetChild || giveBusy) return;
-    setGiveBusy(true);
-    setGiveError('');
-
-    try {
-      const res = await actions.allocateMoney(targetChild.id, num, giveNote.trim() || undefined);
-
-      if (!res.ok) {
-        setGiveError(res.error ?? 'Erreur lors de l’allocation.');
-      } else {
-        setGiveMoneyModal(false);
-        setShowOverBudgetWarning(false);
-        const isExceeded = (catEnfantBudget > 0 && currentEnfantSpent + num > catEnfantBudget) || catEnfantBudget === 0;
-        Alert.alert(
-          isRTL ? 'تأكيد العملية' : 'Succès',
-          isRTL
-            ? `تم تحويل ${formatTND(num)} بنجاح إلى ${targetChild.name}.${isExceeded ? ' تم تسجيل التحويل مع تجاوز الميزانية وسيعرض باللون الأحمر في التحليلات.' : ''}`
-            : `${formatTND(num)} ont été alloués avec succès à ${targetChild.name}.${isExceeded ? ' (Dépassement de budget enregistré et marqué en rouge dans les analyses)' : ''}`
-        );
-      }
-    } finally {
-      setGiveBusy(false);
-    }
-  };
-
-  // Soumission de l'allocation d'argent
-  const submitGiveMoney = async () => {
-    if (!targetChild || giveBusy) return;
-    const num = parseFloat(giveAmount.replace(',', '.'));
-    if (isNaN(num) || num <= 0) {
-      setGiveError(isRTL ? 'الرجاء إدخال مبلغ صحيح أكبر من صفر.' : 'Veuillez entrer un montant valide supérieur à 0.');
-      return;
-    }
-
-    const projectedSpent = currentEnfantSpent + num;
-    const willExceed = (catEnfantBudget > 0 && projectedSpent > catEnfantBudget) || catEnfantBudget === 0;
-
-    if (willExceed && !showOverBudgetWarning) {
-      setShowOverBudgetWarning(true);
-      return;
-    }
-
-    await executeAllocation(num);
-  };
-
-  // Répondre à une demande d'argent
-  const handleRequestResponse = async (requestId: string, approve: boolean) => {
-    const res = await actions.respondToMoneyRequest(requestId, approve);
-    if (!res.ok) {
-      Alert.alert('Erreur', res.error ?? 'Impossible de traiter la demande.');
-    }
-  };
 
   return (
     <Screen plain title={t('espace_familial')}>
@@ -238,11 +149,11 @@ export default function FamilyDashboard() {
             activeOpacity={0.7}
           >
             <Ionicons name="notifications-outline" size={22} color={colors.forest} />
-            {pendingRequests.length > 0 && <View style={styles.notifBadgeDot} />}
+            {unreadNotificationsCount > 0 && <View style={styles.notifBadgeDot} />}
           </TouchableOpacity>
         </View>
 
-        {/* CARTE DE SYNTHÈSE FINANCIÈRE DE LA FAMILLE */}
+        {/* CARTE DE SYNTHÈSE : ENVELOPPE ENFANTS DU BUDGET FAMILIAL */}
         <View style={styles.fundCard}>
           <View
             style={[
@@ -250,35 +161,37 @@ export default function FamilyDashboard() {
               { flexDirection: isRTL ? 'row-reverse' : 'row' },
             ]}
           >
-            {/* Badge de réserve familiale avec icône mallette */}
+            {/* Badge de l'enveloppe Enfants */}
             <View style={styles.fundBadge}>
-              {/* Icône de mallette fidèle à la maquette */}
-              <Ionicons name="briefcase-outline" size={15} color={colors.mint} />
-              {/* Libellé en lettres capitales */}
-              <Text style={styles.fundBadgeText}>RÉSERVE FAMILIALE</Text>
+              <Ionicons name="people-outline" size={15} color={colors.mint} />
+              <Text style={styles.fundBadgeText}>
+                {isRTL ? 'ميزانية فئة الأطفال · الشهر' : 'ENVELOPPE ENFANTS · BUDGET DU MOIS'}
+              </Text>
             </View>
-            {/* Bouton d'approvisionnement en pilule vert foncé */}
+            {/* Bouton de gestion du budget vers budget-analyses */}
             <TouchableOpacity
               style={styles.addFundsBtn}
-              onPress={() => router.push('/(admin)/finances')}
+              onPress={() => router.push('/(admin)/budget-analyses')}
               activeOpacity={0.7}
             >
-              {/* Icône plus en blanc */}
-              <Ionicons name="add" size={16} color={colors.white} />
-              {/* Libellé blanc du bouton */}
-              <Text style={styles.addFundsBtnText}>Approvisionner</Text>
+              <Ionicons name="pie-chart-outline" size={15} color={colors.white} />
+              <Text style={styles.addFundsBtnText}>
+                {isRTL ? 'الميزانية' : 'Gérer budget'}
+              </Text>
             </TouchableOpacity>
           </View>
 
           <Text
             style={[styles.fundBalanceNumber, { textAlign: isRTL ? 'right' : 'left' }]}
           >
-            {formatTND(familyFund.balance)}
+            {formatTND(remainingEnfantBudget)}
           </Text>
           <Text
             style={[styles.fundBalanceLabel, { textAlign: isRTL ? 'right' : 'left' }]}
           >
-            Fonds disponibles pour les allocations du foyer
+            {isRTL
+              ? 'المبلغ المتبقي المتاح للأطفال من ميزانية الشهر'
+              : 'Disponible ce mois pour les allocations enfants'}
           </Text>
 
           <View style={styles.fundStatsDivider} />
@@ -286,23 +199,29 @@ export default function FamilyDashboard() {
           <View style={styles.fundStatsRow}>
             <View style={styles.fundStatItem}>
               <Text style={styles.fundStatVal}>
-                {formatTND(familyFund.totalAllocated || 0)}
+                {formatTND(catEnfantBudget)}
               </Text>
-              <Text style={styles.fundStatLbl}>Total alloué</Text>
+              <Text style={styles.fundStatLbl}>
+                {isRTL ? 'ميزانية الأطفال' : 'Budget catégorie'}
+              </Text>
             </View>
             <View style={styles.fundStatSep} />
             <View style={styles.fundStatItem}>
               <Text style={styles.fundStatVal}>
-                {formatTND(totalFamilyExpenses)}
+                {formatTND(currentEnfantSpent)}
               </Text>
-              <Text style={styles.fundStatLbl}>Dépenses famille</Text>
+              <Text style={styles.fundStatLbl}>
+                {isRTL ? 'الموزع للأطفال' : 'Déjà alloué'}
+              </Text>
             </View>
             <View style={styles.fundStatSep} />
             <View style={styles.fundStatItem}>
               <Text style={styles.fundStatVal}>
                 {childrenList.length}
               </Text>
-              <Text style={styles.fundStatLbl}>Enfants inscrits</Text>
+              <Text style={styles.fundStatLbl}>
+                {isRTL ? 'الأطفال المسجلون' : 'Enfants'}
+              </Text>
             </View>
           </View>
         </View>
@@ -322,31 +241,13 @@ export default function FamilyDashboard() {
 
           <TouchableOpacity
             style={styles.quickActionCard}
-            onPress={() => router.push('/(admin)/finances')}
+            onPress={() => router.push('/(admin)/enfants')}
             activeOpacity={0.8}
           >
             <View style={[styles.quickActionIcon, { backgroundColor: '#EAF7F0' }]}>
-              <Ionicons name="cash" size={20} color={colors.forest} />
+              <Ionicons name="people" size={20} color={colors.forest} />
             </View>
-            <Text style={styles.quickActionLabel}>Donner Argent</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickActionCard}
-            onPress={() => router.push('/(admin)/demandes')}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#FFF3E0' }]}>
-              <Ionicons name="mail" size={20} color="#E65100" />
-            </View>
-            <Text style={styles.quickActionLabel}>Demandes</Text>
-            {pendingRequests.length > 0 && (
-              <View style={styles.quickActionBadge}>
-                <Text style={styles.quickActionBadgeText}>
-                  {pendingRequests.length}
-                </Text>
-              </View>
-            )}
+            <Text style={styles.quickActionLabel}>Mes Enfants</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -359,75 +260,18 @@ export default function FamilyDashboard() {
             </View>
             <Text style={styles.quickActionLabel}>Budgets</Text>
           </TouchableOpacity>
-        </View>
 
-        {/* DEMANDES D'ARGENT EN ATTENTE (SI PRÉSENTES) */}
-        {pendingRequests.length > 0 && (
-          <View style={styles.sectionWrap}>
-            <View
-              style={[
-                styles.sectionHeaderRow,
-                { flexDirection: isRTL ? 'row-reverse' : 'row' },
-              ]}
-            >
-              <SectionTitle style={{ marginBottom: 0 }}>
-                Demandes d’argent ({pendingRequests.length})
-              </SectionTitle>
-              <TouchableOpacity
-                onPress={() => router.push('/(admin)/demandes')}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.seeAllText}>Tout voir</Text>
-              </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push('/(admin)/historique')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#FFF3E0' }]}>
+              <Ionicons name="time" size={20} color="#E65100" />
             </View>
-
-            {pendingRequests.slice(0, 3).map((req) => (
-              <View
-                key={req.id}
-                style={[
-                  styles.requestCard,
-                  { flexDirection: isRTL ? 'row-reverse' : 'row' },
-                ]}
-              >
-                <View style={styles.requestChildAvatar}>
-                  <Ionicons name="person" size={20} color="#E65100" />
-                </View>
-
-                <View style={{ flex: 1, marginHorizontal: 10 }}>
-                  <Text style={styles.requestChildName}>{req.childName}</Text>
-                  <Text style={styles.requestReason}>
-                    {req.reason || 'Argent de poche'}
-                  </Text>
-                  <Text style={styles.requestAmount}>
-                    {formatTND(req.amount)}
-                  </Text>
-                </View>
-
-                <View style={styles.requestBtnCol}>
-                  <TouchableOpacity
-                    style={styles.approveBtn}
-                    onPress={() => handleRequestResponse(req.id, true)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="checkmark" size={16} color={colors.white} />
-                    <Text style={styles.actionBtnText}>Approuver</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.rejectBtn}
-                    onPress={() => handleRequestResponse(req.id, false)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="close" size={16} color="#E11D48" />
-                    <Text style={[styles.actionBtnText, { color: '#E11D48' }]}>
-                      Rejeter
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
+            <Text style={styles.quickActionLabel}>Historique</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* APERÇU DES ENFANTS DU FOYER */}
         <View style={styles.sectionWrap}>
@@ -495,7 +339,7 @@ export default function FamilyDashboard() {
 
                   <TouchableOpacity
                     style={styles.giveMoneyBtn}
-                    onPress={() => openGiveModal(ch)}
+                    onPress={() => router.push('/(admin)/enfants')}
                     activeOpacity={0.8}
                   >
                     <Ionicons name="gift-outline" size={16} color={colors.white} />
@@ -562,124 +406,6 @@ export default function FamilyDashboard() {
           )}
         </View>
       </ScrollView>
-
-      {/* MODAL RAPIDE "DONNER DE L'ARGENT" */}
-      <Modal
-        visible={giveMoneyModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setGiveMoneyModal(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <View
-              style={[
-                styles.modalHeader,
-                { flexDirection: isRTL ? 'row-reverse' : 'row' },
-              ]}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>
-                  Allouer à {targetChild?.name}
-                </Text>
-                <Text style={styles.modalSub}>
-                  {isRTL ? 'ميزانية فئة الأطفال : ' : 'Budget catégorie Enfant : '}
-                  <Text style={{ fontWeight: '700', color: colors.forest }}>
-                    {formatTND(catEnfantBudget)}
-                  </Text>
-                  {` · ${isRTL ? 'المتبقي : ' : 'Disponible : '}`}
-                  <Text
-                    style={{
-                      fontWeight: '700',
-                      color: remainingEnfantBudget > 0 ? colors.forest : colors.coral,
-                    }}
-                  >
-                    {formatTND(remainingEnfantBudget)}
-                  </Text>
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  setGiveMoneyModal(false);
-                  setShowOverBudgetWarning(false);
-                }}
-                style={styles.modalClose}
-              >
-                <Ionicons name="close" size={20} color={colors.forest} />
-              </TouchableOpacity>
-            </View>
-
-            {giveError ? (
-              <AlertBanner tone="danger" title={t('erreur')} detail={giveError} />
-            ) : null}
-
-            {showOverBudgetWarning ? (
-              <View style={styles.warningAlertBox}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <Ionicons name="warning" size={18} color={colors.coral} />
-                  <Text style={styles.warningAlertTitle}>
-                    {isRTL ? 'تنبيه : تجاوز ميزانية فئة الأطفال' : 'Attention : Dépassement du budget Enfant'}
-                  </Text>
-                </View>
-                <Text style={styles.warningAlertText}>
-                  {catEnfantBudget > 0
-                    ? (isRTL
-                        ? `هذا المبلغ (${formatTND(parseFloat(giveAmount.replace(',', '.')) || 0)}) يتجاوز الميزانية المخصصة لفئة الأطفال (المتبقي: ${formatTND(remainingEnfantBudget)} / المخطط: ${formatTND(catEnfantBudget)}). سيتم تسجيل التحويل وتحديده باللون الأحمر في التحليلات.`
-                        : `Cette allocation de ${formatTND(parseFloat(giveAmount.replace(',', '.')) || 0)} dépasse le budget alloué à la catégorie « Enfant » (Budget restant : ${formatTND(remainingEnfantBudget)} / Prévu : ${formatTND(catEnfantBudget)}). Le virement sera effectué et apparaîtra en rouge dans vos analyses.`)
-                    : (isRTL
-                        ? `لم يتم تخصيص ميزانية مسبقة لفئة الأطفال لهذا الشهر (0.000 د.ت). سيتم تسجيل هذا المبلغ كتجاوز للميزانية وتوضيحه باللون الأحمر في التحليلات.`
-                        : `Aucun budget n'a été alloué à la catégorie « Enfant » ce mois-ci (0.000 DT). Ce montant sera enregistré et mis en évidence en rouge dans vos analyses.`)}
-                </Text>
-              </View>
-            ) : null}
-
-            <Input
-              label="Montant de l'allocation (TND)"
-              value={giveAmount}
-              onChangeText={(txt) => {
-                setGiveAmount(txt);
-                setGiveError('');
-                setShowOverBudgetWarning(false);
-              }}
-              keyboardType="decimal-pad"
-              placeholder="Ex: 25.000"
-              autoFocus
-            />
-
-            <Input
-              label="Motif ou note pour l'enfant"
-              value={giveNote}
-              onChangeText={setGiveNote}
-              placeholder="Ex: Semaine de cours, félicitations..."
-            />
-
-            <View style={styles.modalBtnGroup}>
-              <Button
-                label={
-                  showOverBudgetWarning
-                    ? (isRTL ? 'تأكيد التحويل رغم التجاوز' : 'Confirmer malgré le dépassement')
-                    : (isRTL ? 'تأكيد التحويل' : 'Confirmer le virement')
-                }
-                variant={showOverBudgetWarning ? 'danger' : 'primary'}
-                onPress={submitGiveMoney}
-                loading={giveBusy}
-                disabled={giveBusy}
-              />
-              <Button
-                label={showOverBudgetWarning ? (isRTL ? 'تعديل المبلغ' : 'Modifier le montant') : (isRTL ? 'Annuler' : 'Annuler')}
-                variant="secondary"
-                onPress={() => {
-                  if (showOverBudgetWarning) {
-                    setShowOverBudgetWarning(false);
-                  } else {
-                    setGiveMoneyModal(false);
-                  }
-                }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </Screen>
   );
 }

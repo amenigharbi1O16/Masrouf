@@ -71,9 +71,19 @@ export default function NotificationsScreen() {
       case 'system':
         return { icon: 'leaf' as const, color: colors.forest, bg: '#EBF4F0' };
       case 'alert_100':
+      case 'category_alert_100':
         return { icon: 'alert-circle' as const, color: colors.coral, bg: '#FDF0ED' };
       case 'alert_80':
+      case 'category_alert_80':
         return { icon: 'warning' as const, color: '#D97706', bg: '#FEF3C7' };
+      case 'alert_50':
+        return { icon: 'trending-up' as const, color: '#2563EB', bg: '#EFF6FF' };
+      case 'new_purchase':
+        return { icon: 'cart' as const, color: colors.forest, bg: '#E8F5E9' };
+      case 'new_expense':
+        return { icon: 'receipt' as const, color: '#2563EB', bg: '#EFF6FF' };
+      case 'budget_allocation':
+        return { icon: 'pie-chart' as const, color: '#7C3AED', bg: '#FAF5FF' };
       case 'period_end':
         return { icon: 'time' as const, color: colors.forest, bg: '#E8F5E9' };
       case 'budget_change':

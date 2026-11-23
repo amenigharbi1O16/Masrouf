@@ -18,7 +18,7 @@
  */
 
 import React from 'react';
-// Magasin global pour accéder au rôle de l'utilisateur connecté
+// Magasin global pour accéder au rôle de l'utilisateur connecté et aux alertes
 import { useStore } from '@/state/store';
 // Système d'internationalisation
 import { useTranslation } from '@/utils/i18n';
@@ -30,7 +30,7 @@ import { DrawerItem, SideDrawer } from './SideDrawer';
  */
 export function AppDrawer() {
   const { t } = useTranslation();
-  const { me } = useStore();
+  const { me, unreadNotificationsCount } = useStore();
 
   // Si c'est un compte enfant, badge "Compte Enfant", sinon "Compte Personnel"
   const isChild = me?.role === 'child' || me?.accountType === 'child';
@@ -65,6 +65,13 @@ export function AppDrawer() {
       label: t('points'),
       icon: 'trophy-outline',
       href: '/points',
+    },
+    {
+      // Centre de notifications budgétaires et alertes
+      label: t('notifications'),
+      icon: 'notifications-outline',
+      href: '/notifications',
+      badge: unreadNotificationsCount,
     },
     {
       // Destination vers la page des réglages

@@ -44,6 +44,8 @@ import { daysBetween, dt, fmtRange, getExactMonthBounds, money, todayISO, toNum 
 import { useTranslation } from '@/utils/i18n';
 // Moteur de réévaluation automatique des allocations basé sur la consommation réelle
 import { computeAutomatedBudgetAllocations } from '@/utils/budgetReevaluation';
+// Rapprochement et catégorie canonique Enfant
+import { findEnfantCategory, CANONICAL_ENFANT_ID } from '@/utils/categoryMatching';
 
 /**
  * MISSION DU COMPOSANT :
@@ -83,10 +85,25 @@ export default function AllocateBudgetScreen() {
 
   // Filtrage des catégories actives suivies par l'utilisateur connecté
   // Si aucune catégorie n'est suivie, repli sur les catégories par défaut actives du système
+  // Pour un profil parent/admin, la catégorie Enfant est systématiquement incluse pour alimenter l'enveloppe familiale
   const userCatIds = useMemo(() => {
-    if (me?.categoryIds && me.categoryIds.length > 0) return me.categoryIds;
-    return db.categories.filter((c) => c.active && (db.defaultPercentages[c.id] > 0 || (c as any).isDefault)).map((c) => c.id);
-  }, [me?.categoryIds, db.categories, db.defaultPercentages]);
+    let ids: string[];
+    if (me?.categoryIds && me.categoryIds.length > 0) {
+      ids = [...me.categoryIds];
+    } else {
+      ids = db.categories
+        .filter((c) => c.active && (db.defaultPercentages[c.id] > 0 || (c as any).isDefault))
+        .map((c) => c.id);
+    }
+    if (me?.role === 'parent' || me?.role === 'admin') {
+      const childCat = findEnfantCategory(db.categories);
+      const childCatId = childCat ? childCat.id : CANONICAL_ENFANT_ID;
+      if (!ids.includes(childCatId)) {
+        ids.push(childCatId);
+      }
+    }
+    return ids;
+  }, [me?.categoryIds, me?.role, db.categories, db.defaultPercentages]);
 
   const cats = useMemo(() => {
     return db.categories.filter((c) => userCatIds.includes(c.id) && c.active);
@@ -97,6 +114,17 @@ export default function AllocateBudgetScreen() {
     if (!me) return null;
     return computeAutomatedBudgetAllocations(db, me.id, normalizedStart, normalizedEnd, totalN, userCatIds);
   }, [db, me, normalizedStart, normalizedEnd, totalN, userCatIds]);
+
+  const existingBudget = useMemo(() => {
+    if (!me) return null;
+    return (
+      db.budgets.find(
+        (b) =>
+          b.userId === me.id &&
+          (b.start === normalizedStart || b.start.slice(0, 7) === normalizedStart.slice(0, 7))
+      ) || null
+    );
+  }, [db.budgets, me, normalizedStart]);
 
   // Fonction de calcul de répartition exacte à 100% du budget entre les catégories
   const getProportionalAllocations = () => {
@@ -123,8 +151,23 @@ export default function AllocateBudgetScreen() {
     return initialMap;
   };
 
-  // Initialisation intelligente : pré-remplissage des enveloppes réparties exactement à 100%
-  const [vals, setVals] = useState<Record<string, string>>(getProportionalAllocations);
+  const getInitialAllocations = () => {
+    if (existingBudget && existingBudget.allocations) {
+      const hasAny = Object.values(existingBudget.allocations).some((v) => (v ?? 0) > 0);
+      if (hasAny) {
+        const map: Record<string, string> = {};
+        for (const c of cats) {
+          const val = existingBudget.allocations[c.id];
+          map[c.id] = val !== undefined ? dt(val) : '0';
+        }
+        return map;
+      }
+    }
+    return getProportionalAllocations();
+  };
+
+  // Initialisation intelligente : pré-remplissage des enveloppes réparties exactement à 100% ou existantes
+  const [vals, setVals] = useState<Record<string, string>>(getInitialAllocations);
 
   // Conversion numérique en temps réel de tous les montants saisis
   const nums = Object.fromEntries(
@@ -138,6 +181,8 @@ export default function AllocateBudgetScreen() {
 
   // Détection d'un dépassement par rapport au budget global (tolérance de 0.0005 DT pour arrondis)
   const over = sum - totalN > 0.0005;
+
+  const isChild = me?.role === 'child' || me?.accountType === 'child';
 
   /**
    * MISSION DE LA FONCTION :
@@ -160,6 +205,7 @@ export default function AllocateBudgetScreen() {
 
     // Écriture atomique dans SQLite avec bornes exactes de mois
     actions.saveBudget({
+      id: existingBudget?.id,
       start: normalizedStart,
       end: normalizedEnd,
       total: totalN,
@@ -170,7 +216,16 @@ export default function AllocateBudgetScreen() {
 
     // Fermeture propre des écrans modaux et redirection directe vers l'accueil
     router.dismissAll?.();
-    router.replace('/(tabs)');
+    router.replace({
+      pathname: '/(tabs)',
+      params: {
+        categorySuccessMsg: isRTL
+          ? 'تم توزيع الميزانية بنجاح على الفئات!'
+          : 'Budget réparti avec succès sur vos catégories !',
+        scrollToCategories: 'true',
+        t: Date.now().toString(),
+      },
+    } as never);
   };
 
   return (
@@ -201,8 +256,21 @@ export default function AllocateBudgetScreen() {
         tone={over ? 'danger' : 'good'}
       />
 
-      {/* Bouton de rééquilibrage automatique à 100% de la sélection */}
-      <View style={{ marginVertical: 6, alignItems: isRTL ? 'flex-start' : 'flex-end' }}>
+      {/* Boutons d'action : rééquilibrage automatique et gestion des catégories */}
+      <View
+        style={{
+          marginVertical: 6,
+          flexDirection: isRTL ? 'row-reverse' : 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        <Button
+          label={isRTL ? 'إدارة الفئات' : 'Gérer les catégories'}
+          variant="secondary"
+          onPress={() => router.push('/gerer-categories')}
+        />
         <Button
           label={isRTL ? 'إعادة التوزيع التلقائي 100%' : 'Répartir automatiquement (100%)'}
           variant="secondary"
@@ -245,18 +313,29 @@ export default function AllocateBudgetScreen() {
 
       {/* Bouton vert forêt : actif uniquement si la somme ne dépasse pas le budget total */}
       <Button
-        label={t('creer_mon_budget')}
+        label={
+          isChild || existingBudget
+            ? (isRTL ? 'حفظ تقسيم الميزانية' : 'Enregistrer la répartition')
+            : t('creer_mon_budget')
+        }
         onPress={create}
         disabled={over || cats.length === 0}
       />
 
       {/* Avertissement si aucune catégorie n'est suivie par l'utilisateur */}
       {cats.length === 0 ? (
-        <AlertBanner
-          tone="warning"
-          title={t('aucune_categorie_selectionnee')}
-          detail={t('selectionner_categories_dabord')}
-        />
+        <View style={{ gap: 10 }}>
+          <AlertBanner
+            tone="warning"
+            title={t('aucune_categorie_selectionnee')}
+            detail={t('selectionner_categories_dabord')}
+          />
+          <Button
+            label={t('gerer_categories')}
+            variant="secondary"
+            onPress={() => router.push('/gerer-categories')}
+          />
+        </View>
       ) : null}
     </Screen>
   );

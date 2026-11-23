@@ -29,7 +29,6 @@ import type {
   FamilyFund,
   InAppNotification,
   MoneyAllocation,
-  MoneyRequest,
   PointsRules,
   Product,
   Purchase,
@@ -154,18 +153,34 @@ export async function loadDBFromSQLite(): Promise<DB> {
     console.warn('[SQLite] Erreur harmonisation catégorie Enfant:', err);
   }
 
+  // Assainissement préventif des libellés de catégories non conformes dans SQLite
+  for (const r of catRows) {
+    if (typeof r.name_key !== 'string' || !r.name_key.trim() || !isNaN(Number(r.name_key))) {
+      const fallbackName = `Catégorie ${r.id}`;
+      try {
+        db.runSync('UPDATE category SET name_key = ? WHERE id = ?', [fallbackName, r.id]);
+        r.name_key = fallbackName;
+      } catch {}
+    }
+  }
+
   // Transformation des enregistrements SQLite en objets Category du store
   const categories: Category[] = catRows.map((r: any) => {
-    const isEnfant = isChildrenCategory(r.name_key) || String(r.id) === CANONICAL_ENFANT_ID;
+    const rawName = r.name_key ?? r.nom ?? r.name;
+    const nameStr =
+      typeof rawName === 'string' && isNaN(Number(rawName)) && rawName.trim()
+        ? rawName.trim()
+        : (r.id ? `Catégorie ${r.id}` : 'Catégorie');
+    const isEnfant = isChildrenCategory(nameStr) || isChildrenCategory(rawName) || String(r.id) === CANONICAL_ENFANT_ID;
     return {
       id: String(r.id),
-      name: isEnfant ? CANONICAL_ENFANT_NAME : r.name_key,
+      name: isEnfant ? CANONICAL_ENFANT_NAME : nameStr,
       kind: isEnfant ? 'expense' : (r.type as 'product' | 'expense'),
-      active: r.is_active === 1,
+      active: r.is_active === 1 || r.is_active === true,
       userId: r.user_id ? String(r.user_id) : undefined,
-      description: r.description || undefined,
-      color: r.color || undefined,
-      isCustom: r.is_custom === 1,
+      description: r.description ? String(r.description) : undefined,
+      color: r.color ? String(r.color) : undefined,
+      isCustom: r.is_custom === 1 || r.is_custom === true,
       scope: (r.scope as 'personal' | 'family') || 'personal',
       createdAt: r.created_at || undefined,
     };
@@ -601,34 +616,6 @@ export async function loadDBFromSQLite(): Promise<DB> {
     }));
   } catch { }
 
-  let moneyRequests: MoneyRequest[] = [];
-  try {
-    const reqRows = db.getAllSync<{
-      id: string;
-      parent_id: string;
-      child_id: string;
-      child_name: string;
-      amount: number;
-      reason: string;
-      status: string;
-      date: string;
-      created_at: string;
-      responded_at?: string;
-    }>('SELECT * FROM money_request ORDER BY created_at DESC');
-    moneyRequests = reqRows.map((r) => ({
-      id: String(r.id),
-      parentId: String(r.parent_id),
-      childId: String(r.child_id),
-      childName: r.child_name,
-      amount: Number(r.amount) || 0,
-      reason: r.reason,
-      status: (r.status as 'pending' | 'approved' | 'rejected') || 'pending',
-      date: r.date || todayISO(),
-      createdAt: r.created_at || todayISO(),
-      respondedAt: r.responded_at || undefined,
-    }));
-  } catch { }
-
   let familyBudgets: FamilyBudget[] = [];
   try {
     const fbRows = db.getAllSync<{
@@ -666,7 +653,6 @@ export async function loadDBFromSQLite(): Promise<DB> {
     sessionUserId: null,
     familyFunds,
     allocations,
-    moneyRequests,
     familyBudgets,
   };
 }
@@ -1305,34 +1291,6 @@ export function sqliteDeleteAllocation(id: string): boolean {
   } catch (e) {
     console.warn('sqliteDeleteAllocation error:', e);
     return false;
-  }
-}
-
-/**
- * Enregistre une demande d'argent soumise par un enfant dans `money_request`.
- */
-export function sqliteAddMoneyRequest(req: MoneyRequest): void {
-  try {
-    db.runSync(
-      'INSERT OR REPLACE INTO money_request (id, parent_id, child_id, child_name, amount, reason, status, date, created_at, responded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [req.id, req.parentId, req.childId, req.childName, req.amount, req.reason, req.status, req.date, req.createdAt, req.respondedAt || null]
-    );
-  } catch (e) {
-    console.warn('sqliteAddMoneyRequest error:', e);
-  }
-}
-
-/**
- * Met à jour le statut d'une demande d'argent dans `money_request`.
- */
-export function sqliteUpdateMoneyRequest(id: string, status: 'approved' | 'rejected', respondedAt: string): void {
-  try {
-    db.runSync(
-      'UPDATE money_request SET status = ?, responded_at = ? WHERE id = ?',
-      [status, respondedAt, id]
-    );
-  } catch (e) {
-    console.warn('sqliteUpdateMoneyRequest error:', e);
   }
 }
 
